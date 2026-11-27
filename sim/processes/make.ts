@@ -81,6 +81,8 @@ export function make(s: State): void {
     if (r.from.some(([st]) => St[st]!.sown)) for (const bd of dues.get(b.id) ?? []) {
       const to = s.bodies[bd.b]!;
       if (!to.alive) continue;
+      // Those of a pure creed give nothing to a holy body whose head is stained: his rites are void to them.
+      if (bd.way === 'tithe' && b.creed.purity > 0.6 && (head(s, to)?.stained ?? 0) >= P.stainMark) continue;
       // One with little scruple keeps back half of what it owes the Crown. The bailiff cannot see what is not shown him.
       const hides = bd.way === 'crown' && (head(s, b)?.scruple ?? 1) < 0.4;
       for (const [k, q] of r.out) {

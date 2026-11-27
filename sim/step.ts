@@ -11,6 +11,7 @@ import { choose } from './processes/choose.ts';
 import { gather } from './processes/gather.ts';
 import { learn } from './processes/learn.ts';
 import { attend, settle } from './processes/mind.ts';
+import { sacred } from './processes/sacred.ts';
 import { kinOf } from './util.ts';
 import type { State } from './types.ts';
 
@@ -28,6 +29,7 @@ export function advance(s: State, keepLog = false): State {
   attend(s);        // each hearth takes up the mind of the one who speaks for it
   choose(s);
   learn(s);         // beliefs are made, told and forgotten
+  sacred(s);        // holiness, stain, shrines and creeds
   settle(s);        // what was learned is kept by people
   gather(kinBefore, s);  // bodies form and dissolve
   s.t++;
