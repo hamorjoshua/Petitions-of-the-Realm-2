@@ -524,7 +524,7 @@ const LEGEND: Record<Lens, string> = {
   jurisdiction: 'Each colour is one body of houses, and whoever leads it.',
   ecology: 'Darker red: soil worn out or ground flooded.',
 };
-const GLYPHS = 'Marks: a dot is a hamlet, sized by its people; a filled square a lord’s seat, a hollow one a bailiff’s; a gold ring a parish; the gold circle is your seat; a small square beside a place is a work, a gold diamond a shrine; a red ring marks trouble (aggrieved houses or an interdict); a blue ring what you watch. Water inland is a lake; dark edges bound lordships; light lines are roads. Fills step in four shades of the lens colour.';
+const GLYPHS = 'Marks: a dot is a hamlet, sized by its people; a filled square a lord’s seat, a hollow one a bailiff’s; a gold ring a parish; the gold circle is your seat; a small square beside a place is a work, a gold diamond a shrine; a red ring marks trouble (aggrieved houses or an interdict); the small grey line under a seat’s name is its figure for the lens; a blue ring what you watch. Water inland is a lake; dark edges bound lordships; light lines are roads. Fills step in four shades of the lens colour.';
 
 const storeTotal = (): number => (s.court ? s.court.store.reduce((x, y) => x + y, 0) : 0);
 /** Up, down or level against a season ago. */
@@ -582,6 +582,21 @@ const HERALDRY = ['#3d5f7a', '#b07d2b', '#7d8f5a', '#b5643c', '#6e4a6b', '#5d687
 /** Pale tabletop washes for shires: soft ochre, sage, warm cream, stone. */
 const WASH = ['#c9a45c', '#93a57a', '#e0c99a', '#a9a293'];
 const herald = (id: number): string => HERALDRY[((id % HERALDRY.length) + HERALDRY.length) % HERALDRY.length]!;
+/** A quiet figure for a named place, by the active lens. */
+function microData(i: number, at: Map<number, Body[]>): string {
+  const l = at.get(i) ?? [], cell = s.cells[i]!, souls = l.reduce((a, b) => a + b.members.filter(m => s.people[m]!.alive).length, 0);
+  if (lens === 'want') { if (!l.length) return ''; const food = NEEDS.findIndex(n => n.harm >= 0.5); const w = Math.min(...l.map(b => cover(b.store, askAhead(s, b))[food] ?? 0)); return `${w < 10 ? w.toFixed(1) : Math.round(w)}w food`; }
+  if (lens === 'factions') { const c = s.court; return c && l.length ? `${l.filter(b => (c.grief[b.id] ?? 0) >= P.aggrieved).length}/${l.length} aggrieved` : ''; }
+  if (lens === 'sacred') return cell.interdict > 0 ? `interdict ${cell.interdict}w` : cell.shrine ? 'shrine' : `holy ${Math.round(cell.sanctity * 100)}%`;
+  if (lens === 'ecology') return `soil ${Math.round((100 * cell.soil) / Math.max(0.01, cell.soil0))}%`;
+  return souls ? `${souls} souls` : '';
+}
+/** The lens's four steps, as a small legend above the dock. */
+function legend(): string {
+  if (lens === 'jurisdiction') return `<div class="legend-scale"><span class="label">Lords</span><span class="small soft">each colour a lordship</span></div>`;
+  const col = lens === 'sacred' ? 'var(--gilt)' : 'var(--seal)', name = ({ want: 'Want', factions: 'Aggrieved', sacred: 'Holiness', ecology: 'Worn land' } as Record<string, string>)[lens]!;
+  return `<div class="legend-scale"><span class="label">${name}</span>${[0, 14, 35, 65].map((p, k) => `<span class="sw"><i style="background:${p ? `color-mix(in srgb, ${col} ${p}%, var(--land))` : 'var(--land)'}"></i>${['None', 'Low', 'High', 'Severe'][k]}</span>`).join('')}</div>`;
+}
 function mapView(): string {
   const hs = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length), at = new Map<number, Body[]>();
   for (const b of hs) { const l = at.get(b.home); if (l) l.push(b); else at.set(b.home, [b]); }
@@ -641,8 +656,8 @@ function mapView(): string {
       const key = a < b ? `${a}:${b}` : `${b}:${a}`;
       if (roadSet.has(key)) continue;
       // No road across water: every point along the way must lie in a land place (the nearest centre is the place it lies in).
-      const pb0 = g.pts[b]!;
-      const wetWay = [0.2, 0.35, 0.5, 0.65, 0.8].some(t => { const x = pa[0] + (pb0[0] - pa[0]) * t, y = pa[1] + (pb0[1] - pa[1]) * t; let best = 0, bd = Infinity; g.pts.forEach((p, k) => { const d = (p[0] - x) ** 2 + (p[1] - y) ** 2; if (d < bd) { bd = d; best = k; } }); return water(best); });
+      const pb0 = g.pts[b]!, cx0 = (pa[0] + pb0[0]) / 2 + (pb0[1] - pa[1]) * 0.08, cy0 = (pa[1] + pb0[1]) / 2 - (pb0[0] - pa[0]) * 0.08;
+      const wetWay = Array.from({ length: 15 }, (_v, k) => (k + 1) / 16).some(t => { const u = 1 - t, x = u * u * pa[0] + 2 * u * t * cx0 + t * t * pb0[0], y = u * u * pa[1] + 2 * u * t * cy0 + t * t * pb0[1]; let best = 0, bd = Infinity; g.pts.forEach((p, k) => { const d = (p[0] - x) ** 2 + (p[1] - y) ** 2; if (d < bd) { bd = d; best = k; } }); return water(best); });
       if (wetWay) continue;
       roadSet.add(key);
       const pb = g.pts[b]!, mx = (pa[0] + pb[0]) / 2 + (pb[1] - pa[1]) * 0.08, my = (pa[1] + pb[1]) / 2 - (pb[0] - pa[0]) * 0.08;
@@ -657,7 +672,7 @@ function mapView(): string {
     const n = at.get(i)?.length ?? 0, rk = ranked.get(i), cell = s.cells[i]!, ly = y + 0.21;
     y -= 0.06;
     const X = x.toFixed(3), Y = y.toFixed(3);
-    if (sore(i) || cell.interdict > 0) tokens.push(`<circle class="t-alarm" cx="${X}" cy="${Y}" r="0.24"/>`);
+    if (sore(i) || cell.interdict > 0) tokens.push(`<circle class="t-alarm" cx="${X}" cy="${Y}" r="0.29"/>`);
     if (i === seat) tokens.push(`<circle class="t-seat" cx="${X}" cy="${Y}" r="0.18"/>`);
     if (watched.has(`c:${i}`) || (at.get(i) ?? []).some(b => watched.has(`b:${b.id}`))) tokens.push(`<circle class="t-watch" cx="${X}" cy="${Y}" r="0.3"/>`);
     const souls = (at.get(i) ?? []).reduce((a, b) => a + b.members.filter(m => s.people[m]!.alive).length, 0);
@@ -666,7 +681,7 @@ function mapView(): string {
     else if (n) tokens.push(`<circle class="t-hamlet" cx="${X}" cy="${Y}" r="${(0.04 + 0.015 * Math.sqrt(souls)).toFixed(3)}"/>`);
     if (cell.works && Object.values(cell.works).some(Boolean)) tokens.push(`<rect class="t-work" x="${(x + 0.13).toFixed(3)}" y="${(y - 0.2).toFixed(3)}" width="0.07" height="0.07"/>`);
     if (cell.shrine) tokens.push(`<rect class="t-shrine" x="${(x - 0.2).toFixed(3)}" y="${(y - 0.2).toFixed(3)}" width="0.07" height="0.07" transform="rotate(45 ${(x - 0.165).toFixed(3)} ${(y - 0.165).toFixed(3)})"/>`);
-    if (rk || i === seat) labels.push(`<text x="${X}" y="${ly.toFixed(3)}">${esc(cellWords(i))}</text>`);
+    if (rk || i === seat) { labels.push(`<text x="${X}" y="${ly.toFixed(3)}">${esc(cellWords(i))}</text>`); const sub = microData(i, at); if (sub) labels.push(`<text class="sub" x="${X}" y="${(ly + 0.17).toFixed(3)}">${esc(sub)}</text>`); }
   });
   return `<div class="map-viewport"><div class="map" style="transform:translate(${panX}px,${panY}px) scale(${zoom})"><svg viewBox="0 0 ${N} ${N}" preserveAspectRatio="xMidYMid meet">
     <rect class="sea" x="-2" y="-2" width="${N + 4}" height="${N + 4}"/>
@@ -761,6 +776,15 @@ function powersDeck(): string {
   }).join('');
 }
 
+/** Small monochrome icons for the dock, drawn in 1.5px strokes. */
+const icon = (d: string): string => `<svg class="ico" viewBox="0 0 14 14" width="14" height="14" aria-hidden="true">${d}</svg>`;
+const ICON: Record<string, string> = {
+  dials: icon('<path d="M2 4h10M2 10h10"/><circle cx="5" cy="4" r="1.6"/><circle cx="9" cy="10" r="1.6"/>'),
+  laws: icon('<rect x="3" y="1.75" width="8" height="10.5" rx="1"/><path d="M5 5h4M5 7.5h4M5 10h2.5"/>'),
+  works: icon('<path d="M2 12V6.5L7 2.5l5 4V12z"/><path d="M5.5 12V9h3v3"/>'),
+  powers: icon('<path d="M2 11.5h10M2.5 11.5 2 5l3 2.5L7 3l2 4.5L12 5l-.5 6.5"/>'),
+  chronicle: icon('<path d="M2 3h10M2 6h10M2 9h10M2 12h6"/>'),
+};
 function shell(): void {
   const live = mode === 'cockpit';
   document.body.classList.add('cockpit-on');
@@ -769,7 +793,8 @@ function shell(): void {
   app.innerHTML = `<div class="cockpit full"><main class="view map-host" id="view"></main>
     <div class="hud-top"><div id="strip"></div><div id="lensbar"></div></div>
     <div id="sheet"></div>
-    <footer class="dock"><div class="half" id="deck"></div><nav class="tabs">${tabs.map(d => `<button data-deck="${d}" aria-pressed="${dockOpen && deck === d}">${({ dials: 'Dials', laws: 'Laws', works: 'Works', powers: 'Powers', chronicle: 'Chronicle' })[d]}</button>`).join('')}</nav></footer></div>`;
+    <div id="legend"></div>
+    <footer class="dock"><div class="half" id="deck"></div><nav class="tabs">${tabs.map(d => `<button data-deck="${d}" aria-pressed="${dockOpen && deck === d}">${ICON[d]}<span>${({ dials: 'Dials', laws: 'Laws', works: 'Works', powers: 'Powers', chronicle: 'Chronicle' })[d]}</span></button>`).join('')}</nav></footer></div>`;
   zoom = fitZoom(); panX = 0; panY = 0;
   paint(true);
   centreOn(s.court?.seat ?? Math.floor(s.cells.length / 2));
@@ -784,11 +809,14 @@ function centreOn(cell: number): void {
 }
 const swap = (id: string, html: string): void => { const el = document.getElementById(id); if (el && el.dataset.h !== html) { const top = el.scrollTop; el.innerHTML = html; el.dataset.h = html; el.scrollTop = top; } };
 function paint(force = false): void {
-  if (force) for (const id of ['strip', 'view', 'deck', 'sheet', 'lensbar']) { const el = document.getElementById(id); if (el) el.dataset.h = ''; }
+  if (force) for (const id of ['strip', 'view', 'deck', 'sheet', 'lensbar', 'legend']) { const el = document.getElementById(id); if (el) el.dataset.h = ''; }
   document.querySelectorAll<HTMLButtonElement>('[data-deck]').forEach(b => b.setAttribute('aria-pressed', String(dockOpen && b.dataset.deck === deck)));
   document.querySelector('.dock')?.classList.toggle('open', dockOpen);
   swap('strip', strip());
   swap('lensbar', lensBar());
+  swap('legend', dockOpen || picked >= 0 ? '' : legend());
+  const defiant = Object.values(s.court?.policy.powers ?? {}).some(p => p.defiant);
+  document.querySelector('[data-deck="powers"]')?.classList.toggle('alert', defiant);
   if (!gesturing) swap('view', mapView());
   swap('sheet', dockOpen ? '' : sheet());
   swap('deck', !dockOpen ? '' : deck === 'chronicle' ? chronicleView() : !s.court ? '' : deck === 'dials' ? treasuryDeck() + '<div class="label">Decrees</div>' + decreesDeck() : deck === 'laws' ? lawsDeck() : deck === 'works' ? worksDeck() : powersDeck());
