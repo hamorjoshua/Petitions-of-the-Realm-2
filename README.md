@@ -521,6 +521,23 @@ Played, the first screen showed that matters were dull: nearly all were one hous
 
 Not yet built of what medieval petitions were made of: works that need leave and upkeep (a mill, a weir, a bridge), licences and pardons, offices in the regent's gift, wardship and dower, and whole communities petitioning as one. None of the scripted-court figures above has been re-run since these changes.
 
+## Three engines that collide
+
+Played, the court was monotonous: every house wanted the same thing, so every matter was a shortage, and every ruling was favour one side, favour the other, or put it off. Three things were added to break that.
+
+**Privilege.** A new kind of bond: the sole right to one kind of work about a place. A prosperous house that does most of some trade in a place (fishing, felling, smithing, salt-making and so on) asks leave to hold it alone. If the regent grants or sells it, everyone else who does that work there owes the holder a fifth of what they make. Those bound come back: in want, it weighs on them; prospering, they ask that it be broken or that they be granted a right of their own.
+
+**Belief that acts.** Where crops wither or a flood carries them off, the credulous who live near come to hold that the ground itself brings harm, and tell others. When the belief is strong they petition to stop whoever works that ground. The regent can forbid all work there for two years, have a priest bless it, or send them away. A rule to forbid becomes a superstitious law.
+
+**Rulings of different kinds.**
+- *Leave it to the local lord or body.* It costs no standing now; whoever holds sway decides, for themselves if they are a party, else for the stronger, and the loser blames them.
+- *Kin stand surety.* Half a debt is laid on the debtor's kin and the rest put off a year: time for the debtor, and a new quarrel inside a family.
+- *Grant, sell or refuse a charter.*
+
+The number of choices on a matter stays at two to four.
+
+One reign on a small realm with a court that tries every cut in turn: of 183 matters, 49 were houses in want, 29 feared ground, 31 concerned the price of blood, 19 asked leave for a sole right and 14 asked that one be broken. A court that always granted charters drew 43 complaints against them in thirty weeks. The scripted-court measures have not been re-run.
+
 ## Known gaps
 
 1. **The fall was largely a matter of size.** On 100 cells it took 64 to 87% where it happened and nothing cured it. On 400 cells it is 18 to 54% in seven realms of eight. Belief supplies restraint only while children are dying, and is forgotten within a few years. Customs now exist and last, but none forms about children. The depth of the fall may lie less in births than in the fields: the hungry strip standing crops, their own and others', unopposed, and the next harvest fails for everyone.

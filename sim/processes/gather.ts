@@ -161,6 +161,7 @@ export function gather(kin: Map<number, Set<number>>, s: State): void {
   s.bonds = s.bonds.filter(bd => {
     if (bd.about === 'person') return s.people[bd.b]!.alive && (bd.basis === 'birth' || s.people[bd.a]!.alive);
     if (bd.about === 'land') return s.bodies[bd.a]!.alive && bd.strength >= 0.05;
+    if (bd.about === 'right') return s.bodies[bd.a]!.alive && bd.share > 0 && (bd.kind >= 0 || bd.due > s.t);
     if (bd.about === 'yield') return s.bodies[bd.a]!.alive && s.bodies[bd.b]!.alive && bd.share > 0.001;
     if (bd.about === 'bond') return s.bodies[bd.a]!.alive && (bd.secures >= 0 || (bd.secures === -1 && bd.due > s.t));
     return bd.q > 0.05 && bd.strength >= 0.3 && s.bodies[bd.a]!.alive && s.bodies[bd.b]!.alive;

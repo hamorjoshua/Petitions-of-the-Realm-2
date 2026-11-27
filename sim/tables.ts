@@ -223,6 +223,8 @@ export const P = {
   /** Going to court: what it costs beside what is hoped for, the days it takes, and how far one ruling moves what a house expects (its own; its neighbours'). */
   /** The Crown's store at the start, in weeks of each pressing need for the whole realm; the share of what it enforces that it keeps; weeks the regent's word runs; the harm of breaking it. */
   crownWeeks: 1, crownFee: 0.1, wordWeeks: 13, harmWord: 50,
+  /** Rights: the share owed to the holder, the days a house must have worked to ask for one, what the Crown asks for selling one, how fast the reckoning of who works where fades, and how long a ban lasts. */
+  toll: 0.2, charterDays: 40, charterFee: 40, workedFade: 0.985, banWeeks: 104,
   /** Harm laid to the court by one who could find no one to deal with because of what the law now says. */
   harmChilled: 3,
   pleaCost: 0.15, pleaDays: 3, pleaOwn: 0.5, pleaSeen: 0.15,

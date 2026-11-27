@@ -3,9 +3,9 @@
 
 import { found } from '../sim/found.ts';
 import { advance } from '../sim/step.ts';
-import { audience, cuts, hear, openCourt, type Ruling, type Width } from '../sim/court/court.ts';
+import { audience, cuts, hear, localPower, openCourt, suretyFor, type Ruling, type Width } from '../sim/court/court.ts';
 import { askAhead, cover } from '../sim/value.ts';
-import { KINDS, NEEDS, P } from '../sim/tables.ts';
+import { KINDS, NEEDS, P, RECIPES } from '../sim/tables.ts';
 import { grown, top } from '../sim/util.ts';
 import { Readers, wayWords } from '../readers/readers.ts';
 import { placeName } from '../readers/names.ts';
@@ -14,7 +14,12 @@ import type { Bond, Petition, State } from '../sim/types.ts';
 const app = document.getElementById('app')!;
 const esc = (x: string): string => x.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 /** A shape or rule in plain words: the short codes for ways of dealing are spelled out. */
-const plain = (x: string): string => x.replace(/\(([A-Z]+>[A-Z]+)\)/g, (_m, w: string) => `(${wayWords(w)})`);
+/** Each kind of work, as people would name the trade. */
+const TRADE: Record<string, string> = { netting: 'fishing', felling: 'felling timber', digging: 'digging ore', panning: 'salt-making', forging: 'smithing', wrighting: 'making ploughshares', weaving: 'weaving', salting: 'salting meat', smoking: 'smoking fish', brewing: 'brewing', raising: 'building', culling: 'keeping beasts', reaping: 'reaping', sowing: 'sowing' };
+const trade = (work: number | undefined): string => (work === undefined || work < 0 ? 'work' : TRADE[RECIPES[work]!.id] ?? RECIPES[work]!.id);
+/** A ruling as the rolls name it. */
+const CUT: Record<string, string> = { enforce: 'Hold to it', strike: 'Let it go', stay: 'Put it off a year', turn: 'Turn the ground over', give: 'Give relief', dismiss: 'Send away', vouch: 'Vouch for them', inquire: 'Hold an inquest', surety: 'Kin stand surety', remit: 'Leave it to the local lord or body', charter: 'Grant the right', sell: 'Sell the right', refuse: 'Refuse', rival: 'Grant a rival right', forbid: 'Forbid work there', bless: 'Have it blessed', uphold: 'Uphold' };
+const plain = (x: string): string => x.replace(/\(([A-Z]+>[A-Z]+)\)/g, (_m, w: string) => `(${wayWords(w)})`).replace(/sole right to (\w+)/g, (_m, w: string) => `sole right to ${TRADE[w] ?? w}`);
 const cap = (x: string): string => x.charAt(0).toUpperCase() + x.slice(1);
 const SEASONS = ['Winter', 'Spring', 'Summer', 'Autumn'];
 const seasonOf = (t: number): string => SEASONS[Math.floor((((t % 52) + 52 + 4) % 52) / 13)]!;
@@ -67,6 +72,7 @@ const named = (x: string): string => x.replace(/house (\d+)/g, (_m, n: string) =
 /** One thing that weighs on a house, as a clause. */
 function burdenWords(bd: Bond, by: number): string {
   const B = house(bd.a === by ? bd.b : bd.a);
+  if (bd.about === 'right') return `it must give ${house(bd.a)} a fifth of all the ${trade(bd.kind)} it does about ${cellWords(bd.cell)}`;
   if (bd.about === 'yield') return bd.way === 'tithe' ? `it owes ${B} a tenth of all it gathers` : `it owes ${B} the Crown’s twentieth of all it gathers`;
   if (bd.about === 'bond') return bd.secures >= 0 ? `it has pledged its ground to ${B} against a debt` : bd.way === 'manor' ? `it holds its ground of ${B} by birth, for ${Math.round(bd.share * 100)} parts in a hundred of the yield` : `it has ground from ${B} for ${Math.round(bd.share * 100)} parts in a hundred of the yield`;
   return `it owes ${B} ${owedWords(bd)}${bd.way === 'blood' ? ' as the price of blood' : ''}`;
@@ -80,6 +86,9 @@ function matterWords(p: Petition): string {
   }
   if (p.reason === 'challenge') { const r = s.court!.rules.find(x => x.id === p.bond); return `${A} has been hurt by a rule of yours and asks that it be struck. The rule: ${r ? esc(plain(r.cut + ' when ' + r.shape)) : 'one now gone'}.`; }
   const bd = s.bonds.find(b => b.id === p.bond);
+  if (p.side === 'asks') return `${A} does most of the ${trade(p.work)} about ${cellWords(p.cell ?? 0)} and asks for the sole right to it. Anyone else who does that work there would owe it a fifth of what they make${p.against >= 0 ? `, ${B} among them` : ''}.`;
+  if (p.side === 'fears') return `${A} holds that the ground at ${cellWords(p.cell ?? 0)} brings harm, since crops were lost there. It asks that ${B}, who works it, be stopped.`;
+  if (bd && bd.about === 'right') return `${A} does the ${trade(bd.kind)} about ${cellWords(bd.cell)} too, and must give ${B} a fifth of what it makes there, by a right ${B} holds of your court. It asks that the right be broken.`;
   if (!bd) return p.shape.includes('shunned') ? `${A} came here within the year and is in want of ${NEEDS[p.need]!.id}. Its neighbours hold that newcomers bring harm, and will not deal with it.` : `${A} is in dire want of ${NEEDS[p.need]!.id}, and nobody stands between it and what it needs.`;
   if (bd.about === 'act' && bd.way === 'blood') {
     const d = R.index.get(bd.rec), dead = d && d.k === 'die' ? `${nameOf(d.a)}, ${Math.floor(d.q)},` : 'One';
@@ -104,6 +113,7 @@ function matterWords(p: Petition): string {
 /** What each side says. Each speaks from what it holds true, or wants believed. */
 /** What the one on the other side of a burden says of it. */
 function holderSays(bd: Bond): string {
+  if (bd.about === 'right') return bd.way === 'sell' ? '“We paid the Crown for that right.”' : '“Your own court granted it.”';
   if (bd.about === 'yield') return bd.way === 'tithe' ? '“The tenth is God’s, and was granted before any of us was born.”' : '“It is the king’s due, and I must answer for it.”';
   if (bd.about === 'bond') return bd.way === 'manor' ? '“They hold of me by birth, as their fathers held of mine.”' : bd.secures >= 0 ? '“We lent on that ground. Without it we lent on nothing.”' : '“We agreed the share between us.”';
   return bd.way === 'blood' ? '“A life was taken. Let them pay for it.”' : '“A debt is a debt.”';
@@ -114,6 +124,10 @@ function pleas(p: Petition): [string, string] {
   const weeks = (id: number, n: number): number => cover(s.bodies[id]!.store, askAhead(s, s.bodies[id]!))[n]!;
   const pressed = (id: number): boolean => { const c = cover(s.bodies[id]!.store, askAhead(s, s.bodies[id]!)); return c.some((x, n) => NEEDS[n]!.harm >= 0.5 && x < P.short); };
   const mouths = (id: number): number => s.bodies[id]!.members.filter(i => s.people[i]!.alive).length;
+  const pb = s.bonds.find(b => b.id === p.bond);
+  if (p.side === 'asks') return ['“We have worked it longest and best. Let it be ours.”', p.against >= 0 ? '“We have done that work there as long as anyone. Must we pay them for it now?”' : ''];
+  if (p.side === 'fears') return ['“Nothing has gone right since the harm there. Whoever works that ground brings it on us all.”', p.against >= 0 ? `“It is good ground, and we have ${mouths(p.against)} mouths to feed.”` : ''];
+  if (pb && pb.about === 'right') return ['“We have always done that work there. Now we must pay them for it.”', holderSays(pb)];
   const ask = p.need >= 0 ? `“We are ${mouths(p.by)} mouths with ${weeks(p.by, p.need) < 10 ? weeks(p.by, p.need).toFixed(1) : Math.round(weeks(p.by, p.need))} weeks of ${NEEDS[p.need]!.id}.”` : '“We ask only what is ours.”';
   if (p.against < 0) return [ask, ''];
   const bd = s.bonds.find(b => b.id === p.bond), B = s.bodies[p.against]!;
@@ -138,9 +152,21 @@ function cutWords(p: Petition, cut: string): [string, string] {
   const bd = s.bonds.find(b => b.id === p.bond), B = house(p.against), A = house(p.by);
   const storeOf = (k: number): number => Math.round(s.court!.store[k] ?? 0);
   if (p.reason === 'challenge') return cut === 'uphold' ? ['Uphold the rule', 'It stands, and cannot be challenged again.'] : ['Strike the rule', 'Like cases will come to you again.'];
+  if (p.side === 'asks') return ({
+    charter: ['Grant the right', `Anyone else who does that work there owes ${A} a fifth.`],
+    sell: ['Sell the right', `As granting it, but ${A} pays the Crown’s store first.`],
+    refuse: ['Refuse', `${Cap(A)} will hold it against you.`],
+  } as Record<string, [string, string]>)[cut]!;
+  if (p.side === 'fears') return ({
+    forbid: ['Forbid all work there', `For two years. Whoever holds the ground loses their hold on it.`],
+    bless: ['Have the priest bless it', 'The credulous will believe it. The priest is given something from the store.'],
+    dismiss: ['Send them away', 'They will go on believing it.'],
+  } as Record<string, [string, string]>)[cut]!;
+  if (cut === 'remit') { const lp = localPower(s, p), L = lp >= 0 ? house(lp) : 'the local lord'; return [`Leave it to ${L}`, lp === p.by || lp === p.against ? `${Cap(L)} is a party, and will judge for itself. The loser blames them, not you.` : 'They will judge for whoever is stronger. The loser blames them, not you.']; }
+  if (cut === 'surety') { const sb = s.bonds.find(b => b.id === p.bond)!, k = suretyFor(s, sb.a); return [`Put it off on ${house(k)}’s surety`, `${Cap(house(k))}, kin to ${house(sb.a)}, is bound for half now. The rest waits a year.`]; }
   if (cut.startsWith('ease:')) {
     const eb = s.bonds.find(b => b.id === Number(cut.slice(5)))!, E = house(eb.a === p.by ? eb.b : eb.a);
-    const what = eb.about === 'yield' ? (eb.way === 'tithe' ? 'the tithe' : 'the Crown’s share') : eb.about === 'bond' ? (eb.secures >= 0 ? 'the pledge' : `${E}’s share`) : `what it owes ${E}`;
+    const what = eb.about === 'right' ? `${E}’s fifth of the ${trade(eb.kind)}` : eb.about === 'yield' ? (eb.way === 'tithe' ? 'the tithe' : 'the Crown’s share') : eb.about === 'bond' ? (eb.secures >= 0 ? 'the pledge' : `${E}’s share`) : `what it owes ${E}`;
     return [`Lift ${what} for a year`, eb.way === 'crown' ? 'Your own store goes without it.' : `${Cap(E)} goes without it, and will hold it against you.`];
   }
   if (!bd || cut === 'give' || cut === 'dismiss' || cut === 'vouch') return ({
@@ -149,6 +175,11 @@ function cutWords(p: Petition, cut: string): [string, string] {
     levy: ['Lay it on the neighbours', 'Whoever nearby has most must give, and is owed it back.'],
     promise: ['Give your word', `Relief within ${P.wordWeeks} weeks. A broken word is the worst harm there is.`],
     dismiss: ['Send them away', 'They will hold it against the court.'],
+  } as Record<string, [string, string]>)[cut]!;
+  if (bd.about === 'right') return ({
+    enforce: ['Uphold the right', `${Cap(A)} goes on paying ${B}.`],
+    strike: ['Break the right', `${Cap(B)} loses it for good.`],
+    rival: [`Grant ${A} a right of its own`, 'Neither owes the other. Others there owe both.'],
   } as Record<string, [string, string]>)[cut]!;
   const debtor = house(bd.a);
   if (bd.about === 'act') return ({
@@ -201,7 +232,7 @@ function matterCard(p: Petition): string {
   const inBody = top(s, b).id !== b.id;
   const widths: [Width, string][] = [['case', 'This case only'], ...(inBody && p.reason !== 'challenge' ? [['body', 'A rule for their body'] as [Width, string]] : []), ...(p.reason !== 'challenge' ? [['realm', 'A rule for the realm'] as [Width, string]] : [])];
   return `<article class="matter${pick ? ' chosen' : ''}">
-    <header><h3>${esc(cap(house(p.by)))}${p.reason === 'challenge' ? ' against a rule' : p.burdens.length ? ', in want' : p.against >= 0 ? ' against ' + esc(house(p.against)) : ''}</h3>
+    <header><h3>${esc(cap(house(p.by)))}${p.reason === 'challenge' ? ' against a rule' : p.burdens.length ? ', in want' : p.side === 'asks' ? ' asks leave' : p.against >= 0 ? ' against ' + esc(house(p.against)) : ''}</h3>
       <span class="small soft">${p.speaksFor > 1 ? `one of a body of ${p.speaksFor} houses · ` : ''}${p.waited ? `waited ${p.waited} week${p.waited > 1 ? 's' : ''}` : 'new this week'}${p.reason === 'clash' ? ' · two bodies’ rules disagree' : ''}</span></header>
     <p>${matterWords(p)}</p>
     <p class="small soft">${esc(who(p.by))}${!p.burdens.length && p.against >= 0 && !s.bodies[p.against]!.rank ? ' — against ' + esc(who(p.against)) : ''}</p>
@@ -225,7 +256,7 @@ function weekPanel(): string {
 function rollsPanel(): string {
   const c = s.court!;
   if (!c.rules.length) return '<section><h2>The rolls</h2><p class="soft">You have made no rule yet. Until you do, every like case comes back to you.</p></section>';
-  return `<section><h2>The rolls</h2><div class="tbl"><table><thead><tr><th>Rule</th><th>Binds</th><th>Made</th><th>Settled below</th></tr></thead><tbody>${c.rules.slice().sort((a, b) => b.uses - a.uses).map(r => `<tr><td><strong>${esc(cap(r.cut))}</strong> when ${esc(plain(r.shape))}</td><td>${r.scope === -1 ? 'the realm' : 'body ' + r.scope}</td><td>week ${r.since + 1}</td><td>${r.uses}</td></tr>`).join('')}</tbody></table></div></section>`;
+  return `<section><h2>The rolls</h2><div class="tbl"><table><thead><tr><th>Rule</th><th>Binds</th><th>Made</th><th>Settled below</th></tr></thead><tbody>${c.rules.slice().sort((a, b) => b.uses - a.uses).map(r => `<tr><td><strong>${esc(CUT[r.cut] ?? cap(r.cut))}</strong> when ${esc(plain(r.shape))}</td><td>${r.scope === -1 ? 'the realm' : 'body ' + r.scope}</td><td>week ${r.since + 1}</td><td>${r.uses}</td></tr>`).join('')}</tbody></table></div></section>`;
 }
 
 function realmPanel(): string {

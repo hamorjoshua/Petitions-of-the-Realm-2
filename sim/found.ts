@@ -25,7 +25,7 @@ export function found(seed: number, t0 = 0, side = P.side, souls = P.souls): Sta
   const s: State = {
     seed, t: t0, side, cells: [], people: [], bodies: [], bonds: [], ties: {},
     sky: { aT: [0, 0, 0, 0], aR: [0, 0, 0, 0], temp: new Array<number>(n).fill(P.tMean), rain: new Array<number>(n).fill(P.rainMean) },
-    wrongs: [], uses: [], log: [], nrec: 0, nbond: 0,
+    wrongs: [], worked: {}, uses: [], log: [], nrec: 0, nbond: 0,
   };
 
   // The lie of the land: a few long waves, so that there are hills, a plain and low wet ground.

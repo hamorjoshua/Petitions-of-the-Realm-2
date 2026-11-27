@@ -2,7 +2,7 @@
 // Last week's choices are carried out against what is there now.
 
 import { AIDERS, Kn, NS, P, Rc, St } from '../tables.ts';
-import { around, dist, hearthIndex, holdsByCell, kinOf, payRent, rec, struggle, tenancies, tie } from '../util.ts';
+import { around, dist, near, hearthIndex, holdsByCell, kinOf, payRent, rec, struggle, tenancies, tie } from '../util.ts';
 import { bear } from './grow.ts';
 import type { Body, Bond, State, Work } from '../types.ts';
 
@@ -32,6 +32,20 @@ export function make(s: State): void {
   const lets = tenancies(s);
   const kin = kinOf(s);
   const hearths = hearthIndex(s);
+  // Who works where fades, so that it tells of the last year or two.
+  for (const key in s.worked) {
+    const row = s.worked[key]!;
+    let any = false;
+    for (const id in row) { const v = row[id]! * P.workedFade; if (v < 0.5) delete row[id]; else { row[id] = v; any = true; } }
+    if (!any) delete s.worked[key];
+  }
+  // Sole rights to a kind of work about a place, and bans on working a place.
+  const rightsOn = new Map<string, Bond[]>(), banned = new Set<number>();
+  for (const bd of s.bonds) {
+    if (bd.about !== 'right') continue;
+    if (bd.kind < 0) { if (bd.due > s.t) banned.add(bd.cell); continue; }
+    for (const cell of near(s.side, bd.cell, 1)) { const key = `${bd.kind}:${cell}`, l = rightsOn.get(key); if (l) l.push(bd); else rightsOn.set(key, [bd]); }
+  }
   const dues = new Map<number, Bond[]>();
   for (const bd of s.bonds) if (bd.about === 'yield' && bd.due <= s.t && bd.easedTo <= s.t) { const l = dues.get(bd.a); if (l) l.push(bd); else dues.set(bd.a, [bd]); }
   for (const j of jobs) {
@@ -40,7 +54,7 @@ export function make(s: State): void {
     for (const [st, q] of r.from) { const key = j.w.cell * NS + st, tot = want.get(key)!, a = avail.get(key)!; if (tot > a) m = Math.min(m, (j.m * a) / tot); void q; }
     for (const [k, q] of r.inp) if (q * m > b.store[k]!) m = b.store[k]! / q;
     for (const [st, q] of r.to) { const room = bear(c, st) - c.stock[st]!; if (q * m > room) m = Math.max(0, room / q); }
-    if (m <= 1e-9) continue;
+    if (m <= 1e-9 || banned.has(j.w.cell)) continue;
     // A taking from ground whose holder lives within reach is opposed, as a taking from a store is:
     // the taker carries off only what their might wins, and what is not won stays standing.
     if (r.from.length && r.out.length && !lets.some(x => x.cell === j.w.cell && x.lease.a === b.id)) {
@@ -69,6 +83,16 @@ export function make(s: State): void {
         if (bd.way === 'crown') to.owedUp[k] = (to.owedUp[k] ?? 0) + pay;
       }
     }
+    // Whoever holds the sole right to this work here takes a share, unless the worker holds such a right too.
+    const sole = rightsOn.get(`${j.w.r}:${j.w.cell}`) ?? [];
+    if (sole.length && !sole.some(x => x.a === b.id)) for (const bd of sole) {
+      const to = s.bodies[bd.a]!;
+      if (!to.alive || bd.easedTo > s.t) continue;
+      for (const [k, q] of r.out) { const pay = Math.min(b.store[k]!, q * m * bd.share); b.store[k] = b.store[k]! - pay; to.store[k] = to.store[k]! + pay; }
+      bd.used = s.t;
+    }
+    const wk = `${j.w.r}:${j.w.cell}`;
+    (s.worked[wk] ??= {})[b.id] = (s.worked[wk]![b.id] ?? 0) + j.w.days;
     if (j.aid >= 0) b.store[j.aid] = Math.max(0, b.store[j.aid]! - (Kn[j.aid]!.use * j.w.days) / P.days);
     const first = r.out[0];
     const e = rec(s, 'make', { a: b.id, cell: j.w.cell, kind: first ? first[0] : -1, q: first ? first[1] * m : 0, kind2: j.w.r, q2: j.w.days });

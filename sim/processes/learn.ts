@@ -42,6 +42,12 @@ export function learn(s: State): void {
         if (!b.alive || b.parts.length || dist(s.side, b.home, r.cell) > P.reach) continue;
         believe(s, b, `born:${p.omen}`, (b.lore[`born:${p.omen}`] ?? 0) + (b.id === r.b ? P.blame : P.blame / 3), b.id === r.b ? -1 : r.b);
       }
+    } else if (r.k === 'decay' && r.cell >= 0 && r.q2 !== 2 && r.q > 20) {
+      // Crops withered or carried off by water: the credulous who live near lay it to the ground itself.
+      for (const b of around(idx, s.side, r.cell, P.reach)) {
+        const h = head(s, b);
+        if (h && h.credulous > 0.5) believe(s, b, `cell:${r.cell}`, (b.lore[`cell:${r.cell}`] ?? 0) + P.blame * Math.min(1, r.q / 200), -1);
+      }
     } else if (r.k === 'take' && r.b >= 0) { meet(r.b, `house:${r.a}`); harm(r.b, 0.4); }
     else if (r.k === 'break') harm(r.b, 0.4);
   }
