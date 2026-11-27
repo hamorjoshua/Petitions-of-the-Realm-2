@@ -512,7 +512,7 @@ function work(s: State, L: Land, c: Ctx): void {
   const bold = c.press > c.h.scruple;
   // Choice comes in tiers, never in one sum. What a house holds forbidden it will not do, unless it is near starving
   // and has little scruple. Below contentment, need alone decides. Above it, a share of its days is set aside, in
-  // proportion to its drive, for what others cannot also have; those days are not weighed against food.
+  // proportion to its drive, for what others cannot also have; those days are not weighed against need.
   const forbidden = (o: Opt): boolean => (b.lore[`cell:${o.cell}`] ?? 0) > P.heed && !desperate(c);
   const all = muster(s, b), reserve = Math.min(all * 0.6, Math.round(c.drive * P.surplusShare * all));
   let left = all - reserve;
