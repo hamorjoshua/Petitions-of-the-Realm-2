@@ -3,13 +3,13 @@
 
 import { found } from '../sim/found.ts';
 import { advance } from '../sim/step.ts';
-import { ORD_WEEKS, audience, cuts, hear, inscribeLaw, interventionAt, issueOrdinance, judgeOf, localOrder, localPower, openCourt, planesOf, setDial, setLaw, suretyFor, type Plane, type Ruling, type Width } from '../sim/court/court.ts';
+import { ORD_WEEKS, audience, build, timberKind, whyNotBuild, cuts, hear, inscribeLaw, interventionAt, issueOrdinance, judgeOf, localOrder, localPower, openCourt, planesOf, setDial, setLaw, suretyFor, type Plane, type Ruling, type Width } from '../sim/court/court.ts';
 import { askAhead, cover } from '../sim/value.ts';
 import { KINDS, NEEDS, P, RECIPES } from '../sim/tables.ts';
 import { grown, top } from '../sim/util.ts';
 import { Readers, wayWords } from '../readers/readers.ts';
 import { placeName } from '../readers/names.ts';
-import type { Bond, Dials, LawKey, LocalOrder, Mode, OrdKey, Petition, State } from '../sim/types.ts';
+import type { Bond, Dials, LawKey, LocalOrder, Mode, OrdKey, Petition, State, WorkKey } from '../sim/types.ts';
 
 const app = document.getElementById('app')!;
 const esc = (x: string): string => x.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -458,7 +458,7 @@ function passWeek(): void {
 let mode: Mode = 'cockpit';
 let speed: 0 | 1 | 5 | 20 = 0, acc = 0, lastFrame = 0, lastPaint = 0, dirty = false;
 type Lens = 'want' | 'factions' | 'sacred' | 'jurisdiction' | 'ecology';
-let view: 'map' | 'chronicle' = 'map', deck: 'laws' | 'treasury' | 'decrees' = 'laws', lens: Lens = 'want';
+let view: 'map' | 'chronicle' = 'map', deck: 'laws' | 'treasury' | 'decrees' | 'works' = 'laws', lens: Lens = 'want';
 let picked = -1, majorOnly = false;
 /** The gauges a season back, for the arrows; which gauge's breakdown is open; which gauges are flashing, until when. */
 let hist: { t: number; legitimacy: number; reach: number; store: number }[] = [];
@@ -504,6 +504,13 @@ const ORDS: [OrdKey, string, string][] = [
   ['eyre', 'Royal eyre', 'Your justices ride the realm for half a year: false claims are found out, and your legitimacy and reach rebuild.'],
   ['penance', 'Solemn penance', 'For half a year interdicts lift sooner, stains and bans fade, and the fear of strangers cools.'],
 ];
+const WORKS: [WorkKey, string, string, string][] = [
+  ['granary', 'Granary', '▣', 'Houses here and next door put by part of what they hold beyond ten weeks’ food, and draw on it in want. It spoils slowly.'],
+  ['dike', 'Dike', '═', 'Raises the bank: the river must run much higher before it floods this place.'],
+  ['reserve', 'Forest reserve', '♣', 'No one may clear the woods here, so the water upstream of others runs slower.'],
+  ['post', 'Bailiff’s post', '⚑', 'Houses within two places do not join factions, grievance fades faster, and your reach grows a little each season.'],
+  ['chapel', 'Endowed chapel', '✝', 'The place grows holier, grievance near it fades faster, and your legitimacy grows a little each season.'],
+];
 const LEGEND: Record<Lens, string> = {
   want: 'Darker: more of the houses there are in want. Numbers: houses.',
   factions: 'Darker: more of the houses there hold a grievance against the Crown.',
@@ -511,7 +518,7 @@ const LEGEND: Record<Lens, string> = {
   jurisdiction: 'Each colour is one body of houses, and whoever leads it.',
   ecology: 'Darker red: soil worn out or ground flooded.',
 };
-const GLYPHS = '♛ the Crown’s seat · ✦ shrine · ✕ interdict · ≈ flood · ϟ feud · ◉ watched · blue edge: river · pulsing: aggrieved';
+const GLYPHS = 'Works: ▣ granary · ═ dike · ♣ forest reserve · ⚑ bailiff’s post · ✝ chapel. Marks: ♛ the Crown’s seat · ✦ shrine · ✕ interdict · ≈ flood · ϟ feud · ◉ watched · blue edge: river · pulsing: aggrieved';
 
 const storeTotal = (): number => (s.court ? s.court.store.reduce((x, y) => x + y, 0) : 0);
 /** Up, down or level against a season ago. */
@@ -549,7 +556,7 @@ function strip(): string {
   if (!c) return `<header class="strip"><div class="row"><span class="inst"><span class="label">Souls</span><span>${s.people.filter(p => p.alive).length}</span></span><span class="inst"><span class="label">Houses</span><span>${hs.length}</span></span></div><div class="row"><span class="when"><button class="home" data-home="1" aria-label="Save and leave">⌂</button> ${when}</span>${throttle}</div></header>`;
   const sore = Object.values(c.grief).filter(g => g >= P.aggrieved).length, need = factionNeed(hs.length);
   const kindOf = (id: string): number => KINDS.findIndex(k => k.id === id);
-  const store = ['grain', 'timber'].map(id => { const k = kindOf(id); return k >= 0 ? `${Math.round(c.store[k] ?? 0)} ${id}` : ''; }).filter(Boolean).join(' · ');
+  const store = ['grain', 'timber'].map(id => { const k = kindOf(id); return k >= 0 ? `<span>${Math.round(c.store[k] ?? 0)} ${id}</span>` : ''; }).filter(Boolean).join('');
   return `<header class="strip"><div class="row inst4">${seals('legitimacy', 'Legitimacy')}${seals('reach', 'Reach')}
     <button class="inst gauge${flash.store ? ' flash-' + flash.store : ''}" data-gauge="store" aria-expanded="${openGauge === 'store'}"><span class="label">Store ${trend('store')}</span><span class="gilt">${store}</span></button>
     <span class="inst ${sore >= need ? 'bad' : sore >= 0.7 * need ? 'warn' : ''}"><span class="label">Aggrieved</span><span>${sore} / ${need}</span></span></div>
@@ -579,7 +586,7 @@ function mapView(): string {
   const watchHere = (i: number): boolean => watched.has(`c:${i}`) || (at.get(i) ?? []).some(b => watched.has(`b:${b.id}`));
   const cells = s.cells.map((cell, i) => {
     const [v, col] = val(i), l = at.get(i) ?? [];
-    const g = [i === seat ? '<em class="g-seat" title="The Crown’s seat">♛</em>' : '', cell.shrine ? '<em class="g-shrine">✦</em>' : '', cell.interdict > 0 ? '<em class="g-inter">✕</em>' : '', cell.flood > 0 ? '<em class="g-flood">≈</em>' : '', feud.has(i) ? '<em class="g-feud">ϟ</em>' : '', watchHere(i) ? '<em class="g-watch">◉</em>' : ''].join('');
+    const g = [i === seat ? '<em class="g-seat" title="The Crown’s seat">♛</em>' : '', cell.works ? `<em class="g-work">${WORKS.filter(([k]) => cell.works![k]).map(w => w[2]).join('')}</em>` : '', cell.shrine ? '<em class="g-shrine">✦</em>' : '', cell.interdict > 0 ? '<em class="g-inter">✕</em>' : '', cell.flood > 0 ? '<em class="g-flood">≈</em>' : '', feud.has(i) ? '<em class="g-feud">ϟ</em>' : '', watchHere(i) ? '<em class="g-watch">◉</em>' : ''].join('');
     const sore = c && l.some(b => (c.grief[b.id] ?? 0) >= P.aggrieved);
     return `<button class="cell${i === picked ? ' on' : ''}${cell.flow >= riverAt ? ' river' : ''}${sore ? ' sore' : ''}" data-cell="${i}" style="--v:${Math.round(v * 100)}%;--c:${col};--h:${Math.round(((cell.high - lo) / Math.max(1e-6, hi - lo)) * 22)}%" aria-label="${esc(cellWords(i))}">${l.length ? `<i>${l.length}</i>` : ''}${g ? `<span class="glyphs">${g}</span>` : ''}</button>`;
   }).join('');
@@ -602,6 +609,7 @@ function sheet(): string {
   return `<div class="sheet"><div class="bar"><h3>${star(`c:${i}`)} ${esc(cellWords(i))}</h3><button data-cell="-1" aria-label="Close">✕</button></div>
     ${holy ? `<p class="small">${esc(Cap(holy))}.</p>` : ''}
     ${l.length ? `<ul class="list small">${l.map(b => `<li>${star(`b:${b.id}`)} ${esc(Cap(house(b.id)))} <span class="soft">· ${b.members.filter(m => s.people[m]!.alive).length} souls${c && (c.grief[b.id] ?? 0) >= P.aggrieved ? ' · <span class="bad">aggrieved</span>' : ''}</span></li>`).join('')}</ul>` : '<p class="soft small">Nobody lives here.</p>'}
+    ${c && mode === 'cockpit' ? `<div class="label">Build here</div><div class="orders works">${WORKS.map(([k, name, g]) => { const why = whyNotBuild(s, i, k); return `<button data-build="${k}" ${why ? 'disabled' : ''}>${g} ${name}<span class="why">${why || `${P.workCost[k]} timber`}</span></button>`; }).join('')}</div>${cell.works?.granary ? `<p class="small soft">The granary holds ${Math.round(cell.works.granary.reduce((a, q) => a + q, 0))} grain.</p>` : ''}<div class="label">Orders</div>` : ''}
     ${c && mode === 'cockpit' ? `<div class="orders">${order('relief', 'Send relief', !l.length ? 'Nobody here' : inWant ? '' : 'No want')}${order('circuit', 'Send the bailiffs')}${order('charter', 'Remit the Crown’s share', !dues.length ? 'No dues' : dues.every(bd => bd.easedTo > s.t) ? 'Remitted' : '')}${order('intervene', ivWords ?? 'Intervene', iv ? '' : 'Nothing amiss')}</div>` : ''}</div>`;
 }
 function chronicleView(): string {
@@ -633,13 +641,21 @@ function decreesDeck(): string {
     + `<div class="ord"><strong>Write a law on the roll</strong><span class="small soft">It gains you legitimacy; undoing it later is caprice of the worst kind.</span><div class="seg">${can.map(k => `<button data-inscribe="${k}">${LAW_WORDS[k][0]}</button>`).join('') || '<span class="small soft">Lay a law down first.</span>'}</div></div>`;
 }
 
+function worksDeck(): string {
+  const c = s.court!, tk = timberKind(), have = Math.round(c.store[tk] ?? 0);
+  const built = s.cells.map((cl, i) => [cl, i] as const).filter(([cl]) => cl.works && Object.values(cl.works).some(Boolean));
+  return `<p class="small">You have <strong class="gilt">${have} timber</strong>. Tap a place on the map to build there.</p>`
+    + WORKS.map(([k, name, g, hint]) => `<div class="dial"><div><strong>${g} ${name}</strong> <span class="small gilt">${P.workCost[k]} timber</span><div class="small soft">${hint}</div></div></div>`).join('')
+    + `<div class="label">Built</div>${built.length ? `<ul class="list small">${built.map(([cl, i]) => `<li><button class="link" data-goto="${i}">${esc(cellWords(i))}</button>: ${WORKS.filter(([k]) => cl.works![k]).map(w => `${w[2]} ${w[1]}`).join(', ')}${cl.works!.granary ? ` <span class="soft">(${Math.round(cl.works!.granary.reduce((a, q) => a + q, 0))} grain)</span>` : ''}</li>`).join('')}</ul>` : '<p class="small soft">Nothing yet.</p>'}`;
+}
+
 function shell(): void {
   const live = mode === 'cockpit';
   document.body.classList.add('cockpit-on');
   app.innerHTML = `<div class="cockpit"><div id="strip"></div>
     <nav class="tabs vt">${(['map', 'chronicle'] as const).map(v => `<button data-view="${v}" aria-pressed="${view === v}">${v === 'map' ? 'Map' : 'Chronicle'}</button>`).join('')}</nav>
     <div class="viewwrap"><main class="view" id="view"></main><div id="sheet"></div></div>
-    ${live ? `<footer class="deck"><nav class="tabs">${(['laws', 'treasury', 'decrees'] as const).map(d => `<button data-deck="${d}" aria-pressed="${deck === d}">${({ laws: 'Laws', treasury: 'Treasury', decrees: 'Decrees' })[d]}</button>`).join('')}</nav><div class="deckin" id="deck"></div></footer>` : ''}</div>`;
+    ${live ? `<footer class="deck"><nav class="tabs">${(['laws', 'treasury', 'decrees', 'works'] as const).map(d => `<button data-deck="${d}" aria-pressed="${deck === d}">${({ laws: 'Laws', treasury: 'Treasury', decrees: 'Decrees', works: 'Works' })[d]}</button>`).join('')}</nav><div class="deckin" id="deck"></div></footer>` : ''}</div>`;
   paint(true);
 }
 const swap = (id: string, html: string): void => { const el = document.getElementById(id); if (el && el.dataset.h !== html) { const top = el.scrollTop; el.innerHTML = html; el.dataset.h = html; el.scrollTop = top; } };
@@ -650,7 +666,7 @@ function paint(force = false): void {
   swap('strip', strip());
   if (!gesturing) swap('view', view === 'map' ? mapView() : chronicleView());
   swap('sheet', sheet());
-  if (s.court && mode === 'cockpit') swap('deck', deck === 'laws' ? lawsDeck() : deck === 'treasury' ? treasuryDeck() : decreesDeck());
+  if (s.court && mode === 'cockpit') swap('deck', deck === 'laws' ? lawsDeck() : deck === 'treasury' ? treasuryDeck() : deck === 'decrees' ? decreesDeck() : worksDeck());
 }
 
 /** One week of the living realm: the court's reckoning, the realm lives, and the next week's matters are settled below by the laws. */
@@ -787,6 +803,7 @@ function cockpitClick(b: HTMLButtonElement): boolean {
   if (b.dataset.lens) { lens = b.dataset.lens as Lens; paint(); return true; }
   if (b.dataset.reset) { zoom = 1; panX = 0; panY = 0; paint(); return true; }
   if (b.dataset.cell !== undefined) { picked = Number(b.dataset.cell); paint(); return true; }
+  if (b.dataset.goto !== undefined) { picked = Number(b.dataset.goto); view = 'map'; paint(); return true; }
   if (b.dataset.major !== undefined) { majorOnly = b.dataset.major === '1'; paint(); return true; }
   if (!c) return false;
   if (b.dataset.law) { const [k, v] = b.dataset.law.split(':') as [LawKey, string]; const leg0 = c.legitimacy; setLaw(s, k, v as never); if (c.legitimacy < leg0) doFlash({ legitimacy: 'bad' }); feed.push({ t: s.t, text: `You laid down the law: <strong>${LAW_WORDS[k][0]}: ${LAW_WORDS[k][1].find(x => x[0] === v)![1]}</strong>.`, major: true }); paint(); return true; }
@@ -794,6 +811,11 @@ function cockpitClick(b: HTMLButtonElement): boolean {
   if (b.dataset.ord) { const k = b.dataset.ord as OrdKey; if (issueOrdinance(s, k)) doFlash(({ stay: { legitimacy: 'good' }, granaries: { store: 'warn' }, eyre: { store: 'warn', legitimacy: 'good', reach: 'good' }, penance: { legitimacy: 'good' } } as Record<OrdKey, typeof flash>)[k]);
     if (c.policy.ord[k] === ORD_WEEKS[k]) feed.push({ t: s.t, text: `You decreed: <strong>${ORDS.find(o => o[0] === k)![1]}</strong>.`, major: true }); paint(); return true; }
   if (b.dataset.inscribe) { const k = b.dataset.inscribe as LawKey; if (inscribeLaw(s, k)) { doFlash({ legitimacy: 'good' }); } if (c.policy.inscribed[k] && c.policy.lawSetAt[k] >= 0) feed.push({ t: s.t, text: `You wrote the law on the roll: <strong>${LAW_WORDS[k][0]}</strong>.`, major: true }); paint(); return true; }
+  if (b.dataset.build && picked >= 0) {
+    const k = b.dataset.build as WorkKey, w = WORKS.find(x => x[0] === k)!;
+    if (build(s, picked, k)) { doFlash({ store: 'warn', ...(k === 'post' ? { reach: 'good' } : k === 'chapel' ? { legitimacy: 'good' } : {}) }); feed.push({ t: s.t, text: `You built ${w[2]} <strong>${w[1].toLowerCase()}</strong> at ${esc(cellWords(picked))}.`, major: true }); }
+    paint(); return true;
+  }
   if (b.dataset.local && picked >= 0) {
     const k = b.dataset.local as LocalOrder, what = b.textContent?.replace(/\s*\(\d+w\)/, '') ?? k;
     const ok = localOrder(s, picked, k);

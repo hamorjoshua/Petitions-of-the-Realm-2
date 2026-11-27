@@ -1,7 +1,12 @@
 // The state: flat tables of what exists. Stage 1 has land, matter (held in bodies' stores), people,
 // bonds and bodies. Beliefs and practices arrive with minds.
 
+/** What the Crown has built on a place, out of timber. A granary keeps what it holds of each kind. */
+export interface Works { granary?: number[]; dike?: boolean; reserve?: boolean; post?: boolean; chapel?: boolean }
+export type WorkKey = 'granary' | 'dike' | 'reserve' | 'post' | 'chapel';
 export interface Cell {
+  /** The Crown's works here (optional: realms kept from before works were built have none). */
+  works?: Works;
   high: number;
   /** Cover taken off it by work lately, and by whom most: what makes the water run faster below. */
   cleared: number; clearedBy: number;

@@ -223,6 +223,11 @@ export const P = {
   boonMax: 3, defyStain: 0.1,
   /** How much of its fear of cursed ground a house keeps for each week it works that ground and comes to no harm. */
   defyDoubt: 0.85,
+  /** The Crown's works: timber each costs; how much higher a dike makes the bank; how slowly a granary's grain spoils
+   *  against a house's; how far a granary, post or chapel reaches; the weeks of food a house keeps before it gives to
+   *  the granary, and the share of the rest it gives. */
+  workCost: { granary: 40, dike: 30, reserve: 15, post: 25, chapel: 30 } as Record<string, number>,
+  dikeBank: 1.8, granaryKeep: 0.25, workReach: 1, postReach: 2, granaryFull: 10, granaryShare: 0.15,
   /** The fewest aggrieved houses, bound together, that make a faction, however small the realm. */
   factionMin: 3,
   hearings: 3, seats: 6, wait: 13, reign: 156,

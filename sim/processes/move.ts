@@ -40,7 +40,9 @@ export function move(prev: State, s: State): void {
     const soak = ratio * (0.3 + 0.5 * R.held[i]!);
     c.wet = P.wetKeep * was.wet + (1 - P.wetKeep) * (soak / 0.6 + Math.min(1, (R.flow[i]! - R.own[i]!) * 0.1));
     c.flow = R.flow[i]!;
-    c.flood = c.flow > c.bank ? c.flow / c.bank - 1 : 0;
+    // A dike raises the bank: the water must run that much higher before it spills.
+    const bank = c.bank * (c.works?.dike ? P.dikeBank : 1);
+    c.flood = c.flow > bank ? c.flow / bank - 1 : 0;
     const lo = R.low[i]!;
     if (lo >= 0) {
       const washed = P.wash * R.own[i]! * (c.high - s.cells[lo]!.high) * (1 - R.held[i]!) * c.soil;

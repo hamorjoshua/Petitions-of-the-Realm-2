@@ -67,7 +67,7 @@ body.cockpit-on button, body.cockpit-on .tabs { touch-action: manipulation; }
 .strip { flex: none; background: var(--panel); border-bottom: 1px solid var(--rule); padding: calc(env(safe-area-inset-top, 0px) + 6px) 16px 6px; display: flex; flex-direction: column; gap: 4px; }
 .strip .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .strip .row.inst4 { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 10px; align-items: end; }
-.strip .inst .gilt { font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.strip .inst .gilt { font-size: 0.78rem; line-height: 1.15; white-space: nowrap; display: flex; flex-direction: column; }
 .strip .seals .seal { width: 13px; height: 13px; }
 .inst { display: flex; flex-direction: column; line-height: 1.15; font-size: 0.9rem; }
 .inst .label { font-size: 0.65rem; }
@@ -112,7 +112,7 @@ body.cockpit-on button, body.cockpit-on .tabs { touch-action: manipulation; }
 .map .cell.river { box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--woad) 70%, transparent); }
 .map .cell .glyphs { position: absolute; top: 0; left: 1px; right: 1px; display: flex; justify-content: flex-end; gap: 1px; font-size: 0.55rem; line-height: 1; pointer-events: none; }
 .map .cell .glyphs em { font-style: normal; }
-.g-seat { color: var(--gilt); margin-right: auto; } .g-shrine { color: var(--gilt); } .g-inter { color: var(--seal); font-weight: 700; } .g-flood { color: var(--woad); } .g-feud { color: var(--seal); } .g-watch { color: var(--woad); }
+.g-seat { color: var(--gilt); margin-right: auto; } .g-work { color: var(--ink); margin-right: auto; letter-spacing: -1px; } .g-shrine { color: var(--gilt); } .g-inter { color: var(--seal); font-weight: 700; } .g-flood { color: var(--woad); } .g-feud { color: var(--seal); } .g-watch { color: var(--woad); }
 .map .cell.sore::before { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 2px var(--seal); animation: sore 2s ease-in-out infinite; pointer-events: none; }
 @keyframes sore { 50% { opacity: 0.15; } }
 @media (prefers-reduced-motion: reduce) { .map .cell.sore::before { animation: none; } }
@@ -123,6 +123,7 @@ body.cockpit-on button, body.cockpit-on .tabs { touch-action: manipulation; }
 .orders { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .orders button { font: inherit; font-size: 0.85rem; min-height: 38px; border: 1px solid var(--rule); border-radius: 8px; background: var(--cloth); color: var(--ink); cursor: pointer; padding: 4px 8px; text-align: center; }
 .orders button:disabled { opacity: 0.6; cursor: default; }
+.link { font: inherit; border: 0; background: none; padding: 0; color: var(--woad); text-decoration: underline; cursor: pointer; }
 .orders .why { display: block; font-size: 0.72rem; color: var(--soft); }
 .star { font: inherit; border: 0; background: none; color: var(--gilt); cursor: pointer; min-width: 28px; min-height: 28px; padding: 0; font-size: 1rem; }
 .list li.watch { border-left: 3px solid var(--woad); padding-left: 8px; }

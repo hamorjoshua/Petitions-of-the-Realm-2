@@ -6,11 +6,11 @@
 // or for the realm; once there is a rule, like cases are settled below and the regent never sees them.
 // Nothing here names a kind of case. A matter's shape is read off the bond, the need and the parties.
 
-import { BY_HARM, Kn, NEEDS, NK, NN, P, Rc, St, TOIL } from '../tables.ts';
+import { BY_HARM, KINDS, Kn, NEEDS, NK, NN, P, Rc, St, TOIL } from '../tables.ts';
 import { askAhead, cover, drive } from '../value.ts';
 import { around, bond, dist, setTie, fellows, grown, head, hearthIndex, kinOf, leaves, living, might, near, rec, top, warm } from '../util.ts';
 import { body, handOver, shift } from '../processes/gather.ts';
-import type { Body, Bond, Court, Dials, LawKey, Laws, LocalOrder, Mode, OrdKey, Petition, Policy, Rule, State } from '../types.ts';
+import type { Body, Bond, Court, Dials, LawKey, Laws, LocalOrder, Mode, OrdKey, Petition, Policy, Rule, State, WorkKey } from '../types.ts';
 
 export type Width = 'case' | 'body' | 'realm';
 export interface Ruling { petition: number; cut: string; width: Width }
@@ -983,6 +983,63 @@ export function localOrder(s: State, cell: number, kind: LocalOrder): boolean {
   rec(s, 'judge', { a: -1, cell, way: `local ${kind}` });
   return true;
 }
+/** The kind the Crown pays for works in. */
+export const timberKind = (): number => KINDS.findIndex(k => k.id === 'timber');
+/** The kind a granary keeps: what feeds and keeps best. */
+const grainKind = (): number => { const n = BY_HARM[0]!; let k = -1; for (let j = 0; j < NK; j++) if (!Kn[j]!.fixed && Kn[j]!.serves[n]! > 0 && (k < 0 || Kn[j]!.keep < Kn[k]!.keep)) k = j; return k; };
+/** Why a work cannot be built at a place now, or '' if it can. */
+export function whyNotBuild(s: State, cell: number, key: WorkKey): string {
+  const c = s.court, w = s.cells[cell]!.works ?? {};
+  if (!c || c.policy.mode !== 'cockpit') return 'No Crown';
+  if (w[key]) return 'Built';
+  const tk = timberKind();
+  if (tk < 0 || c.store[tk]! < P.workCost[key]!) return `Need ${P.workCost[key]} timber`;
+  return '';
+}
+/** Build a work at a place, paid out of the Crown's timber. */
+export function build(s: State, cell: number, key: WorkKey): boolean {
+  const c = s.court;
+  if (!c || whyNotBuild(s, cell, key)) return false;
+  const tk = timberKind(), cl = s.cells[cell]!, w = (cl.works ??= {});
+  c.store[tk] = c.store[tk]! - P.workCost[key]!;
+  note(s, c, 'store', -P.workCost[key]!, 'works built');
+  if (key === 'granary') w.granary = new Array<number>(NK).fill(0);
+  else w[key] = true;
+  // A chapel makes the place holier.
+  if (key === 'chapel') cl.sanctity = Math.min(1, cl.sanctity + 0.3);
+  rec(s, 'build', { a: -1, cell, way: key });
+  return true;
+}
+/** The works' week: granaries take in what houses can spare and give it back in want; posts and chapels calm the places about them. */
+function worksWeek(s: State, c: Court): void {
+  const idx = hearthIndex(s), gk = grainKind(), food = BY_HARM[0]!;
+  let posts = 0, chapels = 0;
+  s.cells.forEach((cl, i) => {
+    const w = cl.works;
+    if (!w) return;
+    if (w.granary && gk >= 0) {
+      const g = w.granary;
+      for (let k = 0; k < NK; k++) g[k] = (g[k] ?? 0) * (1 - Kn[k]!.keep * P.granaryKeep);
+      for (const b of around(idx, s.side, i, P.workReach)) {
+        if (b.parts.length || !b.members.length) continue;
+        const ahead = askAhead(s, b), perWeek = (ahead[food]! * Kn[gk]!.use) / Kn[gk]!.serves[food]!, weeks = perWeek > 0 ? b.store[gk]! / perWeek : 0;
+        if (weeks > P.granaryFull) { const q = (b.store[gk]! - P.granaryFull * perWeek) * P.granaryShare; b.store[gk] = b.store[gk]! - q; g[gk] = g[gk]! + q; }
+        else if (weeks < P.short && g[gk]! > 0) { const q = Math.min(g[gk]!, 3 * perWeek); b.store[gk] = b.store[gk]! + q; g[gk] = g[gk]! - q; if (q > 0.5) rec(s, 'judge', { a: b.id, q, cell: i, way: 'fed from the granary' }); }
+      }
+    }
+    // Grievance fades faster near a bailiff's post or a chapel: the Crown is seen to be there.
+    if (w.post || w.chapel) for (const b of around(idx, s.side, i, P.postReach)) if (c.grief[b.id]) c.grief[b.id] = c.grief[b.id]! * (w.post && w.chapel ? 0.94 : 0.96);
+    if (w.post) posts++;
+    if (w.chapel) chapels++;
+  });
+  if (s.t % 13 === 0 && !c.policy.weak) {
+    if (posts) gauge(s, c, 'reach', Math.min(0.5, 0.05 * posts), 'bailiffs’ posts');
+    if (chapels) gauge(s, c, 'legitimacy', Math.min(0.5, 0.05 * chapels), 'chapels endowed');
+  }
+}
+/** Houses near a bailiff's post do not join a faction against the Crown. */
+const guarded = (s: State, b: Body): boolean => s.cells.some((cl, i) => cl.works?.post && dist(s.side, i, b.home) <= P.postReach);
+
 /** What intervening locally would do at a place, if anything. */
 export function interventionAt(s: State, cell: number): string {
   const cl = s.cells[cell]!;
@@ -999,6 +1056,7 @@ export function interventionAt(s: State, cell: number): string {
 function policyWeek(s: State, c: Court): void {
   const pol = c.policy;
   if (pol.mode === 'regency') return;
+  worksWeek(s, c);
   const idx = hearthIndex(s);
   // Relief from the Crown's store for houses below the floor; the granaries open wider while ordered.
   let st1 = storeOf(c);
@@ -1533,7 +1591,7 @@ export function hear(s: State, rulings: Ruling[]): void {
   // Scattered grudges do not: it is the largest such group that counts.
   let hearths = 0;
   const aggrieved: Body[] = [];
-  for (const b of s.bodies) if (b.alive && !b.parts.length && b.members.length) { hearths++; if ((c.grief[b.id] ?? 0) >= P.aggrieved) aggrieved.push(b); }
+  for (const b of s.bodies) if (b.alive && !b.parts.length && b.members.length) { hearths++; if ((c.grief[b.id] ?? 0) >= P.aggrieved && !(c.policy.mode === 'cockpit' && guarded(s, b))) aggrieved.push(b); }
   const kinMap = kinOf(s), seenF = new Set<number>();
   let sore = 0, factionAt = -1;
   for (const start of aggrieved) {

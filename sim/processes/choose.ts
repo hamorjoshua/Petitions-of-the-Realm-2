@@ -108,6 +108,8 @@ function options(s: State, L: Land, b: Body): Opt[] {
     const cands: Opt[] = [];
     for (const cell of near(s.side, b.home, P.reach)) {
       const c = s.cells[cell]!, far = 1 - P.travel * dist(s.side, b.home, cell);
+      // In a forest the Crown has set aside, nothing that holds the soil may be taken.
+      if (c.works?.reserve && r.from.some(([st]) => (St[st]!.holds ?? 0) >= 0.5)) continue;
       let score = 0;
       if (r.from.length) {
         const st = r.from[0]![0], x = c.stock[st]!;
