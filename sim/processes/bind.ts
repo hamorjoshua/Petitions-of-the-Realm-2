@@ -208,14 +208,14 @@ export function bind(s: State): void {
     if (!m.alive || m.sex !== 0 || m.spouse >= 0 || (s.t - m.born) / 52 < P.wedHe) continue;
     const mb = s.bodies[m.body]!;
     let best = -1, bestScore = Infinity;
-    for (const w of around(women, s.side, mb.home, P.dealReach)) {
+    for (const w of around(women, s.side, mb.home, P.far)) {
       if (!w.alive || w.sex !== 1 || w.spouse >= 0 || taken.has(w.id)) continue;
       const age = (s.t - w.born) / 52;
       if (age < P.wedShe || age > P.bearTo + 8) continue;
       if (w.id === m.mother || w.father === m.id) continue;
       if ((m.mother >= 0 && m.mother === w.mother) || (m.father >= 0 && m.father === w.father)) continue;
       const wb = s.bodies[w.body]!, d = dist(s.side, mb.home, wb.home), gap = Math.abs((w.born - m.born) / 52);
-      if (d > P.dealReach || gap > 15 || tie(s, mb.id, wb.id) < P.barAt || tie(s, wb.id, mb.id) < P.barAt) continue;
+      if (d > P.far || gap > 15 || tie(s, mb.id, wb.id) < P.barAt || tie(s, wb.id, mb.id) < P.barAt) continue;
       const score = d * 10 + gap;
       if (score < bestScore) { bestScore = score; best = w.id; }
     }

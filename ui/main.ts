@@ -181,12 +181,12 @@ function cutWordsOf(p: Petition, cut: string): [string, string] | undefined {
   const bd = s.bonds.find(b => b.id === p.bond), B = house(p.against), A = house(p.by);
   const storeOf = (k: number): number => Math.round(s.court!.store[k] ?? 0);
   if (p.reason === 'challenge') return cut === 'uphold' ? ['Uphold the rule', 'It stands, and cannot be challenged again.'] : ['Strike the rule', 'Like cases will come to you again.'];
-  if (p.side === 'unaided' && cut !== 'remit') return ({
+  if (p.side === 'unaided' && !cut.startsWith('remit')) return ({
     compel: [`Order ${B} to give`, 'Three weeks of what they lack, from what it has most of.'],
     dispense: ['Release it from the duty', 'The duty binds the less, here and among its fellows. The one in want is left.'],
     dismiss: ['Send them away', 'They will hold it against the court.'],
   } as Record<string, [string, string]>)[cut];
-  if (p.side === 'exceeds' && cut !== 'remit') return ({
+  if (p.side === 'exceeds' && !cut.startsWith('remit')) return ({
     custom: ['Hold the lord to custom', `${P.boon} days a week and no more, from now on.`],
     uphold: ['Back the lord', 'He may take what he needs. They will hold it against you.'],
     commute: ['Turn the labour into a share', 'They owe no days, but a twentieth more of what their ground yields.'],
@@ -214,7 +214,7 @@ function cutWordsOf(p: Petition, cut: string): [string, string] | undefined {
     sell: ['Sell the right', `As granting it, but ${A} pays the Crown’s store first.`],
     refuse: ['Refuse', `${Cap(A)} will hold it against you.`],
   } as Record<string, [string, string]>)[cut]!;
-  if (p.side === 'fears' && cut !== 'remit') {
+  if (p.side === 'fears' && !cut.startsWith('remit')) {
     const sg = p.sign ?? '';
     const forbid: [string, string] = sg.startsWith('cell:') ? ['Forbid all work there', 'For two years. Whoever holds the ground loses their hold on it.']
       : sg.startsWith('way:') ? ['Forbid such dealing near them', 'Every such dealing within their bounds is void. Those owed lose it.']
@@ -225,7 +225,7 @@ function cutWordsOf(p: Petition, cut: string): [string, string] | undefined {
       dismiss: ['Send them away', 'They will go on believing it.'],
     } as Record<string, [string, string]>)[cut]!;
   }
-  if (cut === 'remit') { const lp = judgeOf(s, localPower(s, p)), L = lp >= 0 ? house(lp) : 'the local lord'; return [`Leave it to ${L}`, lp === p.by || lp === p.against ? `${Cap(L)} is a party, and will judge for itself. The loser blames them, not you.` : 'They will judge for whoever is stronger. The loser blames them, not you.']; }
+  if (cut.startsWith('remit')) { const lp = judgeOf(s, cut.startsWith('remit:') ? Number(cut.slice(6)) : localPower(s, p)), L = lp >= 0 ? house(lp) : 'the local lord'; return [`Leave it to ${L}`, lp === p.by || lp === p.against ? `${Cap(L)} is a party, and will judge for itself. The loser blames them, not you.` : 'They will judge for whoever is stronger. The loser blames them, not you.']; }
   if (cut === 'surety') { const sb = s.bonds.find(b => b.id === p.bond)!, k = suretyFor(s, sb.a); return [`Put it off on ${house(k)}’s surety`, `${Cap(house(k))}, kin to ${house(sb.a)}, is bound for half now. The rest waits a year.`]; }
   if (cut.startsWith('ease:')) {
     const eb = s.bonds.find(b => b.id === Number(cut.slice(5)))!, E = house(eb.a === p.by ? eb.b : eb.a);

@@ -158,6 +158,23 @@ export function localPower(s: State, p: Petition): number {
   return -1;
 }
 
+/**
+ * Every power below the court that could claim a matter: the body both parties share, or each party's own body and
+ * each party's lord. Where the parties answer to different powers, which of them decides is itself in question.
+ */
+export function localPowers(s: State, p: Petition): number[] {
+  const out: number[] = [];
+  const A = s.bodies[p.by]!, B = p.against >= 0 ? s.bodies[p.against]! : undefined;
+  if (B && A.of >= 0 && B.of >= 0 && top(s, A).id === top(s, B).id) return [top(s, A).id];
+  for (const X of [A, B]) {
+    if (!X) continue;
+    if (X.of >= 0) out.push(top(s, X).id);
+    const m = s.bonds.find(x => x.about === 'bond' && x.a === X.id && x.way === 'manor');
+    if (m && s.bodies[m.b]!.alive) out.push(m.b);
+  }
+  return [...new Set(out)].filter(id => id !== p.by && id !== p.against || s.bodies[id]!.rank === 'lord').slice(0, 2);
+}
+
 /** Who decides for a local power: a lord himself, or the head of a body of bodies. */
 export function judgeOf(s: State, scope: number): number {
   const b = s.bodies[scope];
@@ -201,8 +218,8 @@ export function cuts(s: State, p: Petition): string[] {
   if (p.reason === 'challenge') return ['uphold', 'strike'];
   // A house in want with things weighing on it: any one of them may be eased for a year, or relief given, or neither.
   if (p.burdens.length) return [...p.burdens.filter(id => s.bonds.some(b => b.id === id)).map(id => `ease:${id}`), 'give', 'dismiss'];
-  const lpow = localPower(s, p);
-  const remit = lpow >= 0 ? ['remit'] : [];
+  const lpow = localPower(s, p), powers = localPowers(s, p);
+  const remit = powers.length > 1 ? powers.map(id => `remit:${id}`) : lpow >= 0 ? ['remit'] : [];
   // A contest for the lead of a body: install the one who asks, keep the one who leads, or let the body settle it.
   if (p.side === 'asks' && p.body !== undefined) return ['install', 'confirm', 'remit'];
   // Leave sought for a sole right: grant it, sell it, or refuse it.
@@ -239,6 +256,10 @@ export function cuts(s: State, p: Petition): string[] {
 /** Carry out a cut on whatever the matter is about. Returns false if there was nothing left to cut. */
 function carry(s: State, c: Court, p: Petition, cut: string): boolean {
   const by = s.bodies[p.by]!;
+  // Left to one named power of two: that one decides.
+  let via = -1;
+  if (cut.startsWith('remit:')) { via = Number(cut.slice(6)); cut = 'remit'; }
+  const powerFor = (): number => (via >= 0 ? via : localPower(s, p));
   if (p.reason === 'challenge') {
     const i = c.rules.findIndex(r => r.id === p.bond);
     if (i < 0) return false;
@@ -257,7 +278,7 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
   }
   if (p.side === 'unaided') {
     const X = s.bodies[p.against]!, first = BY_HARM[0]!;
-    if (cut === 'remit') { const judge = judgeOf(s, localPower(s, p)); if (judge < 0) return false; leaveTo(s, c, p, judge, (s.bodies[judge]?.lore['duty:aid'] ?? 0) > P.heed ? 'compel' : 'dismiss', [p.by, p.against]); return true; }
+    if (cut === 'remit') { const judge = judgeOf(s, powerFor()); if (judge < 0) return false; leaveTo(s, c, p, judge, (s.bodies[judge]?.lore['duty:aid'] ?? 0) > P.heed ? 'compel' : 'dismiss', [p.by, p.against]); return true; }
     if (cut === 'compel') {
       // The court orders the aid the duty asks: three weeks of the first need, from what the shirker has most of.
       let k = -1;
@@ -278,7 +299,7 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
   if (p.side === 'exceeds') {
     const m = s.bonds.find(b => b.id === p.bond), lord = p.against;
     if (!m) return false;
-    if (cut === 'remit') { const judge = judgeOf(s, localPower(s, p)); leaveTo(s, c, p, judge, judge === lord ? 'uphold' : 'custom', [p.by, lord]); return true; }
+    if (cut === 'remit') { const judge = judgeOf(s, powerFor()); leaveTo(s, c, p, judge, judge === lord ? 'uphold' : 'custom', [p.by, lord]); return true; }
     if (cut === 'custom') { m.capped = true; grieve(c, lord, P.harmPaid); }
     else if (cut === 'commute') { m.boon = 0; m.share = Math.min(0.5, m.share + 0.05); grieve(c, lord, P.harmUnheard); }
     else grieve(c, p.by, P.harmLost);
@@ -363,7 +384,7 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
     const sign = p.sign ?? '', idx = hearthIndex(s), at = p.cell ?? by.home;
     const holders = around(idx, s.side, by.home, P.reach).filter(b => (b.lore[sign] ?? 0) > P.heed);
     if (cut === 'remit') {
-      const lp = localPower(s, p), judge = judgeOf(s, lp);
+      const lp = powerFor(), judge = judgeOf(s, lp);
       if (lp < 0) return false;
       leaveTo(s, c, p, judge, (s.bodies[judge]?.lore[sign] ?? 0) > P.heed ? 'forbid' : 'dismiss', [p.by, p.against]);
       return true;
@@ -459,7 +480,7 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
   }
   if (cut === 'remit') {
     // Left to whoever holds sway locally. They decide as suits them: for themselves if they are a party, else for the stronger.
-    const scope = localPower(s, p), lp = judgeOf(s, scope);
+    const scope = powerFor(), lp = judgeOf(s, scope);
     if (scope < 0 || lp < 0) return false;
     const kin = kinOf(s);
     const forGains = lp === gains || (lp !== bears && might(s, kin, s.bodies[gains]!, bears) >= might(s, kin, s.bodies[bears]!, gains));
@@ -572,8 +593,8 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
 function ruleFor(s: State, c: Court, p: Petition): Rule | 'clash' | null {
   const a = scopeOf(s, p.by), b = p.against >= 0 ? scopeOf(s, p.against) : a;
   // A kind of matter left to whoever holds sway locally goes to them, wherever there is such a one.
-  const lp = localPower(s, p);
-  const remit = c.rules.find(r => r.cut === 'remit' && r.shape === p.shape && (r.scope === -1 ? lp >= 0 : r.scope === lp));
+  const lp = localPower(s, p), lps = localPowers(s, p);
+  const remit = c.rules.find(r => r.cut === 'remit' && r.shape === p.shape && (r.scope === -1 ? lp >= 0 && lps.length < 2 : lps.includes(r.scope)));
   if (remit) return remit;
   const find = (scope: number): Rule | undefined => c.rules.find(r => r.shape === p.shape && r.scope === scope && r.cut !== 'remit');
   // Two of one body are settled by that body's rule. Two of different bodies whose rules differ cannot be.
@@ -880,8 +901,8 @@ export function hear(s: State, rulings: Ruling[]): void {
     c.docket = c.docket.filter(x => x !== p);
     if (r.width === 'case' || p.reason === 'challenge') continue;
     // A rule: for the body the petitioner belongs to, or for everyone. It replaces any rule it contradicts there.
-    const easing = r.cut.startsWith('ease:'), ruleCut = easing ? 'stay' : r.cut;
-    const scope = r.width === 'realm' ? -1 : ruleCut === 'remit' ? localPower(s, p) : scopeOf(s, p.by);
+    const easing = r.cut.startsWith('ease:'), ruleCut = easing ? 'stay' : r.cut.startsWith('remit') ? 'remit' : r.cut;
+    const scope = r.width === 'realm' ? -1 : ruleCut === 'remit' ? (r.cut.startsWith('remit:') ? Number(r.cut.slice(6)) : localPower(s, p)) : scopeOf(s, p.by);
     if (scope === -2 || (ruleCut === 'remit' && scope < 0 && r.width !== 'realm')) continue;
     if (!easing && p.burdens.length) continue;
     const shape = easing ? p.shapes[p.burdens.indexOf(Number(r.cut.slice(5)))] ?? p.shape : p.shape.replace(/^two rules on: /, '');

@@ -104,8 +104,11 @@ export function learn(s: State): void {
     for (const [sign, v] of Object.entries(b.lore)) if (v > P.heed && sign.startsWith('house:')) warm(s, b.id, Number(sign.slice(6)), -0.05 * v);
     const strong = Object.entries(b.lore).filter(([, v]) => v >= P.tell);
     if (!strong.length) continue;
-    for (const t of around(idx, s.side, b.home, P.dealReach)) {
-      if (!t.alive || t === b || t.parts.length || dist(s.side, t.home, b.home) > P.dealReach) continue;
+    // Told to neighbours, and to kin and fellows however far off.
+    const hearers = new Set(around(idx, s.side, b.home, P.dealReach).filter(t => dist(s.side, t.home, b.home) <= P.dealReach));
+    for (const k of [...(kin.get(b.id) ?? []), ...fellows(s, b)]) { const t = s.bodies[k]; if (t && dist(s.side, t.home, b.home) <= P.far) hearers.add(t); }
+    for (const t of hearers) {
+      if (!t.alive || t === b || t.parts.length) continue;
       const near = kin.get(b.id)?.has(t.id) || (b.of >= 0 && b.of === t.of) ? 0.3 : 0;
       const trust = near + tie(s, t.id, b.id);
       const h = head(s, t);

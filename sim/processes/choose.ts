@@ -29,7 +29,7 @@ interface Ctx {
 }
 
 /** Everything about the land that is worked out once a week. */
-interface Land { bars: Bond[]; landOf: Map<number, Bond[]>; letsOf: Map<number, Tenancy[]>; letOn: Set<number>; pledged: Set<number>; at: Ctx[][]; lets: Tenancy[]; holds: Map<number, Bond[]>; bears: number[][]; left: Map<number, number>; homes: number[] }
+interface Land { kin: Map<number, Set<number>>; ctx: Map<number, Ctx>; bars: Bond[]; landOf: Map<number, Bond[]>; letsOf: Map<number, Tenancy[]>; letOn: Set<number>; pledged: Set<number>; at: Ctx[][]; lets: Tenancy[]; holds: Map<number, Bond[]>; bears: number[][]; left: Map<number, number>; homes: number[] }
 
 /** Where a living thing will stand after T more growing weeks. */
 const ripen = (x: number, K: number, r: number, T: number): number => (x <= 0 || K <= 0 ? 0 : K / (1 + (K / x - 1) * exp(-r * T)));
@@ -248,6 +248,13 @@ function idleRights(s: State, L: Land, id: number): { rb: Bond; cell: number }[]
   return out;
 }
 
+/** Those a house can deal with: its neighbours, and its kin however far off, up to a long walk. */
+function reachable(s: State, L: Land, A: Ctx): Ctx[] {
+  const out = around(L.at, s.side, A.b.home, P.dealReach).filter(B => dist(s.side, A.b.home, B.b.home) <= P.dealReach);
+  for (const k of L.kin.get(A.b.id) ?? []) { const B = L.ctx.get(k); if (B && !out.includes(B) && dist(s.side, A.b.home, B.b.home) <= P.far) out.push(B); }
+  return out;
+}
+
 /** One who believes newcomers bring harm will not deal with a house that settled within the year. */
 const shuns = (s: State, x: Body, y: Body): boolean => (x.lore.new ?? 0) > P.heed && y.since > -1e5 && s.t - y.since < 52;
 
@@ -276,8 +283,8 @@ function arrange(s: State, L: Land, cs: Map<number, Ctx>, A: Ctx, need: number):
   let best: { B: Ctx; way: string; get: Item; give: Item; gainA: number; share: number } | null = null;
   let far: { B: Ctx; recvA: number; costB: number; want: Side } | null = null;
   let rulesStood = false;
-  for (const B of around(L.at, s.side, a.home, P.dealReach)) {
-    if (B === A || dist(s.side, a.home, B.b.home) > P.dealReach || tie(s, a.id, B.b.id) < P.barAt || tie(s, B.b.id, a.id) < P.barAt) continue;
+  for (const B of reachable(s, L, A)) {
+    if (B === A || tie(s, a.id, B.b.id) < P.barAt || tie(s, B.b.id, a.id) < P.barAt) continue;
     if (shuns(s, a, B.b) || shuns(s, B.b, a) || L.bars.some(x => (x.b === a.id && dist(s.side, x.cell, B.b.home) <= P.reach) || (x.b === B.b.id && dist(s.side, x.cell, a.home) <= P.reach))) continue;
     const tB = trust(B, A);
     for (const want of wants) {
@@ -389,7 +396,7 @@ function arrange(s: State, L: Land, cs: Map<number, Ctx>, A: Ctx, need: number):
     else if (it.t === 'L' || it.t === 'LS' || it.t === 'D' || it.t === 'DS') {
       const labour = it.t === 'D' || it.t === 'DS';
       // Between strangers a promise is spoken with nobody to bear witness; kin and fellows witness one another's.
-      const witnessed = (kinOf(s).get(from.id)?.has(to.id) ?? false) || (from.of >= 0 && from.of === to.of);
+      const witnessed = (L.kin.get(from.id)?.has(to.id) ?? false) || (from.of >= 0 && from.of === to.of);
       const debt = bond(s, { about: 'act', a: from.id, b: to.id, kind: labour ? -1 : it.kind, q: it.q, due: labour ? s.t : s.t + P.term, labour, basis: 'word', rec: e.id, way, proof: witnessed ? 'witnessed' : 'spoken' });
       if ((it.t === 'LS' || it.t === 'DS') && surety) bond(s, { about: 'bond', a: to.id, b: from.id, on: surety.id, secures: debt.id, basis: 'word', rec: e.id, way });
     } else if (it.t === 'U' && it.rb) bond(s, { about: 'bond', a: to.id, b: from.id, on: it.rb.id, share: 0, due: s.t + P.lease, used: s.t, basis: 'word', rec: e.id, way });
@@ -403,7 +410,7 @@ function arrange(s: State, L: Land, cs: Map<number, Ctx>, A: Ctx, need: number):
 function deal(s: State, L: Land, cs: Map<number, Ctx>, kin: Map<number, Set<number>>, A: Ctx): void {
   const a = A.b;
   const partners: Ctx[] = [];
-  for (const B of around(L.at, s.side, a.home, P.dealReach)) if (B !== A) partners.push(B);
+  for (const B of reachable(s, L, A)) if (B !== A) partners.push(B);
   if (!partners.length) return;
   const kinds = Kn.map((_k, i) => i).filter(k => !Kn[k]!.fixed);
   const wants = kinds.slice().sort((x, y) => A.v[y]! - A.v[x]! || x - y).slice(0, 3).filter(k => A.v[k]! > 1e-6);
@@ -652,14 +659,14 @@ function roam(s: State, L: Land, c: Ctx): void {
 }
 
 export function choose(s: State): void {
-  const L: Land = { bars: s.bonds.filter(x => x.about === 'right' && x.kind < 0 && x.b >= 0 && x.due > s.t), landOf: new Map(), letsOf: new Map(), letOn: new Set(), pledged: new Set(), at: s.cells.map(() => []), lets: [], holds: holdsByCell(s), bears: s.cells.map(c => St.map((_r, k) => bear(c, k))), left: new Map(), homes: new Array<number>(s.cells.length).fill(0) };
+  const L: Land = { kin: kinOf(s), ctx: new Map(), bars: s.bonds.filter(x => x.about === 'right' && x.kind < 0 && x.b >= 0 && x.due > s.t), landOf: new Map(), letsOf: new Map(), letOn: new Set(), pledged: new Set(), at: s.cells.map(() => []), lets: [], holds: holdsByCell(s), bears: s.cells.map(c => St.map((_r, k) => bear(c, k))), left: new Map(), homes: new Array<number>(s.cells.length).fill(0) };
   for (const b of s.bodies) if (b.alive) for (const cell of near(s.side, b.home, P.reach)) L.homes[cell] = L.homes[cell]! + 1;
   survey(s, L);
   const cs = new Map<number, Ctx>();
   for (const b of s.bodies) {
     if (!b.alive) continue;
     const c = context(s, L, b);
-    if (c) { cs.set(b.id, c); L.at[b.home]!.push(c); b.pressed = c.rush.some(Boolean); }
+    if (c) { cs.set(b.id, c); L.ctx.set(b.id, c); L.at[b.home]!.push(c); b.pressed = c.rush.some(Boolean); }
   }
   const kin = kinOf(s);
   for (const c of cs.values()) deal(s, L, cs, kin, c);

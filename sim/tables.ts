@@ -226,6 +226,8 @@ export const P = {
   /** Rights: the share owed to the holder, the days a house must have worked to ask for one, what the Crown asks for selling one, how fast the reckoning of who works where fades, and how long a ban lasts. */
   /** Ambition: weeks of the first need beyond which a house is content and looks to more than need; what it values a day spent claiming new ground at, at full drive. */
   content: 26, surplusShare: 0.5,
+  /** How far kin reach one another: to deal, to tell what they hold true, to marry. Further than neighbours do. */
+  far: 8,
   /** Days a week a tenant owes its lord by custom when he needs hands. */
   boon: 2,
   toll: 0.2, charterDays: 40, charterFee: 40, workedFade: 0.985, banWeeks: 104,
