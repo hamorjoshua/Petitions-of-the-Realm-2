@@ -43,7 +43,7 @@ export function found(seed: number, t0 = 0, side = P.side, souls = P.souls): Sta
   for (let i = 0; i < n; i++) {
     const h = high[i]!, water = h <= wetLine ? clamp(0.5 + (wetLine - h) / wetLine, 0.5, 1) : 0;
     const soil0 = clamp(0.35 + 0.7 * (1 - h) + 0.12 * (u() - 0.5), 0.15, 1.1);
-    s.cells.push({ high: h, soil: soil0, soil0, wet: 1, water, flow: 0, bank: 1, flood: 0, pot: new Array<number>(NS).fill(0), stock: new Array<number>(NS).fill(0) });
+    s.cells.push({ high: h, soil: soil0, soil0, wet: 1, water, flow: 0, bank: 1, flood: 0, cleared: 0, clearedBy: -1, pot: new Array<number>(NS).fill(0), stock: new Array<number>(NS).fill(0) });
   }
   for (let k = 0; k < NS; k++) {
     const L = St[k]!.lies;

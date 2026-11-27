@@ -3,7 +3,7 @@
 
 import { BY_HARM, Kn, NEEDS, NK, NN, P, TOIL } from '../tables.ts';
 import { askAhead, cover, drive } from '../value.ts';
-import { around, bond, leaves, setTie, dist, head, holdsByCell, kinOf, might, muster, rec, served as remember, struggle, tie, warm } from '../util.ts';
+import { around, bond, leaves, living, setTie, dist, head, holdsByCell, kinOf, might, muster, rec, served as remember, struggle, tie, warm } from '../util.ts';
 import type { Body, Bond, Person, State } from '../types.ts';
 
 /** The needs a kind serves, for saying why someone's cover fell. */
@@ -77,7 +77,7 @@ export function bind(s: State): void {
   for (const w of s.wrongs) {
     if (w.q <= 0 || w.by === w.to) continue;
     const old = s.bonds.find(b => b.about === 'act' && b.basis === 'wrong' && b.a === w.by && b.b === w.to && b.kind === w.kind);
-    if (old) { old.q += w.q; old.strength = 1; } else bond(s, { about: 'act', a: w.by, b: w.to, kind: w.kind, q: w.q, due: s.t, basis: 'wrong', rec: w.rec, doer: w.doer });
+    if (old) { old.q += w.q; old.strength = 1; } else bond(s, { about: 'act', a: w.by, b: w.to, kind: w.kind, q: w.q, due: s.t, basis: 'wrong', rec: w.rec, doer: w.doer, intent: w.intent ?? 'gain' });
     warm(s, w.to, w.by, -0.4);
     for (const k of kin.get(w.to) ?? []) warm(s, k, w.by, -0.15);
     for (const n of served(w.kind)) s.bodies[w.to]!.why[n] = w.rec;
@@ -146,6 +146,7 @@ export function bind(s: State): void {
       const pledge = s.bonds.find(x => x.about === 'bond' && x.secures === bd.id);
       const held = pledge && s.bonds.find(x => x.id === pledge.on && x.about === 'land');
       if (pledge && held) {
+        for (const m of living(s, D)) m.lore[`claim:${held.cell}`] = 1;
         held.a = C.id; held.basis = 'word';
         rec(s, 'take', { a: C.id, b: D.id, cell: held.cell, kind2: -2, cause: bd.rec });
         warm(s, D.id, C.id, -0.2);
@@ -187,7 +188,7 @@ export function bind(s: State): void {
     let got = want;
     if (resists) {
       const e = rec(s, 'take', { a: C.id, b: D.id, kind: bd.kind, q: 0, q2: 1, cause: bd.rec });
-      got = want * struggle(s, kin, C, D, e.id);
+      got = want * struggle(s, kin, C, D, e.id, 'claim');
       e.q = got;
       for (const n of served(bd.kind)) D.why[n] = e.id;
     } else if (got > 0.01) {

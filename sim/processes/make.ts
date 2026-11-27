@@ -32,6 +32,7 @@ export function make(s: State): void {
   const lets = tenancies(s);
   const kin = kinOf(s);
   const hearths = hearthIndex(s);
+  for (const c of s.cells) c.cleared *= 0.98;
   // What has been kept back from the Crown, and paid to it, fades from memory over a year or two.
   for (const b of s.bodies) { if (!b.alive) continue; b.paidUp *= P.workedFade; for (let k = 0; k < b.hid.length; k++) if (b.hid[k]) b.hid[k] = b.hid[k]! * P.workedFade; }
   // Who works where fades, so that it tells of the last year or two.
@@ -67,10 +68,10 @@ export function make(s: State): void {
         const hb = s.bodies[h.a]!;
         if (hb.alive && h.strength > most && dist(s.side, hb.home, j.w.cell) <= P.reach) { most = h.strength; guard = hb; }
       }
-      if (sum >= P.held && guard && !over.some(h => h.a === b.id)) m *= struggle(s, kin, b, guard, s.nrec);
+      if (sum >= P.held && guard && !over.some(h => h.a === b.id)) m *= struggle(s, kin, b, guard, s.nrec, 'need');
       if (m <= 1e-9) continue;
     }
-    for (const [st, q] of r.from) c.stock[st] = Math.max(0, c.stock[st]! - q * m);
+    for (const [st, q] of r.from) { c.stock[st] = Math.max(0, c.stock[st]! - q * m); if (St[st]!.holds && St[st]!.holds! >= 0.5) { c.cleared += q * m; c.clearedBy = b.id; } }
     for (const [k, q] of r.inp) b.store[k] = Math.max(0, b.store[k]! - q * m);
     for (const [k, q] of r.out) b.store[k] = b.store[k]! + q * m;
     for (const [st, q] of r.to) { c.stock[st] = c.stock[st]! + q * m; b.put[st] = (b.put[st] ?? 0) + q * m; }
@@ -129,7 +130,7 @@ export function make(s: State): void {
         }
         rec(s, 'blame', { a: hb.id, b: by, cell: j.w.cell, kind: first[0], q2: by === b.id ? 0 : 1, kind2: b.id, cause: e.id });
       }
-      s.wrongs.push({ by, to: h.a, kind: first[0], q: (first[1] * m * h.strength) / sum, rec: e.id, doer: b.id });
+      s.wrongs.push({ by, to: h.a, kind: first[0], q: (first[1] * m * h.strength) / sum, rec: e.id, doer: b.id, intent: 'need' });
     }
   }
 }

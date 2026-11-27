@@ -520,10 +520,10 @@ function deal(s: State, L: Land, cs: Map<number, Ctx>, kin: Map<number, Set<numb
   if (victim && vBest > 0.05) {
     // The holder is at home: the taking is opposed, and the taker carries off only what their might wins.
     const e = rec(s, 'take', { a: a.id, b: victim.b.id, kind: vk, q: 0, q2: 1, need: n, cause: a.why[n]! });
-    const q = amount(victim, vk) * struggle(s, kin, a, victim.b, e.id);
+    const q = amount(victim, vk) * struggle(s, kin, a, victim.b, e.id, 'need');
     e.q = q;
     victim.b.store[vk] = victim.b.store[vk]! - q; a.store[vk] = a.store[vk]! + q;
-    s.wrongs.push({ by: a.id, to: victim.b.id, kind: vk, q, rec: e.id, doer: a.id });
+    s.wrongs.push({ by: a.id, to: victim.b.id, kind: vk, q, rec: e.id, doer: a.id, intent: 'need' });
   }
 }
 

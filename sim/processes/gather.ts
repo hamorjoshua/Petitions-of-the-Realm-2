@@ -3,16 +3,16 @@
 
 import { Kn, NK, NN, P } from '../tables.ts';
 import { askAhead, heads, welfare } from '../value.ts';
-import { around, bond, dist, grown, head, kinOf, leaves, living, rec, regard } from '../util.ts';
+import { around, bond, dist, grown, head, inheritTies, kinOf, leaves, living, rec, regard } from '../util.ts';
 import type { Body, Person, State } from '../types.ts';
 
 export function body(s: State, home: number): Body {
-  const b: Body = { id: s.bodies.length, home, store: new Array<number>(NK).fill(0), members: [], parts: [], of: -1, head: -1, threat: -1, hid: [], paidUp: 0, shirkedTo: -1, shirkedAt: -999, overworked: 0, alive: true, since: s.t, plan: [], spent: 0, goto: -1, why: new Array<number>(NN).fill(-1), ways: {}, stuck: 0, pressed: false, lore: {}, recent: [], skill: [], aim: null, hope: [], put: [], got: [], plea: [], away: 0, rank: '', owedUp: [] };
+  const b: Body = { id: s.bodies.length, home, store: new Array<number>(NK).fill(0), members: [], parts: [], of: -1, head: -1, threat: -1, hid: [], paidUp: 0, shirkedTo: -1, shirkedAt: -999, overworked: 0, speaker: -1, breach: null, harmedBy: null, alive: true, since: s.t, plan: [], spent: 0, goto: -1, why: new Array<number>(NN).fill(-1), ways: {}, stuck: 0, pressed: false, lore: {}, recent: [], skill: [], aim: null, hope: [], put: [], got: [], plea: [], away: 0, rank: '', owedUp: [] };
   s.bodies.push(b);
   return b;
 }
 
-function shift(s: State, p: Person, to: Body): void {
+export function shift(s: State, p: Person, to: Body): void {
   const from = s.bodies[p.body]!;
   from.members = from.members.filter(i => i !== p.id);
   to.members.push(p.id);
@@ -20,7 +20,8 @@ function shift(s: State, p: Person, to: Body): void {
 }
 
 /** Hand everything a body holds or owes to another. */
-function handOver(s: State, from: Body, to: Body, share: number): void {
+export function handOver(s: State, from: Body, to: Body, share: number): void {
+  inheritTies(s, from.id, to.id, share >= 1 ? 1 : 0.8);
   if (share >= 1 && from.rank && !to.rank) to.rank = from.rank;
   for (let k = 0; k < NK; k++) {
     if (Kn[k]!.fixed && to.home !== from.home) continue;

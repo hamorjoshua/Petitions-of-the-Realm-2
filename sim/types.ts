@@ -3,6 +3,8 @@
 
 export interface Cell {
   high: number;
+  /** Cover taken off it by work lately, and by whom most: what makes the water run faster below. */
+  cleared: number; clearedBy: number;
   soil: number; soil0: number;
   wet: number;
   water: number;
@@ -25,6 +27,8 @@ export interface Person {
   sound: number; scruple: number; temper: number; spacing: number; credulous: number;
   /** How much they want what others cannot also have: ground beyond their need, a sole right, the lead of their body. */
   ambition: number;
+  /** What the one who struck the last blow meant by it: to defend, from need, or for gain. */
+  blowIntent: string;
   /** How the house stood when this person was born. */
   omen: number;
   bore: number;
@@ -62,6 +66,8 @@ export interface Body {
   hid: number[]; paidUp: number;
   /** The fellow it last left in want against a duty it holds, and when; and labour taken from it beyond custom, fading. */
   shirkedTo: number; shirkedAt: number; overworked: number;
+  /** The member who speaks for it, if not its eldest; a constraint its speaker was seen to break, and when; harm from work upstream. */
+  speaker: number; breach: { sign: string; t: number } | null; harmedBy: { by: number; cell: number; loss: number; t: number } | null;
   alive: boolean;
   since: number;
   /** What its members will do next week, and where it means to go. */
@@ -131,6 +137,8 @@ export interface Bond {
   denied: boolean; fabricated: boolean;
   /** For a holding of a lord: days a week owed him when he needs hands, by custom; and whether the court has held him to it. */
   boon: number; capped: boolean;
+  /** For a wrong: what the doer meant by it. Need, defence and gain are judged differently. */
+  intent: string;
 }
 
 /** One elementary happening. `k` is always the name of an act or a process, never of a situation. */
@@ -147,12 +155,12 @@ export interface Rec {
   way?: string;
 }
 
-export interface Wrong { by: number; to: number; kind: number; q: number; rec: number; doer: number }
+export interface Wrong { by: number; to: number; kind: number; q: number; rec: number; doer: number; intent?: string }
 
 /** A matter before the court: who brings it, against whom, about which bond or want, and why it climbed this far. */
-export interface Petition { /** For a house in want: everything that weighs on it, heaviest first, and the shape of each. */ burdens: number[]; shapes: string[]; id: number; t: number; by: number; against: number; bond: number; need: number; rec: number; shape: string; side: 'owed' | 'owes' | 'outside' | 'bare' | 'asks' | 'fears' | 'exit' | 'suspects' | 'unaided' | 'exceeds'; work?: number; cell?: number; sign?: string; body?: number; press?: number; reason: 'none' | 'clash' | 'challenge'; speaksFor: number; waited: number; urgency: number }
+export interface Petition { /** For a house in want: everything that weighs on it, heaviest first, and the shape of each. */ burdens: number[]; shapes: string[]; id: number; t: number; by: number; against: number; bond: number; need: number; rec: number; shape: string; side: 'owed' | 'owes' | 'outside' | 'bare' | 'asks' | 'fears' | 'exit' | 'suspects' | 'unaided' | 'exceeds' | 'heir' | 'appeal' | 'harmed'; work?: number; cell?: number; sign?: string; body?: number; press?: number; person?: number; reason: 'none' | 'clash' | 'challenge'; speaksFor: number; waited: number; urgency: number }
 /** A rule: a bond that binds every member of a body, or the whole realm (scope -1). */
-export interface Rule { id: number; scope: number; shape: string; cut: string; since: number; uses: number }
+export interface Rule { /** Written on the roll: it cannot be challenged or undone. */ roll?: boolean; id: number; scope: number; shape: string; cut: string; since: number; uses: number }
 export interface Court {
   /** How the court last ruled on each kind of matter, how far it found for the one who asked, and when; and how often it has gone back on itself lately. */
   precedent: Record<string, { fav: number; t: number }>; caprice: number;

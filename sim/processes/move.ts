@@ -48,6 +48,10 @@ export function move(prev: State, s: State): void {
       s.cells[lo]!.soil = Math.min(1.3, s.cells[lo]!.soil + washed); s.cells[lo]!.soil0 = Math.min(1.3, s.cells[lo]!.soil0 + washed / 2);
     }
     if (c.flood <= 0) continue;
+    // Upstream: ground lately stripped of its cover sent the water down faster. Whoever stripped it did nothing wrong,
+    // but those flooded below lay the harm to them.
+    let up = -1, most = 20;
+    for (let j = 0; j < n; j++) { let k = j; for (let step = 0; step < 4 && k >= 0 && k !== i; step++) k = R.low[k]!; if (k === i && j !== i && s.cells[j]!.cleared > most && s.cells[j]!.clearedBy >= 0) { most = s.cells[j]!.cleared; up = j; } }
     // Water over the bank carries off what stands in its way and what is laid by there.
     for (let k = 0; k < NS; k++) {
       const r = St[k]!;
@@ -64,6 +68,7 @@ export function move(prev: State, s: State): void {
       let lost = 0;
       for (let k = 0; k < NK; k++) if (!Kn[k]!.fixed && b.store[k]! > 0) { lost += b.store[k]! * share; b.store[k] = b.store[k]! * (1 - share); }
       if (lost > 5) rec(s, 'decay', { a: b.id, cell: i, q: lost, q2: 1 });
+      if (lost > 5 && up >= 0 && s.cells[up]!.clearedBy !== b.id) b.harmedBy = { by: s.cells[up]!.clearedBy, cell: up, loss: lost, t: s.t };
     }
   }
 

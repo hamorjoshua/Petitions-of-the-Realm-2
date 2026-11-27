@@ -89,7 +89,7 @@ export function holdsByCell(s: State): Map<number, Bond[]> {
 }
 
 export function bond(s: State, f: Partial<Bond> & Pick<Bond, 'about' | 'a' | 'basis'>): Bond {
-  const b: Bond = { id: s.nbond++, b: -1, cell: -1, kind: -1, q: 0, due: -1, labour: false, on: -1, share: 0, secures: -1, used: s.t - 999, strength: 1, since: s.t, broken: false, rec: -1, way: '', doer: -1, easedTo: -1, proof: 'witnessed', denied: false, fabricated: false, boon: 0, capped: false, ...f };
+  const b: Bond = { id: s.nbond++, b: -1, cell: -1, kind: -1, q: 0, due: -1, labour: false, on: -1, share: 0, secures: -1, used: s.t - 999, strength: 1, since: s.t, broken: false, rec: -1, way: '', doer: -1, easedTo: -1, proof: 'witnessed', denied: false, fabricated: false, boon: 0, capped: false, intent: '', ...f };
   s.bonds.push(b);
   return b;
 }
@@ -111,11 +111,11 @@ export function might(s: State, kin: Map<number, Set<number>>, b: Body, against:
 }
 
 /** A taking that is opposed. Returns the share the taker carries off; both sides are hurt by the other's might. */
-export function struggle(s: State, kin: Map<number, Set<number>>, taker: Body, holder: Body, at: number): number {
+export function struggle(s: State, kin: Map<number, Set<number>>, taker: Body, holder: Body, at: number, intent = 'gain'): number {
   const mT = might(s, kin, taker, holder.id), mH = might(s, kin, holder, taker.id);
   const p = mT + mH > 0 ? mT / (mT + mH) : 0.5;
-  for (const x of grown(s, holder)) { x.wear += P.blow * p; x.blow = at; x.blowAt = s.t; x.blowBy = taker.id; }
-  for (const x of grown(s, taker)) { x.wear += P.blow * (1 - p); x.blow = at; x.blowAt = s.t; x.blowBy = holder.id; }
+  for (const x of grown(s, holder)) { x.wear += P.blow * p; x.blow = at; x.blowAt = s.t; x.blowBy = taker.id; x.blowIntent = intent; }
+  for (const x of grown(s, taker)) { x.wear += P.blow * (1 - p); x.blow = at; x.blowAt = s.t; x.blowBy = holder.id; x.blowIntent = 'defence'; }
   warm(s, holder.id, taker.id, -0.6); warm(s, taker.id, holder.id, -0.3);
   // Those bound to both sides chose one, and the other side remembers it.
   const ofT = new Set<number>([...(kin.get(taker.id) ?? []), ...fellows(s, taker)]), ofH = new Set<number>([...(kin.get(holder.id) ?? []), ...fellows(s, holder)]);
@@ -211,4 +211,10 @@ export function around<T>(idx: T[][], side: number, cell: number, r: number): T[
   const out: T[] = [];
   for (const c of near(side, cell, r)) { const l = idx[c]!; for (let i = 0; i < l.length; i++) out.push(l[i]!); }
   return out;
+}
+
+/** Regard passes on: to an heir, or to a new hearth from the old one. Ill will outlives those who began it. */
+export function inheritTies(s: State, from: number, to: number, share: number): void {
+  for (const [b, v] of Object.entries(s.ties[from] ?? {})) setTie(s, to, Number(b), Math.max(-1, Math.min(1, tie(s, to, Number(b)) + v * share)));
+  for (const a in s.ties) { const v = s.ties[a]![from]; if (v !== undefined && Number(a) !== to) setTie(s, Number(a), to, Math.max(-1, Math.min(1, tie(s, Number(a), to) + v * share))); }
 }

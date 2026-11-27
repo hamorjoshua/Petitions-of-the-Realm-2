@@ -35,6 +35,7 @@ export function learn(s: State): void {
       const X = s.bodies[id];
       if (!X || !X.alive || (X.lore[sign] ?? 0) <= P.heed) return;
       rec(s, 'stain', { a: id, way: sign });
+      X.breach = { sign, t: s.t };
       for (const f of fellows(s, X)) { const F = s.bodies[f]!; warm(s, f, id, -0.2); believe(s, F, `house:${id}`, (F.lore[`house:${id}`] ?? 0) + 0.3, id); }
     };
     if (r.k === 'promise' && r.way) { broke(r.a, `way:${r.way}`); broke(r.b, `way:${r.way}`); }
@@ -90,6 +91,7 @@ export function learn(s: State): void {
     if (!b.alive) continue;
     for (const k of Object.keys(b.lore)) {
       if (kept.has(`${b.id}|${k}`)) continue;
+      if (k.startsWith('claim:')) continue;
       const v = b.lore[k]! * P.forget;
       if (v < 0.02) delete b.lore[k]; else b.lore[k] = v;
     }

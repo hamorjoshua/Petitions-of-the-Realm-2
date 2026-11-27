@@ -8,7 +8,8 @@
 
 import { BY_HARM, Kn, NEEDS, NK, NN, P, Rc, St, TOIL } from '../tables.ts';
 import { askAhead, cover, drive } from '../value.ts';
-import { around, bond, dist, fellows, grown, head, hearthIndex, kinOf, leaves, might, near, rec, top, warm } from '../util.ts';
+import { around, bond, dist, fellows, grown, head, hearthIndex, kinOf, leaves, living, might, near, rec, top, warm } from '../util.ts';
+import { body, handOver, shift } from '../processes/gather.ts';
 import type { Body, Bond, Court, Petition, Rule, State } from '../types.ts';
 
 export type Width = 'case' | 'body' | 'realm';
@@ -56,15 +57,18 @@ export function formOf(byId: Map<number, Bond>, b: Bond | undefined, depth = 0):
 export const SIDES = ['owed', 'owes', 'outside', 'bare'] as const;
 /** How far a cut finds for the one who asked, by how they stood. */
 const FAVOUR: Record<string, Record<string, number>> = {
-  owed: { enforce: 1, redeem: 1, answer: 0.9, expel: 0.7, bar: 0.6, surety: 0.6, remit: 0.5, part: 0.5, stay: 0.2, strike: 0 },
+  owed: { pardon: 0, enforce: 1, redeem: 1, answer: 0.9, expel: 0.7, bar: 0.6, surety: 0.6, remit: 0.5, part: 0.5, stay: 0.2, strike: 0 },
   owes: { strike: 1, redeem: 1, give: 1, rival: 0.9, stay: 0.7, ease: 0.7, surety: 0.6, part: 0.5, remit: 0.5, enforce: 0, dismiss: 0 },
   outside: { turn: 1, strike: 0.9, rival: 0.9, part: 0.6, remit: 0.5, enforce: 0 },
   asks: { charter: 1, install: 1, sell: 0.7, remit: 0.5, refuse: 0, confirm: 0 },
-  fears: { forbid: 1, remit: 0.5, dismiss: 0.1, override: 0 },
+  fears: { forbid: 1, inscribe: 1, remit: 0.5, dismiss: 0.1, override: 0 },
   exit: { free: 1, release: 0.8, ease: 0.7, tie: 0 },
   suspects: { assess: 1, inquire: 0.7, dismiss: 0 },
   unaided: { compel: 1, remit: 0.5, dismiss: 0, dispense: 0 },
   exceeds: { custom: 1, commute: 0.7, remit: 0.5, uphold: 0 },
+  heir: { restore: 1, divide: 0.6, remit: 0.5, uphold: 0 },
+  appeal: { speak: 1, divide: 0.7, uphold: 0 },
+  harmed: { compensate: 1, restrain: 0.8, remit: 0.5, dismiss: 0 },
   bare: { give: 1, vouch: 1, levy: 1, promise: 0.8, dismiss: 0 },
 };
 
@@ -131,6 +135,9 @@ export function planesOf(s: State, p: Petition): [Plane, Plane] {
   if (p.side === 'exit') return pair('relational', 'positional');
   if (p.side === 'suspects') return pair('epistemic', 'positional');
   if (p.side === 'unaided') return pair('normative', 'relational');
+  if (p.side === 'heir') return pair('positional', 'relational');
+  if (p.side === 'appeal') return pair('normative', 'relational');
+  if (p.side === 'harmed') return pair('normative', 'material');
   if (p.side === 'exceeds') return pair('normative', 'positional');
   const bd = s.bonds.find(b => b.id === p.bond);
   if (!bd) return pair(p.shape.includes('shunned') ? 'normative' : 'material', 'material');
@@ -225,7 +232,8 @@ export function cuts(s: State, p: Petition): string[] {
   // Leave sought for a sole right: grant it, sell it, or refuse it.
   if (p.side === 'asks') return ['charter', 'sell', 'refuse'];
   // A constraint one side will not give up: uphold it in their bounds, override it, leave it to the local power, or neither.
-  if (p.side === 'fears') return ['forbid', 'override', ...remit, 'dismiss'];
+  // A body's custom may be written on the roll, where it binds for good.
+  if (p.side === 'fears') return ['forbid', 'override', ...remit, s.bodies[p.by]!.of >= 0 ? 'inscribe' : 'dismiss'];
   // A tenant who says it will leave: give it its ground outright, let it go, tie it to the land, or lift the lord's share a year.
   if (p.side === 'exit') return ['free', 'release', 'tie', `ease:${p.bond}`];
   // The bailiff suspects a house of keeping back the Crown's share: find out, assess it on his word, or send him away.
@@ -234,6 +242,12 @@ export function cuts(s: State, p: Petition): string[] {
   if (p.side === 'unaided') return ['compel', 'dispense', ...remit, 'dismiss'];
   // A lord taking more labour than custom: hold him to custom, back him, or turn the labour into a share of the yield.
   if (p.side === 'exceeds') return ['custom', 'uphold', 'commute', ...remit];
+  // An heir's claim by blood to ground another now holds: restore it, uphold the holder, divide it, or leave it below.
+  if (p.side === 'heir') return ['restore', 'uphold', 'divide', ...remit];
+  // One of a house appeals against its head: let them speak for the house, keep the head, or let them go with their share.
+  if (p.side === 'appeal') return ['speak', 'uphold', 'divide'];
+  // Harm with no wrong behind it: make the one whose work caused it pay, stop the work, leave it below, or call it no one's fault.
+  if (p.side === 'harmed') return ['compensate', 'restrain', ...remit, 'dismiss'];
   const bd = s.bonds.find(b => b.id === p.bond);
   // A want with nothing behind it: relief, or none. One shunned may also be vouched for.
   if (!bd) return p.shape.includes('shunned') ? ['vouch', 'give', 'dismiss'] : ['give', 'dismiss'];
@@ -246,8 +260,10 @@ export function cuts(s: State, p: Petition): string[] {
   // or lay half on kin. Only where none fits is the matter merely put off.
   const shared = lpow >= 0 && (s.bodies[lpow]!.parts.length ?? 0) > 0;
   const inBody = bd.about === 'act' && s.bodies[bd.a]!.of >= 0;
+  const excused = bd.about === 'act' && bd.basis === 'wrong' && (bd.intent === 'need' || bd.intent === 'defence');
   const third = bd.about === 'act' && bd.basis === 'wrong' ? 'bar' : shared ? 'expel' : inBody ? 'answer' : bd.about === 'act' && suretyFor(s, bd.a) >= 0 ? 'surety' : 'stay';
-  const c = ['enforce', 'strike', third, ...remit];
+  // A wrong done from need or in defence may be pardoned, which is not the same as letting it go.
+  const c = ['enforce', excused ? 'pardon' : 'strike', third, ...remit];
   // Whoever is said to have done a wrong may or may not have. An inquest can be held on any of them, once.
   if (bd.about === 'act' && ((bd.basis === 'wrong' && bd.doer >= 0) || bd.denied)) c.push('inquire');
   return c;
@@ -274,6 +290,52 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
     if (p.side === 'exit') by.threat = -1;
     grieve(c, other(eb, p.by), P.harmUnheard * 2);
     rec(s, 'judge', { a: p.by, b: other(eb, p.by), need: p.need, cause: eb.rec, way: `ease ${formOf(new Map(s.bonds.map(b => [b.id, b])), eb)}` });
+    return true;
+  }
+  if (p.side === 'heir') {
+    const held = s.bonds.find(b => b.id === p.bond), heir = p.person ?? -1;
+    if (!held || held.about !== 'land') return false;
+    if (cut === 'remit') { const judge = judgeOf(s, powerFor()); if (judge < 0) return false; leaveTo(s, c, p, judge, judge === held.a ? 'uphold' : 'restore', [p.by, held.a]); return true; }
+    if (cut === 'restore') { grieve(c, held.a, P.harmLost); held.a = p.by; held.basis = 'birth'; }
+    else if (cut === 'divide') { held.strength /= 2; bond(s, { about: 'land', a: p.by, cell: held.cell, basis: 'birth', strength: held.strength }); grieve(c, held.a, P.harmPaid); }
+    else grieve(c, p.by, P.harmLost);
+    // Restored or not, the claim is settled for this generation.
+    if (heir >= 0) for (const m of living(s, by)) delete m.lore[`claim:${held.cell}`];
+    rec(s, 'judge', { a: p.by, b: p.against, cell: held.cell, way: `${cut} ${p.shape}` });
+    return true;
+  }
+  if (p.side === 'appeal') {
+    const m = s.people[p.person ?? -1];
+    if (!m || !m.alive || m.body !== p.by) return false;
+    if (cut === 'speak') by.speaker = m.id;
+    else if (cut === 'divide') {
+      // They leave with their spouse, their young children, and a share of what the house holds.
+      const nb = body(s, by.home), wife = m.spouse >= 0 ? s.people[m.spouse] : undefined;
+      const going = living(s, by).filter(x => x === m || x === wife || (x.spouse < 0 && (x.mother === m.id || x.father === m.id) && (s.t - x.born) / 52 < 14));
+      if (going.length >= living(s, by).length) return false;
+      for (const x of going) shift(s, x, nb);
+      handOver(s, by, nb, going.length / (going.length + living(s, by).length));
+    }
+    by.breach = null;
+    rec(s, 'judge', { a: p.by, way: `${cut} ${p.shape}` });
+    return true;
+  }
+  if (p.side === 'harmed') {
+    const H = s.bodies[p.against]!, loss = by.harmedBy?.loss ?? 0;
+    if (cut === 'remit') { const judge = judgeOf(s, powerFor()); if (judge < 0) return false; leaveTo(s, c, p, judge, judge === H.id ? 'dismiss' : 'compensate', [p.by, H.id]); return true; }
+    if (cut === 'compensate') {
+      let k = -1;
+      for (let j = 0; j < NK; j++) if (!Kn[j]!.fixed && (k < 0 || H.store[j]! > H.store[k]!)) k = j;
+      if (k < 0) return false;
+      const q = Math.min(H.store[k]! * 0.3, loss * 0.5);
+      H.store[k] = H.store[k]! - q; by.store[k] = by.store[k]! + q;
+      grieve(c, H.id, P.harmPaid);
+    } else if (cut === 'restrain') {
+      bond(s, { about: 'right', a: p.by, b: H.id, cell: p.cell ?? H.home, kind: -1, share: 1, due: s.t + P.banWeeks, basis: 'grant', way: 'restraint' });
+      grieve(c, H.id, P.harmLost);
+    } else grieve(c, p.by, P.harmUnheard * 2);
+    by.harmedBy = null;
+    rec(s, 'judge', { a: p.by, b: H.id, way: `${cut} ${p.shape}` });
     return true;
   }
   if (p.side === 'unaided') {
@@ -389,6 +451,15 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
       leaveTo(s, c, p, judge, (s.bodies[judge]?.lore[sign] ?? 0) > P.heed ? 'forbid' : 'dismiss', [p.by, p.against]);
       return true;
     }
+    if (cut === 'inscribe') {
+      // Written on the roll: the custom binds every like matter within that body, for good, and cannot be challenged.
+      const scope = scopeOf(s, p.by);
+      if (scope < 0) return false;
+      c.rules = c.rules.filter(r => !(r.shape === p.shape && r.scope === scope));
+      c.rules.push({ id: c.next++, scope, shape: p.shape, cut: 'forbid', since: s.t, uses: 0, roll: true });
+      rec(s, 'rule', { a: p.by, kind2: 0, q2: scope, way: `inscribe ${p.shape}` });
+      return carry(s, c, p, 'forbid');
+    }
     if (cut === 'forbid') {
       if (sign.startsWith('cell:')) {
         // Nobody may work that ground for two years. Those who held it lose their hold on it.
@@ -462,7 +533,8 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
     const liar = bd.fabricated ? bd.b : bd.a;
     e.q2 = bd.fabricated ? 1 : 0; e.kind2 = liar;
     for (const x of around(hearthIndex(s), s.side, s.bodies[liar]!.home, P.reach)) if (x.id !== liar) x.lore[`house:${liar}`] = Math.min(1.5, (x.lore[`house:${liar}`] ?? 0) + 0.3);
-    if (bd.fabricated) { bd.q = 0; grieve(c, bd.a, -P.harmPaid); }
+    // A false claim harmed nobody who was believed, but it was meant to: its maker is fined to the Crown.
+    if (bd.fabricated) { bd.q = 0; grieve(c, bd.a, -P.harmPaid); const L = s.bodies[liar]!; for (let k = 0; k < NK; k++) if (!Kn[k]!.fixed) { const f = L.store[k]! * 0.1; L.store[k] = L.store[k]! - f; c.store[k] = c.store[k]! + f; } }
     else { bd.denied = false; bd.proof = 'roll'; }
     return true;
   }
@@ -489,6 +561,14 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
     carry(s, c, p, forGains ? 'enforce' : bd.about === 'land' ? 'turn' : 'strike');
     // The court is spared most of the ill will; the one who lost holds it against the one who judged.
     [gains, bears].forEach((w, i) => { const d = (c.grief[w] ?? 0) - before[i]!; if (d > 0) { c.grief[w] = before[i]! + d * 0.25; if (w !== lp) warm(s, w, lp, -0.3); } });
+    return true;
+  }
+  if (cut === 'pardon') {
+    // A wrong done from need or in defence is pardoned: nothing is owed, and the doer's name is not blackened by it.
+    if (bd.about !== 'act') return false;
+    bd.q = 0;
+    grieve(c, bd.b, P.harmPaid);
+    for (const x of around(hearthIndex(s), s.side, s.bodies[bd.a]!.home, P.reach)) if (x.lore[`house:${bd.a}`]) x.lore[`house:${bd.a}`] = x.lore[`house:${bd.a}`]! * 0.5;
     return true;
   }
   if (cut === 'answer') {
@@ -611,7 +691,7 @@ function below(s: State, c: Court, p: Petition, r: Rule): void {
   r.uses++;
   rec(s, 'rule', { a: p.by, b: p.against, kind2: 1, q2: r.scope, way: p.shape });
   [p.by, p.against].forEach((who, i) => {
-    if (who < 0 || !s.bodies[who]!.alive || (c.grief[who] ?? 0) - before[i]! < P.harmPaid || (c.grief[who] ?? 0) < P.aggrieved) return;
+    if (r.roll || who < 0 || !s.bodies[who]!.alive || (c.grief[who] ?? 0) - before[i]! < P.harmPaid || (c.grief[who] ?? 0) < P.aggrieved) return;
     const key = `c${r.id}`;
     if (s.t - (c.seen[key] ?? -999) < 52) return;
     c.seen[key] = s.t;
@@ -633,7 +713,7 @@ export function audience(s: State): Petition[] {
   const shapeFor = (by: number, against: number, bd: Bond | undefined, side: Petition['side'], need: number, extra = ''): string => {
     const A = s.bodies[by]!, B = against >= 0 ? s.bodies[against]! : undefined;
     const near = !B ? 'nobody' : kin.get(by)?.has(against) ? 'kin' : A.of >= 0 && top(s, A).id === top(s, B).id ? 'of one body' : dist(s.side, A.home, B.home) <= P.reach ? 'a neighbour' : 'a stranger';
-    return `${side === 'owed' ? 'owed on' : side === 'owes' ? 'bound by' : side === 'outside' ? 'shut out by' : side === 'asks' ? 'asks leave for' : side === 'fears' ? 'will not abide' : side === 'exit' ? 'will leave' : side === 'suspects' ? 'suspects' : side === 'unaided' ? 'was left unaided against' : side === 'exceeds' ? 'is worked beyond custom under' : 'in want'} ${bd ? formOf(byId, bd) : extra}; for ${need >= 0 ? NEEDS[need]!.id : 'nothing pressing'}; against ${near}`;
+    return `${side === 'owed' ? 'owed on' : side === 'owes' ? 'bound by' : side === 'outside' ? 'shut out by' : side === 'asks' ? 'asks leave for' : side === 'fears' ? 'will not abide' : side === 'exit' ? 'will leave' : side === 'suspects' ? 'suspects' : side === 'unaided' ? 'was left unaided against' : side === 'heir' ? 'claims by blood' : side === 'appeal' ? 'appeals against' : side === 'harmed' ? 'was harmed by' : side === 'exceeds' ? 'is worked beyond custom under' : 'in want'} ${bd ? formOf(byId, bd) : extra}; for ${need >= 0 ? NEEDS[need]!.id : 'nothing pressing'}; against ${near}`;
   };
   const add = (by: number, against: number, bd: Bond | undefined, side: Petition['side'], need: number, recId: number, extra = '', keyed = ''): void => {
     const key = keyed || (bd ? `${side}${bd.id}` : `w${by}:${need}`);
@@ -805,6 +885,33 @@ export function audience(s: State): Petition[] {
     const m = s.bonds.find(x => x.about === 'bond' && x.a === T.id && x.way === 'manor');
     if (m && s.bodies[m.b]?.alive) add(T.id, m.b, m, 'exceeds', lack.get(T.id) ?? -1, m.rec, '', `e${T.id}`);
   }
+  // Inside a house: an heir's claim by blood to ground another holds; one of the house appealing against its head's
+  // breach of custom. From outside: harm from ground cleared upstream.
+  for (const X of s.bodies) {
+    if (!X.alive || X.parts.length || !X.members.length) continue;
+    const g = grown(s, X), spk = X.speaker >= 0 && s.people[X.speaker]?.alive ? X.speaker : (head(s, X)?.id ?? -1);
+    let heirDone = false;
+    for (const m of g) {
+      if (heirDone) break;
+      for (const sg in m.lore) {
+        if (!sg.startsWith('claim:')) continue;
+        const cell = Number(sg.slice(6)), held = s.bonds.find(x => x.about === 'land' && x.cell === cell && x.a !== X.id && x.strength >= 0.5 && s.bodies[x.a]?.alive);
+        if (!held) continue;
+        const before = fresh.length;
+        add(X.id, held.a, held, 'heir', lack.get(X.id) ?? -1, held.rec, '', `h${m.id}:${cell}`);
+        if (fresh.length > before) { fresh[fresh.length - 1]!.person = m.id; heirDone = true; break; }
+      }
+    }
+    if (X.breach && s.t - X.breach.t <= 8) {
+      const sg = X.breach.sign, m = g.find(x => x.id !== spk && (x.lore[sg] ?? 0) > P.heed + 0.2);
+      if (m) { const before = fresh.length; add(X.id, -1, undefined, 'appeal', -1, -1, 'its head’s breach of custom', `ap${X.id}:${sg}`); if (fresh.length > before) { const q = fresh[fresh.length - 1]!; q.person = m.id; q.sign = sg; } }
+    }
+    if (X.harmedBy && s.t - X.harmedBy.t <= 8 && s.bodies[X.harmedBy.by]?.alive) {
+      const before = fresh.length;
+      add(X.id, X.harmedBy.by, undefined, 'harmed', lack.get(X.id) ?? -1, -1, 'harm from work upstream', `hm${X.id}:${X.harmedBy.by}`);
+      if (fresh.length > before) fresh[fresh.length - 1]!.cell = X.harmedBy.cell;
+    }
+  }
   // A tenant that has told its lord it will leave comes to the court before it goes.
   for (const b of s.bodies) {
     if (!b.alive || b.threat < 0 || s.t - b.threat >= P.wait) continue;
@@ -907,6 +1014,8 @@ export function hear(s: State, rulings: Ruling[]): void {
     if (!easing && p.burdens.length) continue;
     const shape = easing ? p.shapes[p.burdens.indexOf(Number(r.cut.slice(5)))] ?? p.shape : p.shape.replace(/^two rules on: /, '');
     const old = c.rules.findIndex(x => x.shape === shape && x.scope === scope);
+    // What is on the roll cannot be undone; ruling against it is caprice of the worst kind.
+    if (old >= 0 && c.rules[old]!.roll) { c.caprice += 3; continue; }
     if (old >= 0) c.rules.splice(old, 1);
     const rule: Rule = { id: c.next++, scope, shape, cut: ruleCut, since: s.t, uses: 0 };
     c.rules.push(rule);

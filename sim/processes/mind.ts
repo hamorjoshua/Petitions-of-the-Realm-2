@@ -8,7 +8,12 @@ import { grown, head } from '../util.ts';
 import type { Body, Person, State } from '../types.ts';
 
 const copy = (w: Record<string, { w: number; p: number }>): Record<string, { w: number; p: number }> => { const o: Record<string, { w: number; p: number }> = {}; for (const k in w) o[k] = { w: w[k]!.w, p: w[k]!.p }; return o; };
-const speaker = (s: State, b: Body): Person | undefined => { const g = grown(s, b); let h: Person | undefined; for (const p of g) if (!h || p.born < h.born || (p.born === h.born && p.id < h.id)) h = p; return h ?? head(s, b); };
+const speaker = (s: State, b: Body): Person | undefined => {
+  const chosen = b.speaker >= 0 ? s.people[b.speaker] : undefined;
+  if (chosen && chosen.alive && chosen.body === b.id) return chosen;
+  return eldest(s, b);
+};
+const eldest = (s: State, b: Body): Person | undefined => { const g = grown(s, b); let h: Person | undefined; for (const p of g) if (!h || p.born < h.born || (p.born === h.born && p.id < h.id)) h = p; return h ?? head(s, b); };
 
 /** Before the week's choices: each hearth takes up the mind of the one who speaks for it. */
 export function attend(s: State): void {
@@ -59,7 +64,7 @@ export function settle(s: State): void {
         for (const [sign, v] of Object.entries(h.lore)) if (v >= P.tell && 0.9 * v > (m.lore[sign] ?? 0) && 1.2 * v > 1 - m.credulous) m.lore[sign] = 0.9 * v;
         for (const [sign, v] of Object.entries(m.lore)) {
           if (v >= P.tell && 0.9 * v > (h.lore[sign] ?? 0) && 1.2 * v > 1 - h.credulous) { h.lore[sign] = 0.9 * v; b.lore[sign] = 0.9 * v; }
-          else if (!(h.lore[sign]! >= v)) { const f = v * P.forget; if (f < 0.02) delete m.lore[sign]; else m.lore[sign] = f; }
+          else if (!sign.startsWith('claim:') && !(h.lore[sign]! >= v)) { const f = v * P.forget; if (f < 0.02) delete m.lore[sign]; else m.lore[sign] = f; }
         }
       }
       // Skill comes with doing and slips without it.

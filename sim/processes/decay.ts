@@ -48,14 +48,14 @@ export function decay(s: State): void {
       const need = !struck && P.hurt * lackHarm > years ? worst : -1;
       const death = rec(s, 'die', { a: p.id, b: b.id, cell: b.home, need, q: age, cause: struck ? p.blow : need >= 0 ? b.why[need]! : -1 });
       // One killed by another's blows leaves their house owed for it.
-      if (struck && p.blowBy >= 0 && p.blowBy !== b.id && s.bodies[p.blowBy]!.alive) bond(s, { about: 'act', a: p.blowBy, b: b.id, kind: -1, q: P.bloodPrice, due: s.t, labour: true, basis: 'wrong', way: 'blood', rec: death.id, doer: p.blowBy });
+      if (struck && p.blowBy >= 0 && p.blowBy !== b.id && s.bodies[p.blowBy]!.alive) bond(s, { about: 'act', a: p.blowBy, b: b.id, kind: -1, q: P.bloodPrice, due: s.t, labour: true, basis: 'wrong', way: 'blood', rec: death.id, doer: p.blowBy, intent: p.blowIntent || 'gain' });
       if (p.spouse >= 0) s.people[p.spouse]!.spouse = -1;
     }
   }
 
   // Bonds weaken with disuse and lapse; regard fades.
   for (const bd of s.bonds) {
-    if (bd.about === 'person' || bd.about === 'yield' || bd.about === 'right' || bd.basis === 'birth') continue;
+    if (bd.about === 'person' || bd.about === 'yield' || bd.about === 'right' || bd.way === 'blood' || bd.basis === 'birth') continue;
     bd.strength *= 1 - (bd.about === 'land' ? P.lapse : P.lapse / 2);
   }
   for (const a in s.ties) {
