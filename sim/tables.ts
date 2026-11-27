@@ -230,6 +230,8 @@ export const P = {
   far: 8,
   /** Days a week a tenant owes its lord by custom when he needs hands. */
   boon: 2,
+  /** Years before one who saw ground lost may claim it back by blood; one born after the loss may claim it at once. */
+  heirYears: 10,
   toll: 0.2, charterDays: 40, charterFee: 40, workedFade: 0.985, banWeeks: 104,
   /** Harm laid to the court by one who could find no one to deal with because of what the law now says. */
   harmChilled: 3,

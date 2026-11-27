@@ -246,7 +246,7 @@ export function cuts(s: State, p: Petition): string[] {
   // A fellow left in want against a duty: compel the aid, dispense the duty, leave it to the body, or neither.
   if (p.side === 'unaided') return ['compel', 'dispense', ...remit, 'dismiss'];
   // A lord taking more labour than custom: hold him to custom, back him, or turn the labour into a share of the yield.
-  if (p.side === 'exceeds') return ['custom', 'uphold', 'commute', ...remit];
+  if (p.side === 'exceeds') { const m = s.bonds.find(x => x.id === p.bond); return ['custom', 'uphold', ...(m && m.boon > 0 && m.share <= 0.45 ? ['commute'] : []), ...remit]; }
   // An heir's claim by blood to ground another now holds: restore it, uphold the holder, divide it, or leave it below.
   if (p.side === 'heir') return ['restore', 'uphold', 'divide', ...remit];
   // One of a house appeals against its head: let them speak for the house, keep the head, or let them go with their share.
@@ -271,6 +271,8 @@ export function cuts(s: State, p: Petition): string[] {
   const c = ['enforce', excused ? 'pardon' : 'strike', third, ...remit];
   // Whoever is said to have done a wrong may or may not have. An inquest can be held on any of them, once.
   if (bd.about === 'act' && ((bd.basis === 'wrong' && bd.doer >= 0) || bd.denied)) c.push('inquire');
+  // A promise spoken with nobody by can be written on the roll on the court's say-so, true or not; then it cannot be denied.
+  if (bd.about === 'act' && bd.proof === 'spoken' && p.side === 'owed') c.push('inscribe');
   return c;
 }
 
@@ -576,6 +578,12 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
     carry(s, c, p, forGains ? 'enforce' : bd.about === 'land' ? 'turn' : 'strike');
     // The court is spared most of the ill will; the one who lost holds it against the one who judged.
     [gains, bears].forEach((w, i) => { const d = (c.grief[w] ?? 0) - before[i]!; if (d > 0) { c.grief[w] = before[i]! + d * 0.25; if (w !== lp) warm(s, w, lp, -0.3); } });
+    return true;
+  }
+  if (cut === 'inscribe' && bd.about === 'act') {
+    // On the roll it stands, whether it was ever truly made or not. The one who denied it is held to it.
+    bd.proof = 'roll'; bd.denied = false; bd.broken = true; bd.due = s.t;
+    grieve(c, bd.a, bd.fabricated ? P.harmLost : P.harmPaid);
     return true;
   }
   if (cut === 'pardon') {
@@ -910,6 +918,9 @@ export function audience(s: State): Petition[] {
       if (heirDone) break;
       for (const sg in m.lore) {
         if (!sg.startsWith('claim:')) continue;
+        // An ancestral claim: made by one born after the ground was lost, or by one who saw it lost, years on. Not the week after.
+        const lostAt = m.lore[sg]!;
+        if (!(m.born > lostAt || s.t - lostAt >= P.heirYears * 52)) continue;
         const cell = Number(sg.slice(6)), held = s.bonds.find(x => x.about === 'land' && x.cell === cell && x.a !== X.id && x.strength >= 0.5 && s.bodies[x.a]?.alive);
         if (!held) continue;
         const before = fresh.length;

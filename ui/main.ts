@@ -207,6 +207,7 @@ function cutWordsOf(p: Petition, cut: string): [string, string] | undefined {
     dismiss: ['Call it no one’s fault', 'The water came as water does. They will hold it against you.'],
   } as Record<string, [string, string]>)[cut];
   if (cut === 'pardon') return ['Pardon it', 'It was done from need or in defence. Nothing is owed, and no name is blackened by it.'];
+  if (cut === 'inscribe' && p.side === 'owed') return ['Write the promise on the roll', 'On your word it was made. It can never be denied, true or not.'];
   if (cut === 'inscribe') return ['Write their custom on the roll', 'It binds every like matter in their body, for good, and can never be challenged.'];
   if (p.side === 'unaided' && !cut.startsWith('remit')) return ({
     compel: [`Order ${B} to give`, 'Three weeks of what they lack, from what it has most of.'],

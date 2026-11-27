@@ -61,8 +61,9 @@ export function settle(s: State): void {
         for (const [k, w] of Object.entries(h.ways)) if (!m.ways[k]) m.ways[k] = { w: 1, p: w.p };
         for (const [k, w] of Object.entries(m.ways)) if (!h.ways[k]) { h.ways[k] = { w: 1, p: w.p }; b.ways[k] = { w: 1, p: w.p }; }
         // A belief is taken from another only by one ready enough to believe it.
-        for (const [sign, v] of Object.entries(h.lore)) if (v >= P.tell && 0.9 * v > (m.lore[sign] ?? 0) && 1.2 * v > 1 - m.credulous) m.lore[sign] = 0.9 * v;
+        for (const [sign, v] of Object.entries(h.lore)) if (!sign.startsWith('claim:') && v >= P.tell && 0.9 * v > (m.lore[sign] ?? 0) && 1.2 * v > 1 - m.credulous) m.lore[sign] = 0.9 * v;
         for (const [sign, v] of Object.entries(m.lore)) {
+          if (sign.startsWith('claim:')) continue;
           if (v >= P.tell && 0.9 * v > (h.lore[sign] ?? 0) && 1.2 * v > 1 - h.credulous) { h.lore[sign] = 0.9 * v; b.lore[sign] = 0.9 * v; }
           else if (!sign.startsWith('claim:') && !(h.lore[sign]! >= v)) { const f = v * P.forget; if (f < 0.02) delete m.lore[sign]; else m.lore[sign] = f; }
         }

@@ -146,7 +146,8 @@ export function bind(s: State): void {
       const pledge = s.bonds.find(x => x.about === 'bond' && x.secures === bd.id);
       const held = pledge && s.bonds.find(x => x.id === pledge.on && x.about === 'land');
       if (pledge && held) {
-        for (const m of living(s, D)) m.lore[`claim:${held.cell}`] = 1;
+        // Those of the house remember the week the ground was lost; their children are born remembering it.
+        for (const m of living(s, D)) m.lore[`claim:${held.cell}`] = s.t;
         held.a = C.id; held.basis = 'word';
         rec(s, 'take', { a: C.id, b: D.id, cell: held.cell, kind2: -2, cause: bd.rec });
         warm(s, D.id, C.id, -0.2);

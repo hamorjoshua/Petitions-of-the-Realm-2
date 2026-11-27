@@ -77,7 +77,7 @@ export function learn(s: State): void {
     const members = leaves(s, c).map(i => s.bodies[i]!);
     if (members.length < 2) continue;
     const held = new Map<string, number>();
-    for (const m of members) for (const [sign, v] of Object.entries(m.lore)) if (v > P.heed) held.set(sign, (held.get(sign) ?? 0) + 1);
+    for (const m of members) for (const [sign, v] of Object.entries(m.lore)) if (v > P.heed && !sign.startsWith('claim:')) held.set(sign, (held.get(sign) ?? 0) + 1);
     for (const [sign, n] of held) {
       if (n * 2 < members.length || n < 2) continue;
       for (const m of members) {
@@ -104,7 +104,8 @@ export function learn(s: State): void {
     if (!b.alive || b.parts.length) continue;
     // A house believed to bring harm is held the worse for it.
     for (const [sign, v] of Object.entries(b.lore)) if (v > P.heed && sign.startsWith('house:')) warm(s, b.id, Number(sign.slice(6)), -0.05 * v);
-    const strong = Object.entries(b.lore).filter(([, v]) => v >= P.tell);
+    // A claim by blood is no belief to be told: it passes only from parent to child.
+    const strong = Object.entries(b.lore).filter(([k, v]) => v >= P.tell && !k.startsWith('claim:'));
     if (!strong.length) continue;
     // Told to neighbours, and to kin and fellows however far off.
     const hearers = new Set(around(idx, s.side, b.home, P.dealReach).filter(t => dist(s.side, t.home, b.home) <= P.dealReach));
