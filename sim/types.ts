@@ -149,7 +149,10 @@ export interface Wrong { by: number; to: number; kind: number; q: number; rec: n
 export interface Petition { /** For a house in want: everything that weighs on it, heaviest first, and the shape of each. */ burdens: number[]; shapes: string[]; id: number; t: number; by: number; against: number; bond: number; need: number; rec: number; shape: string; side: 'owed' | 'owes' | 'outside' | 'bare' | 'asks' | 'fears' | 'exit' | 'suspects'; work?: number; cell?: number; sign?: string; body?: number; press?: number; reason: 'none' | 'clash' | 'challenge'; speaksFor: number; waited: number; urgency: number }
 /** A rule: a bond that binds every member of a body, or the whole realm (scope -1). */
 export interface Rule { id: number; scope: number; shape: string; cut: string; since: number; uses: number }
-export interface Court { standing: number; docket: Petition[]; rules: Rule[]; grief: Record<number, number>; seen: Record<string, number>; next: number; quiet: number; declined: number; chilled: number;
+export interface Court {
+  /** How the court last ruled on each kind of matter, how far it found for the one who asked, and when; and how often it has gone back on itself lately. */
+  precedent: Record<string, { fav: number; t: number }>; caprice: number;
+  standing: number; docket: Petition[]; rules: Rule[]; grief: Record<number, number>; seen: Record<string, number>; next: number; quiet: number; declined: number; chilled: number;
   /** What the Crown has laid by, kind by kind; and the regent's word, given and not yet made good. */
   store: number[]; words: { to: number; need: number; due: number }[]; wordsKept: number; wordsBroken: number; store0: number }
 export interface Use { body: number; cell: number; days: number }

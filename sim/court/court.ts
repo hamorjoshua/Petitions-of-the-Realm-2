@@ -25,7 +25,7 @@ export function openCourt(s: State): Court {
     for (let j = 0; j < NK; j++) if (!Kn[j]!.fixed && Kn[j]!.serves[n]! > 0 && (k < 0 || Kn[j]!.keep < Kn[k]!.keep)) k = j;
     if (k >= 0) store[k] = Math.max(store[k]!, (heads * P.crownWeeks * (NEEDS[n]!.per + NEEDS[n]!.cold * 5) * Kn[k]!.use) / Kn[k]!.serves[n]!);
   }
-  return (s.court = { standing: 5, docket: [], rules: [], grief: {}, seen: {}, next: 0, quiet: 0, declined: 0, chilled: 0, store, words: [], wordsKept: 0, wordsBroken: 0, store0: store.reduce((x, y) => x + y, 0) });
+  return (s.court = { precedent: {}, caprice: 0, standing: 5, docket: [], rules: [], grief: {}, seen: {}, next: 0, quiet: 0, declined: 0, chilled: 0, store, words: [], wordsKept: 0, wordsBroken: 0, store0: store.reduce((x, y) => x + y, 0) });
 }
 
 /** Give a house three weeks of what it needs out of the Crown's store. False if the store has not got it. */
@@ -92,8 +92,10 @@ export function upheld(s: State, side: string, way: string, bearer: number, gain
     if (r.shape.startsWith('owed on')) { sum += FAVOUR.owed![r.cut] ?? 0.5; n++; }
     else if (r.shape.startsWith('bound by')) { sum += 1 - (FAVOUR.owes![r.cut] ?? 0.5); n++; }
   }
-  if (n) return 0.2 + sum / n;
-  return Math.max(0.7, Math.min(1.2, 0.5 + (B.plea[0] ?? 0.5)));
+  // A court that goes back on itself makes every promise less certain.
+  const doubt = 1 - Math.min(0.5, 0.04 * c.caprice);
+  if (n) return (0.2 + sum / n) * doubt;
+  return Math.max(0.7, Math.min(1.2, 0.5 + (B.plea[0] ?? 0.5))) * doubt;
 }
 
 /** One who found nobody to deal with because of what the law now says holds it against the court. */
@@ -814,7 +816,16 @@ export function hear(s: State, rulings: Ruling[]): void {
     const favour = done ? FAVOUR[p.side]?.[r.cut.split(':')[0]!] ?? 0.5 : 0;
     if (p.reason === 'none') teach(s, hearthIndex(s), p.by, p.side, favour, P.pleaOwn);
     // One the court found for thinks the better of it.
-    if (favour >= 0.7) c.grief[p.by] = Math.max(0, (c.grief[p.by] ?? 0) - P.harmPaid);
+    // A court that rules one way on a kind of matter and the other way within the year is arbitrary. The one who lost
+    // feels the law changed under them; and nobody trusts a ruling in their favour to stick.
+    const prior = c.precedent[p.shape];
+    if (done && p.reason === 'none' && prior && s.t - prior.t <= 52 && Math.abs(prior.fav - favour) >= 0.5) {
+      c.caprice += 1;
+      grieve(c, favour >= 0.5 ? p.against : p.by, P.harmReversed);
+      rec(s, 'caprice', { a: p.by, b: p.against, way: p.shape });
+    }
+    if (done && p.reason === 'none') c.precedent[p.shape] = { fav: favour, t: s.t };
+    if (favour >= 0.7) c.grief[p.by] = Math.max(0, (c.grief[p.by] ?? 0) - P.harmPaid / (1 + 0.25 * c.caprice));
     c.docket = c.docket.filter(x => x !== p);
     if (r.width === 'case' || p.reason === 'challenge') continue;
     // A rule: for the body the petitioner belongs to, or for everyone. It replaces any rule it contradicts there.
@@ -845,6 +856,7 @@ export function hear(s: State, rulings: Ruling[]): void {
   }
   // What the Crown has laid by spoils like anything else. The regent's word falls due: kept out of the store, or broken before everyone.
   for (let k = 0; k < NK; k++) c.store[k] = c.store[k]! * (1 - Kn[k]!.keep);
+  c.caprice *= 0.99;
   const idx = hearthIndex(s);
   c.words = c.words.filter(w => {
     if (w.due > s.t) return true;

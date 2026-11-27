@@ -76,6 +76,7 @@ for (const seed of seeds) {
     row.sore += Object.values(c.grief).filter(g => g >= P.aggrieved).length;
     row.declined += c.declined;
     row.chilled += c.chilled;
+    (row as any).caprice = ((row as any).caprice ?? 0) + c.caprice;
     row.store += c.store.reduce((x, y) => x + y, 0) / Math.max(1, store0);
     row.wordKept += c.wordsKept; row.wordBroke += c.wordsBroken;
     const hs = s.bodies.filter(b => b.alive && !b.parts.length && b.plea.length);
@@ -90,9 +91,9 @@ console.log('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 for (const [name, r] of Object.entries(rows)) console.log(`| ${name} | ${r.kept} of ${n} | ${(r.standing / n).toFixed(1)} | ${Math.round(r.arose / n)} | ${Math.round(r.heard / n)} | ${Math.round(r.below / n)} | ${(r.rules / n).toFixed(1)} | ${r.heard ? Math.round((100 * r.repeats) / r.heard) + '%' : '-'} | ${r.heard ? Math.round((100 * r.top5) / r.heard) + '%' : '-'} | ${(r.shapes / n).toFixed(1)} | ${Math.round((100 * r.souls) / n)}% |`);
 
 console.log('\nWho came, and what houses had come to expect of the court by the end (how likely it is to find for the one who asks):\n');
-console.log(`| Court | Crown's store left | The regent's word kept / broken | Dealings the law stood in the way of | Kept their own counsel | ${SIDES.map(x => ({ owed: 'Owed on a bond', owes: 'Bound by a bond', outside: 'Shut out by a bond', bare: 'In bare want' })[x]).join(' | ')} |`);
-console.log('| --- | --- | --- | --- | --- | --- | --- | --- | --- |');
-for (const [name, r] of Object.entries(rows)) console.log(`| ${name} | ${Math.round((100 * r.store) / n)}% | ${(r.wordKept / n).toFixed(1)} / ${(r.wordBroke / n).toFixed(1)} | ${Math.round(r.chilled / n)} | ${Math.round(r.declined / n)} | ${r.plea.map(v => (v / n).toFixed(2)).join(' | ')} |`);
+console.log(`| Court | Caprice at end | Crown's store left | The regent's word kept / broken | Dealings the law stood in the way of | Kept their own counsel | ${SIDES.map(x => ({ owed: 'Owed on a bond', owes: 'Bound by a bond', outside: 'Shut out by a bond', bare: 'In bare want' })[x]).join(' | ')} |`);
+console.log('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |');
+for (const [name, r] of Object.entries(rows)) console.log(`| ${name} | ${(((r as any).caprice ?? 0) / n).toFixed(1)} | ${Math.round((100 * r.store) / n)}% | ${(r.wordKept / n).toFixed(1)} / ${(r.wordBroke / n).toFixed(1)} | ${Math.round(r.chilled / n)} | ${Math.round(r.declined / n)} | ${r.plea.map(v => (v / n).toFixed(2)).join(' | ')} |`);
 
 console.log('\nWhich planes the heard matters set against each other (of the ten possible pairs, plus matters on one plane alone):\n');
 for (const [name, r] of Object.entries(rows)) {
