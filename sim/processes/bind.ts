@@ -3,7 +3,7 @@
 
 import { BY_HARM, Kn, NEEDS, NK, NN, P, TOIL } from '../tables.ts';
 import { askAhead, cover, drive } from '../value.ts';
-import { around, bond, leaves, living, setTie, dist, head, holdsByCell, kinOf, might, muster, rec, served as remember, struggle, tie, warm } from '../util.ts';
+import { around, bond, leaves, living, sheltered, setTie, dist, head, holdsByCell, kinOf, might, muster, rec, served as remember, struggle, tie, warm } from '../util.ts';
 import type { Body, Bond, Person, State } from '../types.ts';
 
 /** The needs a kind serves, for saying why someone's cover fell. */
@@ -144,7 +144,7 @@ export function bind(s: State): void {
     if (!bd.broken) {
       // A debt secured on a holding: the holding passes, and there is nothing left to fight over.
       const pledge = s.bonds.find(x => x.about === 'bond' && x.secures === bd.id);
-      const held = pledge && s.bonds.find(x => x.id === pledge.on && x.about === 'land');
+      const held = pledge && s.bonds.find(x => x.id === pledge.on && x.about === 'land' && x.basis !== 'vow');
       if (pledge && held) {
         // Those of the house remember the week the ground was lost; their children are born remembering it.
         for (const m of living(s, D)) m.lore[`claim:${held.cell}`] = s.t;
@@ -187,6 +187,7 @@ export function bind(s: State): void {
     const pressed = served(bd.kind).some(n => covD[n]! < P.short);
     const resists = pressed && mD >= 0.6 * mC;
     let got = want;
+    if (sheltered(s, C, D, bd.id)) { bd.due = s.t + 4; continue; }
     if (resists) {
       const e = rec(s, 'take', { a: C.id, b: D.id, kind: bd.kind, q: 0, q2: 1, cause: bd.rec });
       got = want * struggle(s, kin, C, D, e.id, 'claim');

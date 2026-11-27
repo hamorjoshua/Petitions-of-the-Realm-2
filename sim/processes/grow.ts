@@ -34,7 +34,7 @@ export function person(s: State, mother: Person | null, father: Person | null, b
     credulous: clamp(mid(x => x.credulous, 0.5) + 0.2 * u(5) - 0.1 + 0.15 * z(6), 0.1, 0.9), omen: -1,
     bore: s.t - 999, blow: -1, blowAt: s.t - 999, blowBy: -1, fed: new Array<number>(NN).fill(1),
     lore: Object.fromEntries([mother, father].flatMap(x => (x ? Object.entries(x.lore).filter(([k]) => k.startsWith('claim:')) : []))), ways: {}, skill: Rc.map(() => (mother ? P.green : 1)),
-    blowIntent: '',
+    blowIntent: '', devotion: clamp(mid(x => x.devotion, 0.5) + 0.25 * z(13), 0, 1), stained: 0, ban: 0,
     ambition: clamp(mid(x => x.ambition, 0.5) + 0.25 * z(12), 0.05, 1.5),
     plea: [0, 1, 2, 3].map(k => clamp(mid(x => x.plea[k] ?? 0.5, 0.5) + 0.15 * z(8 + k), 0.1, 0.9)),
     hope: St.map(() => clamp(mid(x => x.hope[0] ?? 6, 6) + 2 * z(7), 2, 14)),

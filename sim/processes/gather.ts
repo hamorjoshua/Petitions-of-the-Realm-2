@@ -7,7 +7,7 @@ import { around, bond, dist, grown, head, inheritTies, kinOf, leaves, living, re
 import type { Body, Person, State } from '../types.ts';
 
 export function body(s: State, home: number): Body {
-  const b: Body = { id: s.bodies.length, home, store: new Array<number>(NK).fill(0), members: [], parts: [], of: -1, head: -1, threat: -1, hid: [], paidUp: 0, shirkedTo: -1, shirkedAt: -999, overworked: 0, speaker: -1, breach: null, harmedBy: null, alive: true, since: s.t, plan: [], spent: 0, goto: -1, why: new Array<number>(NN).fill(-1), ways: {}, stuck: 0, pressed: false, lore: {}, recent: [], skill: [], aim: null, hope: [], put: [], got: [], plea: [], away: 0, rank: '', owedUp: [] };
+  const b: Body = { id: s.bodies.length, home, store: new Array<number>(NK).fill(0), members: [], parts: [], of: -1, head: -1, threat: -1, hid: [], paidUp: 0, shirkedTo: -1, shirkedAt: -999, overworked: 0, speaker: -1, breach: null, harmedBy: null, authority: 'none', creed: { rigour: 0.5, folk: 0.5, purity: 0.5 }, sheltered: null, tolerated: -999, alive: true, since: s.t, plan: [], spent: 0, goto: -1, why: new Array<number>(NN).fill(-1), ways: {}, stuck: 0, pressed: false, lore: {}, recent: [], skill: [], aim: null, hope: [], put: [], got: [], plea: [], away: 0, rank: '', owedUp: [] };
   s.bodies.push(b);
   return b;
 }
@@ -30,6 +30,8 @@ export function handOver(s: State, from: Body, to: Body, share: number): void {
     to.store[k] = to.store[k]! + q;
   }
   for (const bd of s.bonds.slice()) {
+    // A vow is no one's to pass on.
+    if (bd.basis === 'vow') continue;
     if (share >= 1 && bd.about !== 'person' && bd.about !== 'act') {
       // Everything passes whole: the bond itself changes hands, so that whatever rests on it still does.
       if (bd.a === from.id) bd.a = to.id;
@@ -131,6 +133,7 @@ export function gather(kin: Map<number, Set<number>>, s: State): void {
     nb.why = b.why.slice();
     nb.ways = structuredClone(b.ways);
     nb.lore = { ...b.lore };
+    nb.creed = { ...b.creed };
     nb.since = b.since;
     rec(s, 'leave', { a: pair.id, b: b.id, kind2: nb.id, q: going.length, cell: b.home });
   }
@@ -151,6 +154,17 @@ export function gather(kin: Map<number, Set<number>>, s: State): void {
     if (b.members.length && living(s, b).some(p => (s.t - p.born) / 52 >= 14)) continue;
     const heir = nearestKin(b);
     if (b.members.length && !heir) continue;
+    // The last of a house, if devout, leaves its ground to the nearest holy body, for ever. The blood keeps a claim.
+    if (!b.members.length) {
+      const last = s.log.filter(r => r.k === 'die' && r.b === b.id).map(r => s.people[r.a]!).pop();
+      const holy = last && last.devotion >= P.mortmainDevotion ? s.bodies.filter(x => x.alive && x.authority === 'symbolic' && dist(s.side, x.home, b.home) <= P.far).sort((x, y) => dist(s.side, x.home, b.home) - dist(s.side, y.home, b.home))[0] : undefined;
+      const held = holy ? s.bonds.filter(x => x.about === 'land' && x.a === b.id).sort((x, y) => y.strength - x.strength)[0] : undefined;
+      if (holy && held) {
+        held.a = holy.id; held.basis = 'vow'; held.since = s.t;
+        if (heir) for (const m of living(s, heir)) m.lore[`claim:${held.cell}`] = s.t;
+        rec(s, 'mortmain', { a: b.id, b: holy.id, cell: held.cell });
+      }
+    }
     if (heir) {
       for (const p of living(s, b)) { shift(s, p, heir); rec(s, 'join', { a: p.id, b: heir.id }); }
       handOver(s, b, heir, 1);

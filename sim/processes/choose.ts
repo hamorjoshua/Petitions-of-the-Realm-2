@@ -4,7 +4,7 @@
 import { exp } from '../math.ts';
 import { AIDERS, BY_HARM, Kn, NEEDS, NK, NN, NS, P, Rc, St, TOIL } from '../tables.ts';
 import { askAhead, cover, drive, welfare, welfareLater, zeros } from '../value.ts';
-import { around, bond, dist, grown, head, holdsByCell, kinOf, muster, near, rec, struggle, tenancies, tie, top, warm, type Tenancy } from '../util.ts';
+import { around, bond, dist, grown, head, holdsByCell, kinOf, muster, near, rec, struggle, sheltered, tenancies, tie, top, warm, type Tenancy } from '../util.ts';
 import { bear } from './grow.ts';
 import { tBar } from './sky.ts';
 import { chilled, upheld } from '../court/court.ts';
@@ -250,6 +250,9 @@ function idleRights(s: State, L: Land, id: number): { rb: Bond; cell: number }[]
 
 /** Those a house can deal with: its neighbours, and its kin however far off, up to a long walk. */
 function reachable(s: State, L: Land, A: Ctx): Ctx[] {
+  return reach0(s, L, A).filter(B => !(B.h.ban > 0 && A.h.credulous >= P.heed));
+}
+function reach0(s: State, L: Land, A: Ctx): Ctx[] {
   const out = around(L.at, s.side, A.b.home, P.dealReach).filter(B => dist(s.side, A.b.home, B.b.home) <= P.dealReach);
   for (const k of L.kin.get(A.b.id) ?? []) { const B = L.ctx.get(k); if (B && !out.includes(B) && dist(s.side, A.b.home, B.b.home) <= P.far) out.push(B); }
   return out;
@@ -517,7 +520,7 @@ function deal(s: State, L: Land, cs: Map<number, Ctx>, kin: Map<number, Set<numb
       if (q > vBest) { vBest = q; victim = B; vk = k; }
     }
   }
-  if (victim && vBest > 0.05) {
+  if (victim && vBest > 0.05 && !sheltered(s, a, victim.b)) {
     // The holder is at home: the taking is opposed, and the taker carries off only what their might wins.
     const e = rec(s, 'take', { a: a.id, b: victim.b.id, kind: vk, q: 0, q2: 1, need: n, cause: a.why[n]! });
     const q = amount(victim, vk) * struggle(s, kin, a, victim.b, e.id, 'need');

@@ -2,7 +2,7 @@
 // Last week's choices are carried out against what is there now.
 
 import { AIDERS, Kn, NS, P, Rc, St } from '../tables.ts';
-import { around, dist, head, near, hearthIndex, holdsByCell, kinOf, payRent, rec, struggle, tenancies, tie } from '../util.ts';
+import { around, dist, head, near, sheltered, hearthIndex, holdsByCell, kinOf, payRent, rec, struggle, tenancies, tie } from '../util.ts';
 import { bear } from './grow.ts';
 import type { Body, Bond, State, Work } from '../types.ts';
 
@@ -68,7 +68,8 @@ export function make(s: State): void {
         const hb = s.bodies[h.a]!;
         if (hb.alive && h.strength > most && dist(s.side, hb.home, j.w.cell) <= P.reach) { most = h.strength; guard = hb; }
       }
-      if (sum >= P.held && guard && !over.some(h => h.a === b.id)) m *= struggle(s, kin, b, guard, s.nrec, 'need');
+      if (sum >= P.held && guard && !over.some(h => h.a === b.id) && (s.cells[j.w.cell]!.sanctity >= P.sanctuary ? sheltered(s, b, guard) || true : false)) m = 0;
+      else if (sum >= P.held && guard && !over.some(h => h.a === b.id)) m *= struggle(s, kin, b, guard, s.nrec, 'need');
       if (m <= 1e-9) continue;
     }
     for (const [st, q] of r.from) { c.stock[st] = Math.max(0, c.stock[st]! - q * m); if (St[st]!.holds && St[st]!.holds! >= 0.5) { c.cleared += q * m; c.clearedBy = b.id; } }

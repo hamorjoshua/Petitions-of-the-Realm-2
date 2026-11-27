@@ -5,6 +5,10 @@ export interface Cell {
   high: number;
   /** Cover taken off it by work lately, and by whom most: what makes the water run faster below. */
   cleared: number; clearedBy: number;
+  /** The sacred: holiness (at P.sanctuary or more, force may not be used here); weeks of interdict left; a shrine, if one has
+   *  risen here, whose it is, since when, whether sanctioned, and who shares its offerings; and how prone the place is to
+   *  being thought holy, fixed at the founding. */
+  sanctity: number; interdict: number; shrine: { of: number; since: number; sanctioned: boolean; to: number } | null; awe: number;
   soil: number; soil0: number;
   wet: number;
   water: number;
@@ -27,6 +31,8 @@ export interface Person {
   sound: number; scruple: number; temper: number; spacing: number; credulous: number;
   /** How much they want what others cannot also have: ground beyond their need, a sole right, the lead of their body. */
   ambition: number;
+  /** Drive toward the sacred, apart from any want; stain upon the person; weeks of being shunned left. */
+  devotion: number; stained: number; ban: number;
   /** What the one who struck the last blow meant by it: to defend, from need, or for gain. */
   blowIntent: string;
   /** How the house stood when this person was born. */
@@ -67,6 +73,11 @@ export interface Body {
   /** The fellow it last left in want against a duty it holds, and when; and labour taken from it beyond custom, fading. */
   shirkedTo: number; shirkedAt: number; overworked: number;
   /** The member who speaks for it, if not its eldest; a constraint its speaker was seen to break, and when; harm from work upstream. */
+  /** Whether its standing comes from declaring what is holy rather than holding ground or force; and its creed:
+   *  rigour (norms over survival), folk (tolerance of shrines and signs not sanctioned), purity (rites of a stained man are void). */
+  authority: 'none' | 'symbolic'; creed: { rigour: number; folk: number; purity: number };
+  /** Force against it turned back by sanctuary: by whom, over which bond, when. Lately tolerated in a creed apart. */
+  sheltered: { from: number; bond: number; t: number } | null; tolerated: number;
   speaker: number; breach: { sign: string; t: number } | null; harmedBy: { by: number; cell: number; loss: number; t: number } | null;
   alive: boolean;
   since: number;
@@ -99,7 +110,7 @@ export interface Body {
   aim: { kind: number; q: number; for: number; worth: number; since: number; want: string } | null;
 }
 
-export type Basis = 'birth' | 'word' | 'use' | 'grant' | 'wrong' | 'bound';
+export type Basis = 'birth' | 'word' | 'use' | 'grant' | 'wrong' | 'bound' | 'vow';
 
 /** Something that holds between parties about an object: a person, land, an act still owed, or another bond. */
 export interface Bond {
@@ -158,12 +169,14 @@ export interface Rec {
 export interface Wrong { by: number; to: number; kind: number; q: number; rec: number; doer: number; intent?: string }
 
 /** A matter before the court: who brings it, against whom, about which bond or want, and why it climbed this far. */
-export interface Petition { /** For a house in want: everything that weighs on it, heaviest first, and the shape of each. */ burdens: number[]; shapes: string[]; id: number; t: number; by: number; against: number; bond: number; need: number; rec: number; shape: string; side: 'owed' | 'owes' | 'outside' | 'bare' | 'asks' | 'fears' | 'exit' | 'suspects' | 'unaided' | 'exceeds' | 'heir' | 'appeal' | 'harmed'; work?: number; cell?: number; sign?: string; body?: number; press?: number; person?: number; reason: 'none' | 'clash' | 'challenge'; speaksFor: number; waited: number; urgency: number }
+export interface Petition { /** For a house in want: everything that weighs on it, heaviest first, and the shape of each. */ burdens: number[]; shapes: string[]; id: number; t: number; by: number; against: number; bond: number; need: number; rec: number; shape: string; side: 'owed' | 'owes' | 'outside' | 'bare' | 'asks' | 'fears' | 'exit' | 'suspects' | 'unaided' | 'exceeds' | 'heir' | 'appeal' | 'harmed' | 'mortmain' | 'sanctuary' | 'shrine' | 'unclean' | 'heresy'; work?: number; cell?: number; sign?: string; body?: number; press?: number; person?: number; reason: 'none' | 'clash' | 'challenge'; speaksFor: number; waited: number; urgency: number }
 /** A rule: a bond that binds every member of a body, or the whole realm (scope -1). */
 export interface Rule { /** Written on the roll: it cannot be challenged or undone. */ roll?: boolean; id: number; scope: number; shape: string; cut: string; since: number; uses: number }
 export interface Court {
   /** How the court last ruled on each kind of matter, how far it found for the one who asked, and when; and how often it has gone back on itself lately. */
   precedent: Record<string, { fav: number; t: number }>; caprice: number;
+  /** The Crown's two capacities: whether its rulings are accepted (legitimacy) and whether it can enforce them (reach). Standing is the lesser. */
+  legitimacy: number; reach: number; collected: number;
   standing: number; docket: Petition[]; rules: Rule[]; grief: Record<number, number>; seen: Record<string, number>; next: number; quiet: number; declined: number; chilled: number;
   /** What the Crown has laid by, kind by kind; and the regent's word, given and not yet made good. */
   store: number[]; words: { to: number; need: number; due: number }[]; wordsKept: number; wordsBroken: number; store0: number }

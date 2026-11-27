@@ -26,7 +26,7 @@ export function openCourt(s: State): Court {
     for (let j = 0; j < NK; j++) if (!Kn[j]!.fixed && Kn[j]!.serves[n]! > 0 && (k < 0 || Kn[j]!.keep < Kn[k]!.keep)) k = j;
     if (k >= 0) store[k] = Math.max(store[k]!, (heads * P.crownWeeks * (NEEDS[n]!.per + NEEDS[n]!.cold * 5) * Kn[k]!.use) / Kn[k]!.serves[n]!);
   }
-  return (s.court = { precedent: {}, caprice: 0, standing: 5, docket: [], rules: [], grief: {}, seen: {}, next: 0, quiet: 0, declined: 0, chilled: 0, store, words: [], wordsKept: 0, wordsBroken: 0, store0: store.reduce((x, y) => x + y, 0) });
+  return (s.court = { legitimacy: 5, reach: 5, collected: 0, precedent: {}, caprice: 0, standing: 5, docket: [], rules: [], grief: {}, seen: {}, next: 0, quiet: 0, declined: 0, chilled: 0, store, words: [], wordsKept: 0, wordsBroken: 0, store0: store.reduce((x, y) => x + y, 0) });
 }
 
 /** Give a house three weeks of what it needs out of the Crown's store. False if the store has not got it. */
@@ -421,7 +421,7 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
       grieve(c, lord, P.harmLost);
     } else if (cut === 'release') {
       // It may go, and the ground goes back to the lord.
-      m.due = s.t; m.share = 0; by.threat = s.t - P.wait;
+      m.due = s.t; m.share = 0; by.threat = s.t - P.wait; c.reach -= 0.1;
       grieve(c, lord, P.harmPaid);
     } else {
       // Tied to the land: it may not leave.
@@ -991,7 +991,7 @@ export function audience(s: State): Petition[] {
     if (!s.bodies[p.by]!.alive) return false;
     if (p.burdens.length) { if (!p.burdens.some(id => byId.has(id))) return false; } else if (p.reason !== 'challenge' && p.bond >= 0) { const bd = byId.get(p.bond); if (!bd || (bd.about === 'act' && bd.q <= 0.05) || (bd.about === 'land' && bd.strength < 0.05)) return false; }
     // Left unheard a whole season: that is held against the court by the week.
-    if (p.waited > P.wait) { grieve(c, p.by, P.harmUnheard * p.waited); teach(s, idx, p.by, p.side, 0, P.pleaOwn / 2); return false; }
+    if (p.waited > P.wait) { grieve(c, p.by, P.harmUnheard * p.waited); c.legitimacy -= 0.02; teach(s, idx, p.by, p.side, 0, P.pleaOwn / 2); return false; }
     return true;
   });
   for (const p of c.docket) {
@@ -1012,7 +1012,7 @@ export function hear(s: State, rulings: Ruling[]): void {
   const c = s.court;
   if (!c) return;
   const heard = rulings.slice(0, P.hearings + 1);
-  if (heard.length > P.hearings) c.standing -= 0.5;
+  if (heard.length > P.hearings) c.legitimacy -= 0.5;
   for (const r of heard) {
     const p = c.docket.find(x => x.id === r.petition);
     if (!p || !cuts(s, p).includes(r.cut)) continue;
@@ -1025,7 +1025,7 @@ export function hear(s: State, rulings: Ruling[]): void {
     // feels the law changed under them; and nobody trusts a ruling in their favour to stick.
     const prior = c.precedent[p.shape];
     if (done && p.reason === 'none' && prior && s.t - prior.t <= 52 && Math.abs(prior.fav - favour) >= 0.5) {
-      c.caprice += 1;
+      c.caprice += 1; c.legitimacy -= 0.1;
       grieve(c, favour >= 0.5 ? p.against : p.by, P.harmReversed);
       rec(s, 'caprice', { a: p.by, b: p.against, way: p.shape });
     }
@@ -1070,7 +1070,7 @@ export function hear(s: State, rulings: Ruling[]): void {
     const to = s.bodies[w.to]!;
     if (!to.alive) return false;
     if (relieve(s, c, to, w.need) > 0) { c.wordsKept++; rec(s, 'keep', { b: w.to, need: w.need, q2: 9 }); teach(s, idx, w.to, 'bare', 1, P.pleaOwn); return false; }
-    c.wordsBroken++;
+    c.wordsBroken++; c.legitimacy -= 0.5;
     rec(s, 'break', { b: w.to, need: w.need, q2: 9 });
     grieve(c, w.to, P.harmWord);
     for (const b of around(idx, s.side, to.home, P.reach)) if (b.id !== w.to) grieve(c, b.id, P.harmWord / 5);
@@ -1082,7 +1082,7 @@ export function hear(s: State, rulings: Ruling[]): void {
   const low = c.store.reduce((x, y) => x + y, 0) < 0.5 * c.store0 && s.t % 13 === 0;
   for (const b of s.bodies) {
     if (!b.alive || b.rank !== 'bailiff') continue;
-    for (let k = 0; k < NK; k++) { const up = Math.min(b.owedUp[k] ?? 0, b.store[k]!); if (up > 0) { b.store[k] = b.store[k]! - up; c.store[k] = c.store[k]! + up; } }
+    for (let k = 0; k < NK; k++) { const up = Math.min(b.owedUp[k] ?? 0, b.store[k]!); if (up > 0) { c.collected += up; b.store[k] = b.store[k]! - up; c.store[k] = c.store[k]! + up; } }
     b.owedUp = [];
     if (!low) continue;
     const payers = s.bonds.filter(x => x.about === 'yield' && x.b === b.id && x.way === 'crown').map(x => s.bodies[x.a]!).filter(x => x.alive && !x.rank);
@@ -1127,8 +1127,16 @@ export function hear(s: State, rulings: Ruling[]): void {
   // Confidence once withdrawn is not withdrawn again for a season: people wait to see what the court does next.
   c.quiet++;
   if (hearths > 0 && sore >= P.faction * hearths && c.quiet > 8) {
-    c.standing -= 1; c.quiet = 0;
+    // A faction that withdraws its confidence no longer does the Crown's bidding: its reach shrinks.
+    c.reach -= 1; c.quiet = 0;
     for (const k in c.grief) c.grief[k] = c.grief[k]! * 0.5;
     rec(s, 'withdraw', { q: sore, q2: hearths });
-  } else if (c.quiet % 13 === 0 && c.standing < 5) c.standing = Math.min(5, c.standing + 0.25);
+  } else if (c.quiet % 13 === 0) {
+    // A quiet season restores legitimacy if the court has kept to its word; reach comes back where the bailiffs collect.
+    if (c.caprice < 1) c.legitimacy += 0.25;
+    if (c.collected > 0) c.reach += 0.25;
+    c.collected = 0;
+  }
+  c.legitimacy = Math.max(0, Math.min(5, c.legitimacy)); c.reach = Math.max(0, Math.min(5, c.reach));
+  c.standing = Math.min(c.legitimacy, c.reach);
 }

@@ -43,7 +43,7 @@ export function found(seed: number, t0 = 0, side = P.side, souls = P.souls): Sta
   for (let i = 0; i < n; i++) {
     const h = high[i]!, water = h <= wetLine ? clamp(0.5 + (wetLine - h) / wetLine, 0.5, 1) : 0;
     const soil0 = clamp(0.35 + 0.7 * (1 - h) + 0.12 * (u() - 0.5), 0.15, 1.1);
-    s.cells.push({ high: h, soil: soil0, soil0, wet: 1, water, flow: 0, bank: 1, flood: 0, cleared: 0, clearedBy: -1, pot: new Array<number>(NS).fill(0), stock: new Array<number>(NS).fill(0) });
+    s.cells.push({ high: h, soil: soil0, soil0, wet: 1, water, flow: 0, bank: 1, flood: 0, cleared: 0, clearedBy: -1, sanctity: 0, interdict: 0, shrine: null, awe: u(), pot: new Array<number>(NS).fill(0), stock: new Array<number>(NS).fill(0) });
   }
   for (let k = 0; k < NS; k++) {
     const L = St[k]!.lies;
@@ -147,6 +147,9 @@ export function found(seed: number, t0 = 0, side = P.side, souls = P.souls): Sta
     const priest = pick(b => b.home === site);
     if (!priest) return;
     priest.rank = 'priest'; taken.add(priest.id);
+    // Its standing is in declaring what is holy; its ground is holy; its creed is its own.
+    priest.authority = 'symbolic'; s.cells[priest.home]!.sanctity = 0.7;
+    priest.creed = { rigour: 0.2 + 0.6 * u(), folk: 0.2 + 0.6 * u(), purity: 0.2 + 0.6 * u() };
     for (const b of s.bodies) if (b !== priest && !b.rank && dist(side, b.home, site) <= 3 && !s.bonds.some(x => x.about === 'yield' && x.a === b.id && x.way === 'tithe')) bond(s, { about: 'yield', a: b.id, b: priest.id, share: P.tithe, due: t0, basis: 'grant', way: 'tithe' });
   });
   for (let q = 0; q < 4; q++) {
@@ -157,6 +160,8 @@ export function found(seed: number, t0 = 0, side = P.side, souls = P.souls): Sta
     for (const b of s.bodies) if (b !== bailiff && inQ(b)) bond(s, { about: 'yield', a: b.id, b: bailiff.id, share: P.crownDue, due: t0, basis: 'grant', way: 'crown' });
   }
 
+  // Every house has a creed of its own from the start, within bounds.
+  for (const b of s.bodies) if (b.authority !== 'symbolic') b.creed = { rigour: 0.35 + 0.3 * u(), folk: 0.35 + 0.3 * u(), purity: 0.35 + 0.3 * u() };
   // Those here at the founding have always been here.
   for (const b of s.bodies) b.since = -1e6;
   void Rc;

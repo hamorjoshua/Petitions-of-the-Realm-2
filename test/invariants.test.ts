@@ -119,3 +119,35 @@ test('a chain of causes can be followed back from a record', () => {
   R.close();
   assert.ok(R.events.some(e => e.chain.length > 0), 'no event carries a chain');
 });
+
+test('a vow is never passed on by inheritance or lost to forfeiture', async () => {
+  const { bond } = await import('../sim/util.ts');
+  const { handOver } = await import('../sim/processes/gather.ts');
+  const { bind } = await import('../sim/processes/bind.ts');
+  const s = found(3);
+  const hs = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length);
+  const [X, Y, C] = [hs[0]!, hs[1]!, hs[2]!];
+  const land = bond(s, { about: 'land', a: X.id, cell: X.home, basis: 'vow', strength: 2 });
+  handOver(s, X, Y, 1);
+  assert.equal(land.a, X.id, 'a vow passed by inheritance');
+  X.store = X.store.map(() => 0);
+  const debt = bond(s, { about: 'act', a: X.id, b: C.id, kind: 0, q: 50, due: s.t, basis: 'word' });
+  bond(s, { about: 'bond', a: C.id, b: X.id, on: land.id, secures: debt.id, basis: 'word' });
+  s.log = [];
+  bind(s);
+  assert.equal(land.a, X.id, 'a vow was forfeited');
+  assert.equal(land.basis, 'vow');
+});
+
+test('force on holy ground is turned back, and logged', async () => {
+  const { sheltered } = await import('../sim/util.ts');
+  const s = found(3);
+  const hs = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length);
+  const [A, T] = [hs[0]!, hs[1]!];
+  s.cells[T.home]!.sanctity = 1;
+  s.log = [];
+  assert.ok(sheltered(s, A, T));
+  assert.ok(s.log.some(r => r.k === 'sanctuary' && r.a === A.id && r.b === T.id));
+  s.cells[T.home]!.sanctity = 0;
+  assert.ok(!sheltered(s, A, T));
+});

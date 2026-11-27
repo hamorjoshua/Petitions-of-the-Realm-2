@@ -218,3 +218,11 @@ export function inheritTies(s: State, from: number, to: number, share: number): 
   for (const [b, v] of Object.entries(s.ties[from] ?? {})) setTie(s, to, Number(b), Math.max(-1, Math.min(1, tie(s, to, Number(b)) + v * share)));
   for (const a in s.ties) { const v = s.ties[a]![from]; if (v !== undefined && Number(a) !== to) setTie(s, Number(a), to, Math.max(-1, Math.min(1, tie(s, Number(a), to) + v * share))); }
 }
+
+/** Force against one who stands on holy ground is turned back, for any who recognise it. Logged as sanctuary. */
+export function sheltered(s: State, actor: Body, target: Body, bond = -1): boolean {
+  if ((s.cells[target.home]?.sanctity ?? 0) < P.sanctuary) return false;
+  rec(s, 'sanctuary', { a: actor.id, b: target.id, cell: target.home });
+  target.sheltered = { from: actor.id, bond, t: s.t };
+  return true;
+}
