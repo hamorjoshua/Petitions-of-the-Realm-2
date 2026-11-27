@@ -1087,7 +1087,9 @@ export function audience(s: State): Petition[] {
     }
   }
   const heft = (bd: Bond): number => (bd.about === 'yield' || bd.about === 'right' || (bd.about === 'bond' && bd.secures < 0) ? bd.share * 100 : bd.about === 'bond' ? 40 : bd.q / 5);
-  for (const [id, list] of weights) {
+  for (const [id, all] of weights) {
+    const list = all.filter(b => other(b, id) !== id);
+    if (!list.length) continue;
     list.sort((x, y) => heft(y) - heft(x) || x.id - y.id);
     // One of each kind of thing owed to each party is enough to say what weighs on it.
     const kinds = new Set<string>();
@@ -1302,7 +1304,12 @@ export function audience(s: State): Petition[] {
     if (!s.bodies[p.by]!.alive) return false;
     if (p.burdens.length) { if (!p.burdens.some(id => byId.has(id))) return false; } else if (p.reason !== 'challenge' && p.bond >= 0) { const bd = byId.get(p.bond); if (!bd || (bd.about === 'act' && bd.q <= 0.05) || (bd.about === 'land' && bd.strength < 0.05)) return false; }
     // Left unheard a whole season: that is held against the court by the week.
-    if (p.waited > P.wait) { grieve(c, p.by, P.harmUnheard * p.waited); c.legitimacy -= 0.02; teach(s, idx, p.by, p.side, 0, P.pleaOwn / 2); return false; }
+    if (p.waited > P.wait) {
+      // Outside the Regency the realm does not wait on the court: what has a local lord or body is settled by them.
+      const lower = live(c) && p.reason === 'none' ? cuts(s, p).find(x => x === 'remit' || x.startsWith('remit:')) : undefined;
+      if (lower && carry(s, c, p, lower)) { rec(s, 'rule', { a: p.by, b: p.against, kind2: 1, q2: -6, way: p.shape }); return false; }
+      grieve(c, p.by, P.harmUnheard * p.waited); c.legitimacy -= live(c) ? 0.005 : 0.02; teach(s, idx, p.by, p.side, 0, P.pleaOwn / 2); return false;
+    }
     return true;
   });
   for (const p of c.docket) {

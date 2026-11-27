@@ -58,5 +58,58 @@ input[type="number"] { font: inherit; color: inherit; background: var(--panel); 
 .start { display: flex; flex-direction: column; gap: 1rem; padding-block: 2rem; }
 .choices { display: flex; flex-wrap: wrap; gap: 0.75rem; }
 @media (prefers-reduced-motion: no-preference) { .matter { transition: border-color 0.15s; } }
+
+/* The cockpit: one screen tall, no page scroll. Instruments on top, the view in the middle, the controls under the thumb. */
+body.cockpit-on { height: 100dvh; overflow: hidden; }
+.cockpit { height: 100dvh; max-width: 44rem; margin: 0 auto; display: flex; flex-direction: column; background: var(--cloth); }
+@media (min-width: 46rem) { .cockpit { border-inline: 1px solid var(--rule); } }
+.strip { flex: none; background: var(--panel); border-bottom: 1px solid var(--rule); padding: calc(env(safe-area-inset-top, 0px) + 6px) 16px 6px; display: flex; flex-direction: column; gap: 4px; }
+.strip .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.strip .row.inst4 { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 10px; align-items: end; }
+.strip .inst .gilt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.strip .seals .seal { width: 13px; height: 13px; }
+.inst { display: flex; flex-direction: column; line-height: 1.15; font-size: 0.9rem; }
+.inst .label { font-size: 0.65rem; }
+.inst.warn span:last-child { color: var(--gilt); font-weight: 600; } .inst.bad span:last-child { color: var(--seal); font-weight: 600; }
+.warn { color: var(--gilt); } .bad { color: var(--seal); } .good { color: var(--good); }
+.strip .when { font-family: var(--display); font-size: 1rem; min-width: 0; line-height: 1.2; }
+.throttle { flex: none; }
+.throttle { display: flex; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+.throttle button, .seg button, .pills button, .tabs.vt button, .deck .tabs button, .step button { font: inherit; border: 0; background: transparent; color: var(--ink); cursor: pointer; min-height: 36px; padding: 0 10px; }
+.throttle button[aria-pressed="true"], .seg button[aria-pressed="true"], .pills button[aria-pressed="true"] { background: var(--woad); color: var(--woad-ink); }
+.tabs.vt, .deck .tabs { display: flex; flex: none; border-bottom: 1px solid var(--rule); background: var(--panel); margin: 0; gap: 0; }
+.tabs.vt button, .deck .tabs button { flex: 1; min-height: 40px; border-bottom: 2px solid transparent; border-radius: 0; }
+.tabs.vt button[aria-pressed="true"], .deck .tabs button[aria-pressed="true"] { border-bottom-color: var(--woad); font-weight: 600; background: transparent; color: var(--ink); }
+#badge:not(:empty) { display: inline-block; min-width: 1.4em; padding: 0 4px; border-radius: 999px; background: var(--seal); color: #fff; font-size: 0.75rem; margin-left: 4px; }
+#badge.pulse { animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { transform: scale(1.25); } }
+@media (prefers-reduced-motion: reduce) { #badge.pulse { animation: none; } }
+.view { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; overscroll-behavior: contain; }
+.pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.pills button { border: 1px solid var(--rule); border-radius: 999px; min-height: 32px; font-size: 0.85rem; }
+.map { display: grid; gap: 2px; width: min(100%, 30rem, 38dvh); align-self: center; flex: none; }
+.map .cell { aspect-ratio: 1; border: 0; padding: 0; border-radius: 3px; cursor: pointer; position: relative; background: color-mix(in srgb, var(--c) var(--v), var(--panel)); color: var(--ink); font-size: 0.6rem; display: grid; place-items: center; min-width: 0; }
+.map .cell.on { outline: 2px solid var(--woad); outline-offset: 1px; z-index: 1; }
+.map .cell.shrine::after { content: "✦"; position: absolute; top: 0; right: 1px; font-size: 0.55rem; color: var(--gilt); }
+.map .cell i { font-style: normal; opacity: 0.8; }
+.sheet { position: sticky; bottom: 0; box-shadow: 0 -4px 12px rgb(0 0 0 / 0.12); background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.sheet .bar button { border: 0; background: none; color: var(--soft); font-size: 1rem; min-height: 32px; cursor: pointer; }
+.deck { flex: none; background: var(--panel); border-top: 1px solid var(--rule); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.deckin { max-height: 30dvh; overflow-y: auto; padding: 8px 16px 12px; display: flex; flex-direction: column; gap: 8px; }
+.law { display: flex; flex-direction: column; gap: 4px; }
+.lname { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; } .lname .small { margin-left: auto; }
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--gilt); }
+.seg { display: flex; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+.seg button { flex: 1; font-size: 0.85rem; min-height: 34px; padding: 0 6px; border-left: 1px solid var(--rule); } .seg button:first-child { border-left: 0; }
+.dial { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.step { display: flex; align-items: center; border: 1px solid var(--rule); border-radius: 8px; flex: none; }
+.step span { min-width: 5.5em; text-align: center; font-size: 0.9rem; }
+.step button { font-size: 1.1rem; min-width: 40px; } .step button:disabled { opacity: 0.35; }
+.ord { display: flex; flex-direction: column; align-items: stretch; gap: 3px; text-align: left; font: inherit; color: var(--ink); background: var(--cloth); border: 1px solid var(--rule); border-radius: 8px; padding: 8px 10px; }
+button.ord { cursor: pointer; } button.ord:disabled { cursor: default; opacity: 0.85; }
+.ord progress { width: 100%; height: 6px; accent-color: var(--woad); }
+.modes { display: flex; flex-direction: column; gap: 8px; }
+.mode { text-align: left; font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; cursor: pointer; }
+.mode span { color: var(--soft); font-size: 0.9rem; } .mode[aria-pressed="true"] { border-color: var(--woad); box-shadow: inset 0 0 0 1px var(--woad); }
 </style>
 <div id="app"></div>
