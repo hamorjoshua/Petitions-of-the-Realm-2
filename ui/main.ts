@@ -524,7 +524,7 @@ const LEGEND: Record<Lens, string> = {
   jurisdiction: 'Each colour is one body of houses, and whoever leads it.',
   ecology: 'Darker red: soil worn out or ground flooded.',
 };
-const GLYPHS = 'Each dot is a settlement; the hollow dot is your seat. Names carry the lens’s figure: weeks of food, aggrieved houses of all, holiness, soil left, or souls. Dark lines bound lordships; hairlines are roads. The lens fills places in four steps.';
+const GLYPHS = 'Each dot is a settlement; the hollow dot is your seat. Names carry the lens’s figure: weeks of food, aggrieved houses of all, holiness, soil left, or souls. Dark lines bound lordships. The lens fills places in four steps.';
 
 const storeTotal = (): number => (s.court ? s.court.store.reduce((x, y) => x + y, 0) : 0);
 /** Up, down or level against a season ago. */
@@ -654,27 +654,6 @@ function mapView(): string {
   const borders = edgesWhere(g, (i, j) => { const a = land[i]!, b = land[j]!; return a !== b && a !== -2 && b !== -2 && (a >= 0 || b >= 0); });
   void realm;
   const coast = edgesWhere(g, (i, j) => water(i) !== water(j));
-  // Roads: each settlement to its nearest neighbouring settlements, as hairlines.
-  const towns = s.cells.map((_x, i) => i).filter(i => !water(i) && ((at.get(i)?.length ?? 0) > 0 || ranked.has(i)));
-  const roadSet = new Set<string>(), roads: string[] = [];
-  for (const a of towns) {
-    const pa = g.pts[a]!, near = towns.filter(b => b !== a).map(b => [b, Math.hypot(g.pts[b]![0] - pa[0], g.pts[b]![1] - pa[1])] as const).filter(([, d]) => d <= 2.6).sort((x, y) => x[1] - y[1]).slice(0, 2);
-    for (const [b] of near) {
-      const key = a < b ? `${a}:${b}` : `${b}:${a}`;
-      if (roadSet.has(key)) continue;
-      // No road across water: every point along the way must lie in a land place (the nearest centre is the place it lies in).
-      const pb0 = g.pts[b]!, cx0 = (pa[0] + pb0[0]) / 2 + (pb0[1] - pa[1]) * 0.08, cy0 = (pa[1] + pb0[1]) / 2 - (pb0[0] - pa[0]) * 0.08;
-      const wetWay = Array.from({ length: 15 }, (_v, k) => (k + 1) / 16).some(t => { const u = 1 - t, x = u * u * pa[0] + 2 * u * t * cx0 + t * t * pb0[0], y = u * u * pa[1] + 2 * u * t * cy0 + t * t * pb0[1]; let best = 0, bd = Infinity; g.pts.forEach((p, k) => { const d = (p[0] - x) ** 2 + (p[1] - y) ** 2; if (d < bd) { bd = d; best = k; } }); return water(best); });
-      if (wetWay) continue;
-      roadSet.add(key);
-      // Each road stops short of the marks at both ends.
-      const pb = g.pts[b]!, len = Math.hypot(pb[0] - pa[0], pb[1] - pa[1]);
-      if (len < 0.5) continue;
-      const ux = (pb[0] - pa[0]) / len, uy = (pb[1] - pa[1]) / len, a0 = [pa[0] + ux * 0.18, pa[1] + uy * 0.18], b0 = [pb[0] - ux * 0.18, pb[1] - uy * 0.18];
-      const mx = (a0[0]! + b0[0]!) / 2 + (b0[1]! - a0[1]!) * 0.08, my = (a0[1]! + b0[1]!) / 2 - (b0[0]! - a0[0]!) * 0.08;
-      roads.push(`M${a0[0]!.toFixed(3)},${(a0[1]! - 0.06).toFixed(3)}Q${mx.toFixed(3)},${(my - 0.06).toFixed(3)} ${b0[0]!.toFixed(3)},${(b0[1]! - 0.06).toFixed(3)}`);
-    }
-  }
   // Tokens: plain board pieces at each place's centre.
   const tokens: string[] = [], labels: string[] = [];
   g.pts.forEach(([x, y0], i) => {
@@ -691,7 +670,7 @@ function mapView(): string {
   return `<div class="map-viewport"><div class="map" style="transform:translate(${panX}px,${panY}px) scale(${zoom})"><svg viewBox="${-PAD} ${-PAD} ${N + 2 * PAD} ${N + 2 * PAD}" preserveAspectRatio="xMidYMid meet">
     <rect class="sea" x="-2" y="-2" width="${N + 4}" height="${N + 4}"/>
     <g class="regions">${regions}</g>
-    <path class="roads" d="${roads.join('')}"/><path class="coast" d="${coast}"/><g class="borders"><path d="${borders}"/></g>
+    <path class="coast" d="${coast}"/><g class="borders"><path d="${borders}"/></g>
     <g class="tokens">${tokens.join('')}</g>
     <g class="labels">${labels.join('')}</g></svg></div></div>`;
 }
