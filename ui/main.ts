@@ -23,13 +23,13 @@ const VERB: Record<Plane, string> = { material: 'Reallocate', positional: 'Grant
 const CUT_PLANE: Record<string, Plane> = {
   enforce: 'material', strike: 'material', stay: 'material', give: 'material', ease: 'material', dismiss: 'material', assess: 'material', redeem: 'material',
   charter: 'positional', sell: 'positional', refuse: 'positional', rival: 'positional', turn: 'positional', install: 'positional', confirm: 'positional', free: 'positional', remit: 'positional', bar: 'positional',
-  forbid: 'normative', override: 'normative', uphold: 'normative',
+  forbid: 'normative', override: 'normative', uphold: 'normative', compel: 'normative', dispense: 'normative', custom: 'normative', commute: 'material',
   surety: 'relational', expel: 'relational', answer: 'relational', release: 'relational', tie: 'relational', vouch: 'relational',
   inquire: 'epistemic',
 };
 const planeOfCut = (p: Petition, cut: string): Plane => (p.reason === 'challenge' ? 'normative' : CUT_PLANE[cut.split(':')[0]!] ?? 'material');
 /** A ruling as the rolls name it. */
-const CUT: Record<string, string> = { answer: 'Their body answers for it', free: 'Free their ground to them', release: 'Let them go', tie: 'Tie them to the land', assess: 'Assess on the bailiff’s word', expel: 'Cast out of the body', bar: 'Bar them', override: 'Override the custom', install: 'Install the challenger', confirm: 'Keep the head', enforce: 'Hold to it', strike: 'Let it go', stay: 'Put it off a year', turn: 'Turn the ground over', give: 'Give relief', dismiss: 'Send away', vouch: 'Vouch for them', inquire: 'Hold an inquest', surety: 'Kin stand surety', remit: 'Leave it to the local lord or body', charter: 'Grant the right', sell: 'Sell the right', refuse: 'Refuse', rival: 'Grant a rival right', forbid: 'Forbid work there', bless: 'Have it blessed', uphold: 'Uphold' };
+const CUT: Record<string, string> = { compel: 'Order the aid', dispense: 'Release from the duty', custom: 'Hold the lord to custom', commute: 'Turn labour into a share', answer: 'Their body answers for it', free: 'Free their ground to them', release: 'Let them go', tie: 'Tie them to the land', assess: 'Assess on the bailiff’s word', expel: 'Cast out of the body', bar: 'Bar them', override: 'Override the custom', install: 'Install the challenger', confirm: 'Keep the head', enforce: 'Hold to it', strike: 'Let it go', stay: 'Put it off a year', turn: 'Turn the ground over', give: 'Give relief', dismiss: 'Send away', vouch: 'Vouch for them', inquire: 'Hold an inquest', surety: 'Kin stand surety', remit: 'Leave it to the local lord or body', charter: 'Grant the right', sell: 'Sell the right', refuse: 'Refuse', rival: 'Grant a rival right', forbid: 'Forbid work there', bless: 'Have it blessed', uphold: 'Uphold' };
 const plain = (x: string): string => x.replace(/\(([A-Z]+>[A-Z]+)\)/g, (_m, w: string) => `(${wayWords(w)})`).replace(/sole right to (\w+)/g, (_m, w: string) => `sole right to ${TRADE[w] ?? w}`);
 const cap = (x: string): string => x.charAt(0).toUpperCase() + x.slice(1);
 const SEASONS = ['Winter', 'Spring', 'Summer', 'Autumn'];
@@ -99,6 +99,8 @@ function matterWords(p: Petition): string {
   }
   if (p.reason === 'challenge') { const r = s.court!.rules.find(x => x.id === p.bond); return `${A} has been hurt by a rule of yours and asks that it be struck. The rule: ${r ? esc(plain(r.cut + ' when ' + r.shape)) : 'one now gone'}.`; }
   const bd = s.bonds.find(b => b.id === p.bond);
+  if (p.side === 'unaided') return `${A} is in want. ${Cap(B)}, of the same body, has plenty, holds as its fellows do that fellows must aid one another, and gave nothing.`;
+  if (p.side === 'exceeds') return `${A} holds its ground of ${B}, and owes him ${P.boon} days of work a week when he needs hands. He has been taking more than that.`;
   if (p.side === 'exit') return `${A} holds its ground of ${B} and says it will leave unless something changes. It could do better elsewhere, and its lord would lose its share.`;
   if (p.side === 'suspects') return `${A} says ${B} keeps back part of the Crown’s share. ${Cap(B)} has paid little for the ground it holds.`;
   if (p.side === 'asks' && p.body !== undefined) { const cb = s.bodies[p.body]!; return `${A} asks to lead the body of ${leavesCount(cb)} houses it belongs to, in place of ${B}. It has more to spare than ${B} and is as strong.`; }
@@ -142,6 +144,8 @@ function pleas(p: Petition): [string, string] {
   const pressed = (id: number): boolean => { const c = cover(s.bodies[id]!.store, askAhead(s, s.bodies[id]!)); return c.some((x, n) => NEEDS[n]!.harm >= 0.5 && x < P.short); };
   const mouths = (id: number): number => s.bodies[id]!.members.filter(i => s.people[i]!.alive).length;
   const pb = s.bonds.find(b => b.id === p.bond);
+  if (p.side === 'unaided') return ['“We would have done as much for them. It is what our fellows have always done.”', '“We have our own to think of.”'];
+  if (p.side === 'exceeds') return ['“Two days was the custom in our fathers’ time. Now he takes four, and our own corn rots.”', '“The harvest will not wait. They hold of me, and they will work when I need them.”'];
   if (p.side === 'exit') return ['“There is better ground elsewhere, and none of it owes him a fifth.”', '“They are bound to this land as their fathers were.”'];
   if (p.side === 'suspects') return ['“They gather as much as their neighbours and pay a third as much.”', '“It was a poor year. Look in our barns if you doubt it.”'];
   if (p.side === 'asks' && p.body !== undefined) return ['“We are stronger and have more to spare. Let us lead.”', '“We have led well. Why should that change?”'];
@@ -177,6 +181,16 @@ function cutWordsOf(p: Petition, cut: string): [string, string] | undefined {
   const bd = s.bonds.find(b => b.id === p.bond), B = house(p.against), A = house(p.by);
   const storeOf = (k: number): number => Math.round(s.court!.store[k] ?? 0);
   if (p.reason === 'challenge') return cut === 'uphold' ? ['Uphold the rule', 'It stands, and cannot be challenged again.'] : ['Strike the rule', 'Like cases will come to you again.'];
+  if (p.side === 'unaided' && cut !== 'remit') return ({
+    compel: [`Order ${B} to give`, 'Three weeks of what they lack, from what it has most of.'],
+    dispense: ['Release it from the duty', 'The duty binds the less, here and among its fellows. The one in want is left.'],
+    dismiss: ['Send them away', 'They will hold it against the court.'],
+  } as Record<string, [string, string]>)[cut];
+  if (p.side === 'exceeds' && cut !== 'remit') return ({
+    custom: ['Hold the lord to custom', `${P.boon} days a week and no more, from now on.`],
+    uphold: ['Back the lord', 'He may take what he needs. They will hold it against you.'],
+    commute: ['Turn the labour into a share', 'They owe no days, but a twentieth more of what their ground yields.'],
+  } as Record<string, [string, string]>)[cut];
   if (p.side === 'exit') return ({
     free: ['Free their ground to them', `It becomes theirs outright. ${Cap(B)} loses the ground and the share.`],
     release: ['Let them go', `They leave, and the ground goes back to ${B}.`],

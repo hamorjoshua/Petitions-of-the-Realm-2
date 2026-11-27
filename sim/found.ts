@@ -127,7 +127,7 @@ export function found(seed: number, t0 = 0, side = P.side, souls = P.souls): Sta
       if (bd.about !== 'land' || bd.a === lord.id || s.bodies[bd.a]!.rank || dist(side, s.bodies[bd.a]!.home, site) > 2) continue;
       const tenant = bd.a;
       bd.a = lord.id;
-      bond(s, { about: 'bond', a: tenant, b: lord.id, on: bd.id, share: P.manorShare, due: 1e9, used: t0, basis: 'birth', way: 'manor' });
+      bond(s, { about: 'bond', a: tenant, b: lord.id, on: bd.id, share: P.manorShare, boon: P.boon, due: 1e9, used: t0, basis: 'birth', way: 'manor' });
     }
   });
   const pick = (ok: (b: (typeof s.bodies)[number]) => boolean): (typeof s.bodies)[number] | undefined => s.bodies.find(b => !taken.has(b.id) && !b.rank && b.members.some(i => s.people[i]!.sex === 0 && s.people[i]!.spouse >= 0) && ok(b));

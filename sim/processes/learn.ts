@@ -38,6 +38,13 @@ export function learn(s: State): void {
       for (const f of fellows(s, X)) { const F = s.bodies[f]!; warm(s, f, id, -0.2); believe(s, F, `house:${id}`, (F.lore[`house:${id}`] ?? 0) + 0.3, id); }
     };
     if (r.k === 'promise' && r.way) { broke(r.a, `way:${r.way}`); broke(r.b, `way:${r.way}`); }
+    if (r.k === 'shirk') broke(r.a, 'duty:aid');
+    // Seeing fellows give to fellows in want, those who received and those who saw come to hold that fellows must.
+    if (r.k === 'give' && r.b >= 0 && s.bodies[r.b]?.alive) {
+      const R2 = s.bodies[r.b]!;
+      believe(s, R2, 'duty:aid', (R2.lore['duty:aid'] ?? 0) + P.blame * 0.4, r.a);
+      for (const f of fellows(s, R2)) { const F = s.bodies[f]!; believe(s, F, 'duty:aid', (F.lore['duty:aid'] ?? 0) + P.blame * 0.15, r.a); }
+    }
     if (r.k === 'make' && r.cell >= 0) broke(r.a, `cell:${r.cell}`);
     if ((r.k === 'trade' || r.k === 'promise') && r.b >= 0) {
       meet(r.a, `house:${r.b}`); meet(r.b, `house:${r.a}`);

@@ -4,7 +4,7 @@
 import { exp } from '../math.ts';
 import { AIDERS, BY_HARM, Kn, NEEDS, NK, NN, NS, P, Rc, St, TOIL } from '../tables.ts';
 import { askAhead, cover, drive, welfare, welfareLater, zeros } from '../value.ts';
-import { around, bond, dist, grown, head, holdsByCell, kinOf, muster, near, rec, struggle, tenancies, tie, warm, type Tenancy } from '../util.ts';
+import { around, bond, dist, grown, head, holdsByCell, kinOf, muster, near, rec, struggle, tenancies, tie, top, warm, type Tenancy } from '../util.ts';
 import { bear } from './grow.ts';
 import { tBar } from './sky.ts';
 import { chilled, upheld } from '../court/court.ts';
@@ -409,6 +409,21 @@ function deal(s: State, L: Land, cs: Map<number, Ctx>, kin: Map<number, Set<numb
   const wants = kinds.slice().sort((x, y) => A.v[y]! - A.v[x]! || x - y).slice(0, 3).filter(k => A.v[k]! > 1e-6);
   const offers = kinds.filter(k => a.store[k]! > 0.01 && k !== a.aim?.kind).sort((x, y) => A.v[x]! - A.v[y]! || x - y).slice(0, 3);
 
+  // A duty comes before any dealing. A house that holds that fellows must aid fellows, and has plenty, gives to a fellow
+  // in want; one with little scruple keeps it, and is seen to.
+  if ((a.lore['duty:aid'] ?? 0) > P.heed && A.cov[BY_HARM[0]!]! > P.content) {
+    const first = BY_HARM[0]!;
+    const needy = partners.find(B => a.of >= 0 && B.b.of >= 0 && top(s, B.b).id === top(s, a).id && B.cov[first]! < P.short);
+    if (needy) {
+      if (A.h.scruple < 0.35) { a.shirkedTo = needy.b.id; a.shirkedAt = s.t; rec(s, 'shirk', { a: a.id, b: needy.b.id, need: first }); }
+      else {
+        let k = -1;
+        for (let j = 0; j < NK; j++) if (!Kn[j]!.fixed && Kn[j]!.serves[first]! > 0 && (k < 0 || a.store[j]! > a.store[k]!)) k = j;
+        const q = k < 0 ? 0 : Math.min(a.store[k]! * P.part, (3 * needy.ahead[first]! * Kn[k]!.use) / Kn[k]!.serves[first]!);
+        if (q > 0.05) { a.store[k] = a.store[k]! - q; needy.b.store[k] = needy.b.store[k]! + q; rec(s, 'give', { a: a.id, b: needy.b.id, kind: k, q, need: first, kind2: 2 }); return; }
+      }
+    }
+  }
   // Trade: each gives what it values less for what it values more.
   let best: { B: Ctx; k: number; j: number; ra: number; rb: number } | null = null, bestEst = 0;
   for (const B of partners) {

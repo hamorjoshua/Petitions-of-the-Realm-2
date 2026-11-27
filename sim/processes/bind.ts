@@ -2,7 +2,7 @@
 // Use makes a holding; a taking makes a debt; a debt falls due; two people wed.
 
 import { BY_HARM, Kn, NEEDS, NK, NN, P, TOIL } from '../tables.ts';
-import { askAhead, cover } from '../value.ts';
+import { askAhead, cover, drive } from '../value.ts';
 import { around, bond, leaves, setTie, dist, head, holdsByCell, kinOf, might, muster, rec, served as remember, struggle, tie, warm } from '../util.ts';
 import type { Body, Bond, Person, State } from '../types.ts';
 
@@ -21,6 +21,20 @@ function canSpare(s: State, b: Body, kind: number, q: number): boolean {
 
 export function bind(s: State): void {
   const kin = kinOf(s);
+
+  // Tenants owe their lord days of work when he needs hands. A lord reaching for more demands more than is owed, unless
+  // the court has held him to it. What is taken beyond what is owed is remembered.
+  for (const T of s.bodies) if (T.alive) T.overworked *= 0.98;
+  for (const bd of s.bonds) {
+    if (bd.about !== 'bond' || bd.way !== 'manor' || bd.boon <= 0 || bd.easedTo > s.t) continue;
+    const T = s.bodies[bd.a], L = s.bodies[bd.b];
+    if (!T || !L || !T.alive || !L.alive || !L.pressed) continue;
+    const asked = bd.capped ? bd.boon : bd.boon * (1 + 2 * drive(s, L));
+    const d = Math.min(asked, 0.5 * muster(s, T));
+    if (d <= 0) continue;
+    T.spent += d; L.spent -= d;
+    if (d > bd.boon) T.overworked += d - bd.boon;
+  }
 
   // A house near starving, with little scruple, may claim a spoken debt that was never made, from one it has lately dealt with.
   // The one it names denies it, truly. Nothing but the ledger can tell this from a real debt denied.

@@ -8,7 +8,7 @@
 
 import { BY_HARM, Kn, NEEDS, NK, NN, P, Rc, St, TOIL } from '../tables.ts';
 import { askAhead, cover, drive } from '../value.ts';
-import { around, bond, dist, grown, head, hearthIndex, kinOf, leaves, might, near, rec, top, warm } from '../util.ts';
+import { around, bond, dist, fellows, grown, head, hearthIndex, kinOf, leaves, might, near, rec, top, warm } from '../util.ts';
 import type { Body, Bond, Court, Petition, Rule, State } from '../types.ts';
 
 export type Width = 'case' | 'body' | 'realm';
@@ -63,6 +63,8 @@ const FAVOUR: Record<string, Record<string, number>> = {
   fears: { forbid: 1, remit: 0.5, dismiss: 0.1, override: 0 },
   exit: { free: 1, release: 0.8, ease: 0.7, tie: 0 },
   suspects: { assess: 1, inquire: 0.7, dismiss: 0 },
+  unaided: { compel: 1, remit: 0.5, dismiss: 0, dispense: 0 },
+  exceeds: { custom: 1, commute: 0.7, remit: 0.5, uphold: 0 },
   bare: { give: 1, vouch: 1, levy: 1, promise: 0.8, dismiss: 0 },
 };
 
@@ -128,6 +130,8 @@ export function planesOf(s: State, p: Petition): [Plane, Plane] {
   if (p.side === 'fears') return pair('normative', (p.sign ?? '').startsWith('house:') || p.sign === 'new' ? 'relational' : 'material');
   if (p.side === 'exit') return pair('relational', 'positional');
   if (p.side === 'suspects') return pair('epistemic', 'positional');
+  if (p.side === 'unaided') return pair('normative', 'relational');
+  if (p.side === 'exceeds') return pair('normative', 'positional');
   const bd = s.bonds.find(b => b.id === p.bond);
   if (!bd) return pair(p.shape.includes('shunned') ? 'normative' : 'material', 'material');
   if (bd.about === 'act' && bd.denied) return pair('epistemic', 'material');
@@ -168,6 +172,8 @@ function leaveTo(s: State, c: Court, p: Petition, judge: number, cut: string, pa
   parties.forEach((w, i) => { const d = (c.grief[w] ?? 0) - before[i]!; if (d > 0) { c.grief[w] = before[i]! + d * 0.25; if (w !== judge && judge >= 0) warm(s, w, judge, -0.3); } });
 }
 
+const fellowsOf = (s: State, b: Body): Body[] => fellows(s, b).map(i => s.bodies[i]!);
+
 /** The words a constraint is held in, for its shape. */
 export function constraintWords(sign: string): string {
   if (sign.startsWith('cell:')) return 'work on ground where harm was done';
@@ -207,6 +213,10 @@ export function cuts(s: State, p: Petition): string[] {
   if (p.side === 'exit') return ['free', 'release', 'tie', `ease:${p.bond}`];
   // The bailiff suspects a house of keeping back the Crown's share: find out, assess it on his word, or send him away.
   if (p.side === 'suspects') return ['inquire', 'assess', 'dismiss'];
+  // A fellow left in want against a duty: compel the aid, dispense the duty, leave it to the body, or neither.
+  if (p.side === 'unaided') return ['compel', 'dispense', ...remit, 'dismiss'];
+  // A lord taking more labour than custom: hold him to custom, back him, or turn the labour into a share of the yield.
+  if (p.side === 'exceeds') return ['custom', 'uphold', 'commute', ...remit];
   const bd = s.bonds.find(b => b.id === p.bond);
   // A want with nothing behind it: relief, or none. One shunned may also be vouched for.
   if (!bd) return p.shape.includes('shunned') ? ['vouch', 'give', 'dismiss'] : ['give', 'dismiss'];
@@ -243,6 +253,37 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
     if (p.side === 'exit') by.threat = -1;
     grieve(c, other(eb, p.by), P.harmUnheard * 2);
     rec(s, 'judge', { a: p.by, b: other(eb, p.by), need: p.need, cause: eb.rec, way: `ease ${formOf(new Map(s.bonds.map(b => [b.id, b])), eb)}` });
+    return true;
+  }
+  if (p.side === 'unaided') {
+    const X = s.bodies[p.against]!, first = BY_HARM[0]!;
+    if (cut === 'remit') { const judge = judgeOf(s, localPower(s, p)); if (judge < 0) return false; leaveTo(s, c, p, judge, (s.bodies[judge]?.lore['duty:aid'] ?? 0) > P.heed ? 'compel' : 'dismiss', [p.by, p.against]); return true; }
+    if (cut === 'compel') {
+      // The court orders the aid the duty asks: three weeks of the first need, from what the shirker has most of.
+      let k = -1;
+      for (let j = 0; j < NK; j++) if (!Kn[j]!.fixed && Kn[j]!.serves[first]! > 0 && (k < 0 || X.store[j]! > X.store[k]!)) k = j;
+      if (k < 0) return false;
+      const q = Math.min(X.store[k]! * 0.3, (3 * askAhead(s, by)[first]! * Kn[k]!.use) / Kn[k]!.serves[first]!);
+      X.store[k] = X.store[k]! - q; by.store[k] = by.store[k]! + q;
+      grieve(c, X.id, P.harmPaid);
+    } else if (cut === 'dispense') {
+      // The duty does not bind here: those who hold it hold it the less, and the one left in want is left.
+      for (const b of [X, by, ...fellowsOf(s, X)]) { if (b.lore['duty:aid']) b.lore['duty:aid'] *= 0.5; for (const m of grown(s, b)) if (m.lore['duty:aid']) m.lore['duty:aid'] *= 0.5; }
+      grieve(c, p.by, P.harmLost);
+    } else grieve(c, p.by, P.harmUnheard * 2);
+    X.shirkedTo = -1;
+    rec(s, 'judge', { a: p.by, b: X.id, way: `${cut} ${p.shape}` });
+    return true;
+  }
+  if (p.side === 'exceeds') {
+    const m = s.bonds.find(b => b.id === p.bond), lord = p.against;
+    if (!m) return false;
+    if (cut === 'remit') { const judge = judgeOf(s, localPower(s, p)); leaveTo(s, c, p, judge, judge === lord ? 'uphold' : 'custom', [p.by, lord]); return true; }
+    if (cut === 'custom') { m.capped = true; grieve(c, lord, P.harmPaid); }
+    else if (cut === 'commute') { m.boon = 0; m.share = Math.min(0.5, m.share + 0.05); grieve(c, lord, P.harmUnheard); }
+    else grieve(c, p.by, P.harmLost);
+    by.overworked = 0;
+    rec(s, 'judge', { a: p.by, b: lord, way: `${cut} ${p.shape}` });
     return true;
   }
   if (p.side === 'suspects') {
@@ -571,7 +612,7 @@ export function audience(s: State): Petition[] {
   const shapeFor = (by: number, against: number, bd: Bond | undefined, side: Petition['side'], need: number, extra = ''): string => {
     const A = s.bodies[by]!, B = against >= 0 ? s.bodies[against]! : undefined;
     const near = !B ? 'nobody' : kin.get(by)?.has(against) ? 'kin' : A.of >= 0 && top(s, A).id === top(s, B).id ? 'of one body' : dist(s.side, A.home, B.home) <= P.reach ? 'a neighbour' : 'a stranger';
-    return `${side === 'owed' ? 'owed on' : side === 'owes' ? 'bound by' : side === 'outside' ? 'shut out by' : side === 'asks' ? 'asks leave for' : side === 'fears' ? 'will not abide' : side === 'exit' ? 'will leave' : side === 'suspects' ? 'suspects' : 'in want'} ${bd ? formOf(byId, bd) : extra}; for ${need >= 0 ? NEEDS[need]!.id : 'nothing pressing'}; against ${near}`;
+    return `${side === 'owed' ? 'owed on' : side === 'owes' ? 'bound by' : side === 'outside' ? 'shut out by' : side === 'asks' ? 'asks leave for' : side === 'fears' ? 'will not abide' : side === 'exit' ? 'will leave' : side === 'suspects' ? 'suspects' : side === 'unaided' ? 'was left unaided against' : side === 'exceeds' ? 'is worked beyond custom under' : 'in want'} ${bd ? formOf(byId, bd) : extra}; for ${need >= 0 ? NEEDS[need]!.id : 'nothing pressing'}; against ${near}`;
   };
   const add = (by: number, against: number, bd: Bond | undefined, side: Petition['side'], need: number, recId: number, extra = '', keyed = ''): void => {
     const key = keyed || (bd ? `${side}${bd.id}` : `w${by}:${need}`);
@@ -732,6 +773,16 @@ export function audience(s: State): Petition[] {
     const median = rate.map(v => v.r).sort((a, b) => a - b)[rate.length >> 1]!;
     const low = rate.filter(v => median > 0.5 && v.r < 0.5 * median).sort((a, b) => a.r - b.r)[0];
     if (low) add(B.id, low.x.a, low.x, 'suspects', -1, low.x.rec, '', `s${low.x.a}`);
+  }
+  // A fellow left in want by one who holds the duty to aid it; a tenant worked beyond custom by its lord.
+  for (const X of s.bodies) {
+    if (!X.alive || X.shirkedTo < 0 || s.t - X.shirkedAt > 8 || !s.bodies[X.shirkedTo]?.alive) continue;
+    add(X.shirkedTo, X.id, undefined, 'unaided', lack.get(X.shirkedTo) ?? BY_HARM[0]!, -1, 'aid its fellows owe it', `u${X.shirkedTo}:${X.id}`);
+  }
+  for (const T of s.bodies) {
+    if (!T.alive || T.overworked < 6) continue;
+    const m = s.bonds.find(x => x.about === 'bond' && x.a === T.id && x.way === 'manor');
+    if (m && s.bodies[m.b]?.alive) add(T.id, m.b, m, 'exceeds', lack.get(T.id) ?? -1, m.rec, '', `e${T.id}`);
   }
   // A tenant that has told its lord it will leave comes to the court before it goes.
   for (const b of s.bodies) {
