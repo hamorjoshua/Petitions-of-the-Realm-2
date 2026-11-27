@@ -203,6 +203,8 @@ export interface Policy {
 }
 export interface Court {
   policy: Policy;
+  /** Where the Crown sits now, and when it last moved: a royal progress. */
+  seat?: number; seatMoved?: number;
   /** What moved the Crown's gauges, week by week, and why: kept for a year, so the regent can see what is doing it. */
   ledger?: { t: number; g: 'legitimacy' | 'reach' | 'store'; d: number; why: string }[];
   /** How the court last ruled on each kind of matter, how far it found for the one who asked, and when; and how often it has gone back on itself lately. */

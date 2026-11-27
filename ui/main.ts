@@ -9,7 +9,9 @@ import { KINDS, NEEDS, P, RECIPES } from '../sim/tables.ts';
 import { grown, top } from '../sim/util.ts';
 import { Readers, wayWords } from '../readers/readers.ts';
 import { placeName } from '../readers/names.ts';
-import type { Bond, Dials, LawKey, LocalOrder, Mode, OrdKey, Petition, PowerAct, State, WorkKey } from '../sim/types.ts';
+import { borders, geometry, polyPath, rivers } from './map.ts';
+import { route } from '../sim/processes/move.ts';
+import type { Body, Bond, Dials, LawKey, LocalOrder, Mode, OrdKey, Petition, PowerAct, State, WorkKey } from '../sim/types.ts';
 
 const app = document.getElementById('app')!;
 const esc = (x: string): string => x.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -458,7 +460,11 @@ function passWeek(): void {
 let mode: Mode = 'cockpit';
 let speed: 0 | 1 | 5 | 20 = 0, acc = 0, lastFrame = 0, lastPaint = 0, dirty = false;
 type Lens = 'want' | 'factions' | 'sacred' | 'jurisdiction' | 'ecology';
-let view: 'map' | 'chronicle' = 'map', deck: 'laws' | 'treasury' | 'decrees' | 'works' | 'powers' = 'laws', lens: Lens = 'want';
+let view: 'map' | 'chronicle' = 'map', deck: 'dials' | 'laws' | 'works' | 'powers' | 'chronicle' = 'laws', lens: Lens = 'want';
+/** Whether the dock's half-sheet is up, and whether the map key is showing. */
+let dockOpen = false, keyOpen = false;
+/** Where the river runs from each place, worked out once per realm. */
+let lowOf: number[] = [], lowFor = '';
 let focusPower = -1;
 let picked = -1, majorOnly = false;
 /** The gauges a season back, for the arrows; which gauge's breakdown is open; which gauges are flashing, until when. */
@@ -560,37 +566,65 @@ function strip(): string {
     <div class="row"><span class="when"><button class="home" data-home="1" aria-label="Save and leave">⌂</button> ${when}${c.policy.weak ? '<br><span class="bad small">The Crown is weak</span>' : ''}</span>${throttle}</div>${openGauge ? breakdown(openGauge) : ''}</header>`;
 }
 
+/** The realm's dominant lord or body at each place, for borders and the jurisdiction lens. */
+function lordAt(at: Map<number, Body[]>, i: number): number {
+  const l = at.get(i);
+  if (!l?.length) return -1;
+  // Only a real lordship counts: a lord's, a parish's, or a body of houses. A free house belongs to none.
+  const tops = l.map(b => top(s, b)).map(t => (t.rank === 'lord' || t.rank === 'priest' || t.parts.length ? t.id : -1));
+  return tops.sort((x, y) => tops.filter(t => t === y).length - tops.filter(t => t === x).length || x - y)[0]!;
+}
 function mapView(): string {
-  const hs = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length), at = new Map<number, typeof hs>();
+  const hs = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length), at = new Map<number, Body[]>();
   for (const b of hs) { const l = at.get(b.home); if (l) l.push(b); else at.set(b.home, [b]); }
-  const c = s.court;
+  const c = s.court, g = geometry(s.side, s.seed);
+  if (lowFor !== `${s.seed}:${s.side}`) { lowOf = route(s, () => 1).low; lowFor = `${s.seed}:${s.side}`; }
   const val = (i: number): [number, string] => {
     const cell = s.cells[i]!, l = at.get(i) ?? [];
-    if (lens === 'ecology') { const worn = Math.max(0, 1 - cell.soil / Math.max(0.01, cell.soil0)); return [Math.min(1, worn * 2.5 + Math.min(0.5, cell.flood * 2) + Math.min(0.3, cell.cleared)), 'var(--seal)']; }
+    if (lens === 'ecology') { const worn = Math.max(0, 1 - cell.soil / Math.max(0.01, cell.soil0)); return [Math.min(1, worn * 2.5 + Math.min(0.5, cell.flood * 2) + Math.min(0.3, cell.cleared / 200)), 'var(--seal)']; }
     if (lens === 'sacred') return [Math.min(1, cell.sanctity + (cell.shrine ? 0.4 : 0) + (cell.interdict > 0 ? 0.6 : 0)), cell.interdict > 0 ? 'var(--seal)' : 'var(--gilt)'];
     if (!l.length) return [0, 'var(--soft)'];
     if (lens === 'want') return [l.filter(b => cover(b.store, askAhead(s, b)).some((x, k) => NEEDS[k]!.harm >= 0.5 && x < P.short)).length / l.length, 'var(--seal)'];
     if (lens === 'factions') return [c ? l.filter(b => (c.grief[b.id] ?? 0) >= P.aggrieved).length / l.length : 0, 'var(--seal)'];
-    const tops = l.map(b => top(s, b).id), lord = tops.sort((a, b) => tops.filter(x => x === b).length - tops.filter(x => x === a).length)[0]!;
-    return [0.75, `hsl(${(lord * 67) % 360} 45% 50%)`];
+    { const L = lordAt(at, i); return L < 0 ? [0.15, 'var(--soft)'] : [0.55, `hsl(${(L * 67) % 360} 40% 50%)`]; }
   };
-  // The lie of the land: higher ground darker, rivers where the water runs strongest; the Crown's seat; and live marks.
+  const valLand = (i: number): [number, string] => {
+    if (lens !== 'jurisdiction' || (at.get(i)?.length ?? 0) > 0) return val(i);
+    const L = land[i]!; return L < 0 ? [0, 'var(--soft)'] : [0.25, `hsl(${(L * 67) % 360} 40% 50%)`];
+  };
   const highs = s.cells.map(x => x.high), lo = Math.min(...highs), hi = Math.max(...highs);
-  const flows = s.cells.map(x => x.flow).filter(f => f > 0).sort((a, b) => a - b), riverAt = flows.length ? flows[Math.floor(flows.length * 0.7)]! : Infinity;
-  const seat = s.bodies.find(b => b.alive && b.rank === 'bailiff')?.home ?? Math.floor(s.cells.length / 2);
+  const flows = s.cells.map(x => x.flow).filter(f => f > 0).sort((a, b) => a - b), riverAt = flows.length ? flows[Math.floor(flows.length * 0.8)]! : Infinity;
+  // Each place belongs to the lordship of the nearest settled place within two steps: the lands the ink lines bound.
+  const land = s.cells.map((_x, i) => { let best = -1, bd = 9; for (const k of at.keys()) { const d = Math.max(Math.abs((k % s.side) - (i % s.side)), Math.abs(Math.floor(k / s.side) - Math.floor(i / s.side))); if (d <= 2 && (d < bd || (d === bd && k < best))) { bd = d; best = k; } } return best < 0 ? -1 : lordAt(at, best); });
+  const seat = c?.seat ?? s.bodies.find(b => b.alive && b.rank === 'bailiff')?.home ?? Math.floor(s.cells.length / 2);
   const feud = new Set<number>();
   for (const a of hs) for (const b of hs) if (a.id < b.id && Math.abs((a.home % s.side) - (b.home % s.side)) <= 1 && Math.abs(Math.floor(a.home / s.side) - Math.floor(b.home / s.side)) <= 1 && (s.ties[a.id]?.[b.id] ?? 0) <= -0.6) { feud.add(a.home); feud.add(b.home); }
   const watchHere = (i: number): boolean => watched.has(`c:${i}`) || (at.get(i) ?? []).some(b => watched.has(`b:${b.id}`));
-  const cells = s.cells.map((cell, i) => {
-    const [v, col] = val(i), l = at.get(i) ?? [];
-    const g = [i === seat ? '<em class="g-seat" title="The Crown’s seat">♛</em>' : '', cell.works ? `<em class="g-work">${WORKS.filter(([k]) => cell.works![k]).map(w => w[2]).join('')}</em>` : '', cell.shrine ? '<em class="g-shrine">✦</em>' : '', cell.interdict > 0 ? '<em class="g-inter">✕</em>' : '', cell.flood > 0 ? '<em class="g-flood">≈</em>' : '', feud.has(i) ? '<em class="g-feud">ϟ</em>' : '', watchHere(i) ? '<em class="g-watch">◉</em>' : ''].join('');
-    const sore = c && l.some(b => (c.grief[b.id] ?? 0) >= P.aggrieved);
-    return `<button class="cell${i === picked ? ' on' : ''}${cell.flow >= riverAt ? ' river' : ''}${sore ? ' sore' : ''}" data-cell="${i}" style="--v:${Math.round(v * 100)}%;--c:${col};--h:${Math.round(((cell.high - lo) / Math.max(1e-6, hi - lo)) * 22)}%" aria-label="${esc(cellWords(i))}">${l.length ? `<i>${l.length}</i>` : ''}${g ? `<span class="glyphs">${g}</span>` : ''}</button>`;
+  const polys = g.polys.map((poly, i) => {
+    const [v, col] = valLand(i), h = Math.round(((s.cells[i]!.high - lo) / Math.max(1e-6, hi - lo)) * 30);
+    const sore = c && (at.get(i) ?? []).some(b => (c.grief[b.id] ?? 0) >= P.aggrieved);
+    return `<polygon data-cell="${i}" class="${i === picked ? 'on' : ''}${sore ? ' sore' : ''}" points="${polyPath(poly)}" style="fill:color-mix(in srgb, ${col} ${Math.round(v * 100)}%, color-mix(in srgb, var(--hill) ${h}%, var(--land)))"><title>${esc(cellWords(i))}</title></polygon>`;
   }).join('');
-  const lenses = (['want', 'factions', 'sacred', 'jurisdiction', 'ecology'] as const).map(k => `<button data-lens="${k}" aria-pressed="${lens === k}">${({ want: 'Want', factions: 'Factions', sacred: 'Sacred', jurisdiction: 'Jurisdiction', ecology: 'Ecology' })[k]}</button>`).join('');
-  return `<div class="pills">${lenses}</div><details class="legend small soft"><summary>${LEGEND[lens]} <span class="keylink">Key</span></summary>${GLYPHS}</details>
-    <div class="map-viewport">${zoom > 1 ? '<button class="reset" data-reset="1">Reset zoom</button>' : ''}<div class="map" style="grid-template-columns:repeat(${s.side},1fr);transform:translate(${panX}px,${panY}px) scale(${zoom})">${cells}</div></div>
-    ${picked < 0 ? '<p class="soft small">Pinch to zoom. Tap a place to see who is there and give orders.</p>' : ''}`;
+  const rv = rivers(g, lowOf, s.cells.map(x => x.flow), riverAt).map(r => `<path d="${r.d}" style="stroke-width:${r.w.toFixed(3)}"/>`).join('');
+  const marks = g.pts.map((pt, i) => {
+    const cell = s.cells[i]!, n = at.get(i)?.length ?? 0, out: string[] = [];
+    const [x, y] = pt, T = (cls: string, t: string, dx = 0, dy = 0, size = 0.32): string => `<text class="${cls}" x="${(x + dx).toFixed(2)}" y="${(y + dy).toFixed(2)}" font-size="${size}">${t}</text>`;
+    if (n) out.push(`<circle class="hamlet" cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${(0.07 + 0.025 * Math.min(6, n)).toFixed(3)}"/>`, n > 1 ? T('count', String(n), 0, 0.33, 0.22) : '');
+    if (i === seat) out.push(T('g-seat', '♛', 0, -0.2, 0.38));
+    const works = cell.works ? WORKS.filter(([k]) => cell.works![k]).map(w => w[2]).join('') : '';
+    if (works) out.push(T('g-work', works, 0.28, -0.2, 0.24));
+    const flags = [cell.shrine ? '<tspan class="g-shrine">✦</tspan>' : '', cell.interdict > 0 ? '<tspan class="g-inter">✕</tspan>' : '', cell.flood > 0 ? '<tspan class="g-flood">≈</tspan>' : '', feud.has(i) ? '<tspan class="g-feud">ϟ</tspan>' : ''].join('');
+    if (flags) out.push(`<text class="flags" x="${(x - 0.3).toFixed(2)}" y="${(y - 0.2).toFixed(2)}" font-size="0.24">${flags}</text>`);
+    if (watchHere(i)) out.push(`<circle class="g-watch" cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="0.3"/>`);
+    return out.join('');
+  }).join('');
+  return `<div class="map-viewport"><div class="map" style="transform:translate(${panX}px,${panY}px) scale(${zoom})"><svg viewBox="0 0 ${s.side} ${s.side}" preserveAspectRatio="xMidYMid meet">
+    <rect class="sea" x="-1" y="-1" width="${s.side + 2}" height="${s.side + 2}"/><g class="land">${polys}</g><path class="borders" d="${borders(g, i => land[i]!)}"/><g class="rivers">${rv}</g><g class="marks">${marks}</g></svg></div></div>`;
+}
+/** The lens bar, and the key when asked for. */
+function lensBar(): string {
+  const lenses = (['want', 'factions', 'sacred', 'jurisdiction', 'ecology'] as const).map(k => `<button data-lens="${k}" aria-pressed="${lens === k}">${({ want: 'Want', factions: 'Factions', sacred: 'Sacred', jurisdiction: 'Lords', ecology: 'Land' })[k]}</button>`).join('');
+  return `<div class="pills lensbar">${lenses}<button data-key="1" aria-pressed="${keyOpen}" aria-label="Map key">?</button>${zoom > 1.01 ? '<button data-reset="1">Fit</button>' : ''}</div>${keyOpen ? `<p class="key small">${LEGEND[lens]} ${GLYPHS} Ink lines: where lords’ lands meet.</p>` : ''}`;
 }
 function sheet(): string {
   if (picked < 0 || view !== 'map') return '';
@@ -673,21 +707,25 @@ function powersDeck(): string {
 function shell(): void {
   const live = mode === 'cockpit';
   document.body.classList.add('cockpit-on');
-  app.innerHTML = `<div class="cockpit"><div id="strip"></div>
-    <nav class="tabs vt">${(['map', 'chronicle'] as const).map(v => `<button data-view="${v}" aria-pressed="${view === v}">${v === 'map' ? 'Map' : 'Chronicle'}</button>`).join('')}</nav>
-    <div class="viewwrap"><main class="view" id="view"></main><div id="sheet"></div></div>
-    ${live ? `<footer class="deck"><nav class="tabs">${(['laws', 'treasury', 'decrees', 'works', 'powers'] as const).map(d => `<button data-deck="${d}" aria-pressed="${deck === d}">${({ laws: 'Laws', treasury: 'Treasury', decrees: 'Decrees', works: 'Works', powers: 'Powers' })[d]}</button>`).join('')}</nav><div class="deckin" id="deck"></div></footer>` : ''}</div>`;
+  if (!live) deck = 'chronicle';
+  const tabs = live ? (['dials', 'laws', 'works', 'powers', 'chronicle'] as const) : (['chronicle'] as const);
+  app.innerHTML = `<div class="cockpit full"><main class="view map-host" id="view"></main>
+    <div class="hud-top"><div id="strip"></div><div id="lensbar"></div></div>
+    <div id="sheet"></div>
+    <footer class="dock"><div class="half" id="deck"></div><nav class="tabs">${tabs.map(d => `<button data-deck="${d}" aria-pressed="${dockOpen && deck === d}">${({ dials: 'Dials', laws: 'Laws', works: 'Works', powers: 'Powers', chronicle: 'Chronicle' })[d]}</button>`).join('')}</nav></footer></div>`;
+  zoom = fitZoom(); panX = 0; panY = 0;
   paint(true);
 }
 const swap = (id: string, html: string): void => { const el = document.getElementById(id); if (el && el.dataset.h !== html) { const top = el.scrollTop; el.innerHTML = html; el.dataset.h = html; el.scrollTop = top; } };
 function paint(force = false): void {
-  if (force) for (const id of ['strip', 'view', 'deck', 'sheet']) { const el = document.getElementById(id); if (el) el.dataset.h = ''; }
-  document.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === view)));
-  document.querySelectorAll<HTMLButtonElement>('[data-deck]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.deck === deck)));
+  if (force) for (const id of ['strip', 'view', 'deck', 'sheet', 'lensbar']) { const el = document.getElementById(id); if (el) el.dataset.h = ''; }
+  document.querySelectorAll<HTMLButtonElement>('[data-deck]').forEach(b => b.setAttribute('aria-pressed', String(dockOpen && b.dataset.deck === deck)));
+  document.querySelector('.dock')?.classList.toggle('open', dockOpen);
   swap('strip', strip());
-  if (!gesturing) swap('view', view === 'map' ? mapView() : chronicleView());
-  swap('sheet', sheet());
-  if (s.court && mode === 'cockpit') swap('deck', deck === 'laws' ? lawsDeck() : deck === 'treasury' ? treasuryDeck() : deck === 'decrees' ? decreesDeck() : deck === 'works' ? worksDeck() : powersDeck());
+  swap('lensbar', lensBar());
+  if (!gesturing) swap('view', mapView());
+  swap('sheet', dockOpen ? '' : sheet());
+  swap('deck', !dockOpen ? '' : deck === 'chronicle' ? chronicleView() : !s.court ? '' : deck === 'dials' ? treasuryDeck() + '<div class="label">Decrees</div>' + decreesDeck() : deck === 'laws' ? lawsDeck() : deck === 'works' ? worksDeck() : powersDeck());
 }
 
 /** One week of the living realm: the court's reckoning, the realm lives, and the next week's matters are settled below by the laws. */
@@ -750,7 +788,7 @@ function resume(): void {
     // A realm kept under the old laws keeps its works and its history, but its laws begin again.
     if (s.court && !('forest' in s.court.policy.laws)) Object.assign(s.court.policy, freshLaws()); R.events = j.events ?? []; mode = j.mode; feed = j.feed ?? []; hist = j.hist ?? []; eras = j.eras ?? []; eraFrom = j.eraFrom ?? 0; eraStats = j.eraStats ?? eraStats;
     watched.clear(); for (const w of j.watched ?? []) watched.add(w);
-    lens = j.lens ?? 'want'; deck = j.deck ?? 'laws';
+    lens = j.lens ?? 'want'; deck = (['dials', 'laws', 'works', 'powers', 'chronicle'].includes(j.deck) ? j.deck : 'laws'); dockOpen = false;
     over = ''; speed = 0; picked = -1; view = 'map'; openGauge = ''; zoom = 1; panX = 0; panY = 0;
     shell();
   } catch { welcome(); }
@@ -777,7 +815,10 @@ requestAnimationFrame(frame);
 for (const g of ['gesturestart', 'gesturechange']) document.addEventListener(g, e => { if (!(e.target as HTMLElement)?.closest?.('.map-viewport')) e.preventDefault(); }, { passive: false });
 const ptrs = new Map<number, { x: number; y: number }>();
 let pinch0 = 0, zoom0 = 1, pan0 = { x: 0, y: 0 }, start0 = { x: 0, y: 0 }, moved = false;
-const clampPan = (): void => { const vp = document.querySelector('.map-viewport') as HTMLElement | null; const w = vp?.clientWidth ?? 300, h = vp?.clientHeight ?? 300, mx = (w * (zoom - 1)) / 2, my = (h * (zoom - 1)) / 2; panX = Math.max(-mx, Math.min(mx, panX)); panY = Math.max(-my, Math.min(my, panY)); };
+/** The map is a square as wide as the screen's narrower side; at the zoom that fills the screen, panning reaches its edges. */
+const mapBox = (): { w: number; h: number; m: number } => { const vp = document.querySelector('.map-viewport') as HTMLElement | null; const w = vp?.clientWidth ?? 390, h = vp?.clientHeight ?? 800; return { w, h, m: Math.min(w, h) }; };
+const fitZoom = (): number => { const { w, h, m } = mapBox(); return Math.min(1.6, Math.max(1, Math.min(w, h * 0.78) / m * (h > w ? 1.45 : 1))); };
+const clampPan = (): void => { const { w, h, m } = mapBox(), mx = Math.max(0, (m * zoom - w) / 2 + 24), my = Math.max(0, (m * zoom - h) / 2 + 120); panX = Math.max(-mx, Math.min(mx, panX)); panY = Math.max(-my, Math.min(my, panY)); };
 const applyZoom = (): void => { const m = document.querySelector('.map') as HTMLElement | null; if (m) m.style.transform = `translate(${panX}px,${panY}px) scale(${zoom})`; };
 app.addEventListener('pointerdown', e => {
   if (!(e.target as HTMLElement).closest('.map-viewport')) return;
@@ -792,27 +833,23 @@ window.addEventListener('pointermove', e => {
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   const pts = [...ptrs.values()];
   if (pts.length >= 2 && pinch0 > 0) { zoom = Math.max(1, Math.min(3.5, (zoom0 * Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y)) / pinch0)); moved = true; }
-  else if (pts.length === 1 && zoom > 1) { const dx = e.clientX - start0.x, dy = e.clientY - start0.y; if (Math.abs(dx) + Math.abs(dy) > 6) moved = true; panX = pan0.x + dx; panY = pan0.y + dy; }
+  else if (pts.length === 1) { const dx = e.clientX - start0.x, dy = e.clientY - start0.y; if (Math.abs(dx) + Math.abs(dy) > 6) moved = true; panX = pan0.x + dx; panY = pan0.y + dy; }
   clampPan(); applyZoom();
 });
 const lift = (e: PointerEvent): void => {
   if (!ptrs.delete(e.pointerId)) return;
   if (ptrs.size < 2) pinch0 = 0;
   if (ptrs.size === 1) { const p = [...ptrs.values()][0]!; start0 = { x: p.x, y: p.y }; pan0 = { x: panX, y: panY }; }
-  if (!ptrs.size) { gesturing = false; if (zoom <= 1.02) { zoom = 1; panX = 0; panY = 0; applyZoom(); } setTimeout(() => { moved = false; paint(); }, 0); }
+  if (!ptrs.size) { gesturing = false; setTimeout(() => { moved = false; paint(); }, 0); }
 };
 window.addEventListener('pointerup', lift); window.addEventListener('pointercancel', lift);
 // A drag or a pinch that ends on a place is not a tap on it.
 app.addEventListener('click', e => {
   const t = e.target as HTMLElement;
   if (moved && t.closest('.map-viewport')) { e.stopImmediatePropagation(); e.preventDefault(); return; }
-  // A tap that falls in the gap between places picks the nearest one.
-  if (t.classList.contains('map')) {
-    for (const [dx, dy] of [[0, 0], [5, 0], [-5, 0], [0, 5], [0, -5], [5, 5], [-5, -5], [5, -5], [-5, 5]]) {
-      const hit = document.elementFromPoint(e.clientX + dx!, e.clientY + dy!)?.closest('.cell') as HTMLElement | null;
-      if (hit) { e.stopImmediatePropagation(); picked = Number(hit.dataset.cell); paint(); return; }
-    }
-  }
+  // A tap on a place picks it; with the dock up, it lowers the dock as well.
+  const poly = t.closest?.('polygon[data-cell]') as SVGElement | null;
+  if (poly) { e.stopImmediatePropagation(); dockOpen = false; picked = Number(poly.dataset.cell); paint(); return; }
 }, true);
 
 function cockpitClick(b: HTMLButtonElement): boolean {
@@ -821,12 +858,12 @@ function cockpitClick(b: HTMLButtonElement): boolean {
   if (b.dataset.gauge !== undefined) { openGauge = openGauge === b.dataset.gauge ? '' : (b.dataset.gauge as typeof openGauge); paint(); return true; }
   if (b.dataset.home) { save(); speed = 0; welcome(); return true; }
   if (b.dataset.watch) { const k = b.dataset.watch; if (watched.has(k)) watched.delete(k); else watched.add(k); paint(); return true; }
-  if (b.dataset.view) { view = b.dataset.view as typeof view; paint(); return true; }
-  if (b.dataset.deck) { deck = b.dataset.deck as typeof deck; paint(); return true; }
+    if (b.dataset.deck) { const d = b.dataset.deck as typeof deck; dockOpen = !(dockOpen && deck === d); deck = d; paint(); return true; }
+  if (b.dataset.key) { keyOpen = !keyOpen; paint(); return true; }
   if (b.dataset.lens) { lens = b.dataset.lens as Lens; paint(); return true; }
-  if (b.dataset.reset) { zoom = 1; panX = 0; panY = 0; paint(); return true; }
+  if (b.dataset.reset) { zoom = 1; panX = 0; panY = 0; applyZoom(); paint(); return true; }
   if (b.dataset.cell !== undefined) { picked = Number(b.dataset.cell); paint(); return true; }
-  if (b.dataset.power !== undefined) { focusPower = Number(b.dataset.power); deck = 'powers'; paint(); document.getElementById('deck')?.scrollTo(0, 0); return true; }
+  if (b.dataset.power !== undefined) { focusPower = Number(b.dataset.power); deck = 'powers'; dockOpen = true; paint(); document.getElementById('deck')?.scrollTo(0, 0); return true; }
   if (b.dataset.act) {
     const [id, a] = b.dataset.act.split(':') as [string, PowerAct];
     const leg0 = c?.legitimacy ?? 0, reach0 = c?.reach ?? 0;
@@ -836,7 +873,7 @@ function cockpitClick(b: HTMLButtonElement): boolean {
     }
     paint(); return true;
   }
-  if (b.dataset.goto !== undefined) { picked = Number(b.dataset.goto); view = 'map'; paint(); return true; }
+  if (b.dataset.goto !== undefined) { picked = Number(b.dataset.goto); dockOpen = false; paint(); return true; }
   if (b.dataset.major !== undefined) { majorOnly = b.dataset.major === '1'; paint(); return true; }
   if (!c) return false;
   if (b.dataset.law) { const [k, v] = b.dataset.law.split(':') as [LawKey, string]; const leg0 = c.legitimacy; setLaw(s, k, v as never); if (c.legitimacy < leg0) doFlash({ legitimacy: 'bad' }); feed.push({ t: s.t, text: `You laid down the law: <strong>${LAW_WORDS[k][0]}: ${LAW_WORDS[k][1].find(x => x[0] === v)![1]}</strong>.`, major: true }); paint(); return true; }
@@ -876,7 +913,7 @@ function start(seed: number, side: number, souls: number, years: number): void {
     }
     if (mode === 'regency') { document.body.classList.remove('cockpit-on'); openCourt(s); openWeek(); render(); return; }
     if (mode === 'cockpit') { openCourt(s, 'cockpit'); audience(s); s.log = []; }
-    speed = 0; feed = []; picked = -1; view = 'map'; deck = 'laws'; hist = []; eras = []; eraFrom = s.t; openGauge = ''; watched.clear();
+    speed = 0; feed = []; picked = -1; view = 'map'; deck = 'laws'; dockOpen = false; hist = []; eras = []; eraFrom = s.t; openGauge = ''; watched.clear();
     eraStats = { pop: s.people.filter(p => p.alive).length, hunger: 0, withdrawals: 0, shrines: 0, floods: 0, defied: 0 };
     shell(); save();
   };
