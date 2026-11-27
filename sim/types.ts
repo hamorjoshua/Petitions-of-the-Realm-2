@@ -169,10 +169,28 @@ export interface Rec {
 export interface Wrong { by: number; to: number; kind: number; q: number; rec: number; doer: number; intent?: string }
 
 /** A matter before the court: who brings it, against whom, about which bond or want, and why it climbed this far. */
-export interface Petition { /** For a house in want: everything that weighs on it, heaviest first, and the shape of each. */ burdens: number[]; shapes: string[]; id: number; t: number; by: number; against: number; bond: number; need: number; rec: number; shape: string; side: 'owed' | 'owes' | 'outside' | 'bare' | 'asks' | 'fears' | 'exit' | 'suspects' | 'unaided' | 'exceeds' | 'heir' | 'appeal' | 'harmed' | 'mortmain' | 'sanctuary' | 'shrine' | 'unclean' | 'heresy'; work?: number; cell?: number; sign?: string; body?: number; press?: number; person?: number; reason: 'none' | 'clash' | 'challenge'; speaksFor: number; waited: number; urgency: number }
+export interface Petition { /** For a house in want: everything that weighs on it, heaviest first, and the shape of each. */ burdens: number[]; shapes: string[]; id: number; t: number; by: number; against: number; bond: number; need: number; rec: number; shape: string; side: 'owed' | 'owes' | 'outside' | 'bare' | 'asks' | 'fears' | 'exit' | 'suspects' | 'unaided' | 'exceeds' | 'heir' | 'appeal' | 'harmed' | 'mortmain' | 'sanctuary' | 'shrine' | 'unclean' | 'heresy'; work?: number; cell?: number; sign?: string; body?: number; press?: number; person?: number; /** A challenge to a standing law rather than a rule. */ law?: LawKey; reason: 'none' | 'clash' | 'challenge'; speaksFor: number; waited: number; urgency: number }
 /** A rule: a bond that binds every member of a body, or the whole realm (scope -1). */
 export interface Rule { /** Written on the roll: it cannot be challenged or undone. */ roll?: boolean; id: number; scope: number; shape: string; cut: string; since: number; uses: number }
+/** The cockpit: standing laws, regulators and timed ordinances the regent sets, and how the realm is played. */
+export type LawKey = 'debt' | 'boon' | 'commons' | 'jurisdiction' | 'sacred' | 'creed';
+export interface Laws { debt: 'enforce' | 'ease' | 'manual'; boon: 'cap' | 'commute' | 'free'; commons: 'open' | 'share' | 'exclusive'; jurisdiction: 'crown' | 'ground' | 'person'; sacred: 'respect' | 'translate' | 'override'; creed: 'tolerate' | 'parish' | 'suppress' }
+export interface Dials { share: 0 | 0.05 | 0.1 | 0.15; relief: 'off' | 'dire' | 'short'; bailiff: 26 | 13 | 6; effort: 1 | 3 | 4 }
+export type OrdKey = 'stay' | 'granaries' | 'inquest' | 'vouch';
+export type Mode = 'cockpit' | 'chronicle' | 'regency';
+export interface Policy {
+  laws: Laws;
+  /** When each law was last laid down (-1: never; a law never laid down settles nothing), whether it is on the roll, and what it has settled. */
+  lawSetAt: Record<LawKey, number>; inscribed: Record<LawKey, boolean>; lawHits: Record<LawKey, number>;
+  dials: Dials;
+  /** Weeks each ordinance has left to run. */
+  ord: Record<OrdKey, number>;
+  mode: Mode;
+  /** The Crown has lost its hold: laws go unheeded and bailiffs send nothing up until it recovers. */
+  weak: boolean;
+}
 export interface Court {
+  policy: Policy;
   /** How the court last ruled on each kind of matter, how far it found for the one who asked, and when; and how often it has gone back on itself lately. */
   precedent: Record<string, { fav: number; t: number }>; caprice: number;
   /** The Crown's two capacities: whether its rulings are accepted (legitimacy) and whether it can enforce them (reach). Standing is the lesser. */

@@ -29,7 +29,8 @@ export function bind(s: State): void {
     if (bd.about !== 'bond' || bd.way !== 'manor' || bd.boon <= 0 || bd.easedTo > s.t) continue;
     const T = s.bodies[bd.a], L = s.bodies[bd.b];
     if (!T || !L || !T.alive || !L.alive || !L.pressed) continue;
-    const asked = bd.capped ? bd.boon : bd.boon * (1 + 2 * drive(s, L));
+    const stayed = (s.court?.policy.ord.stay ?? 0) > 0;
+    const asked = bd.capped || stayed ? bd.boon : bd.boon * (1 + 2 * drive(s, L));
     const d = Math.min(asked, 0.5 * muster(s, T));
     if (d <= 0) continue;
     T.spent += d; L.spent -= d;
@@ -141,6 +142,9 @@ export function bind(s: State): void {
       bd.q = 0;
       continue;
     }
+    // A stay of debts by ordinance: nothing is seized or forfeit while it runs.
+    const stay = (s.court?.policy.ord.stay ?? 0) > 0;
+    if (stay) { bd.due = s.t + 4; continue; }
     if (!bd.broken) {
       // A debt secured on a holding: the holding passes, and there is nothing left to fight over.
       const pledge = s.bonds.find(x => x.about === 'bond' && x.secures === bd.id);

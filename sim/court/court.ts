@@ -10,12 +10,12 @@ import { BY_HARM, Kn, NEEDS, NK, NN, P, Rc, St, TOIL } from '../tables.ts';
 import { askAhead, cover, drive } from '../value.ts';
 import { around, bond, dist, fellows, grown, head, hearthIndex, kinOf, leaves, living, might, near, rec, top, warm } from '../util.ts';
 import { body, handOver, shift } from '../processes/gather.ts';
-import type { Body, Bond, Court, Petition, Rule, State } from '../types.ts';
+import type { Body, Bond, Court, Dials, LawKey, Laws, Mode, OrdKey, Petition, Policy, Rule, State } from '../types.ts';
 
 export type Width = 'case' | 'body' | 'realm';
 export interface Ruling { petition: number; cut: string; width: Width }
 
-export function openCourt(s: State): Court {
+export function openCourt(s: State, mode: Mode = 'regency'): Court {
   // The Crown's store: for each pressing need, what would see the whole realm through a week or so, in the thing that keeps best.
   const store = new Array<number>(NK).fill(0);
   let heads = 0;
@@ -26,7 +26,15 @@ export function openCourt(s: State): Court {
     for (let j = 0; j < NK; j++) if (!Kn[j]!.fixed && Kn[j]!.serves[n]! > 0 && (k < 0 || Kn[j]!.keep < Kn[k]!.keep)) k = j;
     if (k >= 0) store[k] = Math.max(store[k]!, (heads * P.crownWeeks * (NEEDS[n]!.per + NEEDS[n]!.cold * 5) * Kn[k]!.use) / Kn[k]!.serves[n]!);
   }
-  return (s.court = { legitimacy: 5, reach: 5, collected: 0, precedent: {}, caprice: 0, standing: 5, docket: [], rules: [], grief: {}, seen: {}, next: 0, quiet: 0, declined: 0, chilled: 0, store, words: [], wordsKept: 0, wordsBroken: 0, store0: store.reduce((x, y) => x + y, 0) });
+  const keys: LawKey[] = ['debt', 'boon', 'commons', 'jurisdiction', 'sacred', 'creed'];
+  const per = <T,>(v: T) => Object.fromEntries(keys.map(k => [k, v])) as Record<LawKey, T>;
+  const policy: Policy = {
+    laws: { debt: 'manual', boon: 'cap', commons: 'share', jurisdiction: 'crown', sacred: 'respect', creed: 'tolerate' },
+    lawSetAt: per(-1), inscribed: per(false), lawHits: per(0),
+    dials: { share: P.crownDue as Dials['share'], relief: 'off', bailiff: 13, effort: P.hearings as Dials['effort'] },
+    ord: { stay: 0, granaries: 0, inquest: 0, vouch: 0 }, mode, weak: false,
+  };
+  return (s.court = { policy, legitimacy: 5, reach: 5, collected: 0, precedent: {}, caprice: 0, standing: 5, docket: [], rules: [], grief: {}, seen: {}, next: 0, quiet: 0, declined: 0, chilled: 0, store, words: [], wordsKept: 0, wordsBroken: 0, store0: store.reduce((x, y) => x + y, 0) });
 }
 
 /** Give a house three weeks of what it needs out of the Crown's store. False if the store has not got it. */
@@ -318,6 +326,11 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
     }
   }
   const powerFor = (): number => (via >= 0 ? via : localPower(s, p));
+  if (p.reason === 'challenge' && p.law) {
+    if (cut === 'strike') { c.policy.lawSetAt[p.law] = -1; c.grief[p.by] = 0; rec(s, 'rule', { a: p.by, kind2: -1, q2: -3, way: `law ${p.law}` }); }
+    else { grieve(c, p.by, P.harmReversed); c.seen[`law:${p.law}`] = s.t + 100000; }
+    return true;
+  }
   if (p.reason === 'challenge') {
     const i = c.rules.findIndex(r => r.id === p.bond);
     if (i < 0) return false;
@@ -798,6 +811,162 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
   return true;
 }
 
+export const LAWS: LawKey[] = ['debt', 'boon', 'commons', 'jurisdiction', 'sacred', 'creed'];
+export const ORD_WEEKS: Record<OrdKey, number> = { stay: 52, granaries: 13, inquest: 13, vouch: 26 };
+const live = (c: Court): boolean => c.policy.mode !== 'regency';
+
+/** Lay down a standing law. Changing one within the year it was laid down is caprice; changing one on the roll is worse, and takes it off the roll. */
+export function setLaw<K extends LawKey>(s: State, key: K, val: Laws[K]): void {
+  const c = s.court, pol = c?.policy;
+  if (!c || !pol) return;
+  const was = pol.lawSetAt[key];
+  if (was >= 0 && pol.laws[key] === val) return;
+  if (pol.inscribed[key] || (was >= 0 && s.t - was < 52)) {
+    c.caprice += pol.inscribed[key] ? 3 : 1; c.legitimacy = Math.max(0, c.legitimacy - (pol.inscribed[key] ? 0.5 : 0.15));
+    rec(s, 'caprice', { a: -1, b: -1, way: `law ${key}` });
+  }
+  pol.inscribed[key] = false;
+  pol.laws[key] = val; pol.lawSetAt[key] = s.t;
+  rec(s, 'rule', { a: -1, kind2: 0, q2: -3, way: `law ${key} ${val}` });
+}
+/** Repeal a law: it settles nothing until laid down again. */
+export function repealLaw(s: State, key: LawKey): void {
+  const pol = s.court?.policy;
+  if (!pol || pol.lawSetAt[key] < 0) return;
+  if (pol.inscribed[key] || s.t - pol.lawSetAt[key] < 52) { s.court!.caprice += pol.inscribed[key] ? 3 : 1; s.court!.legitimacy = Math.max(0, s.court!.legitimacy - (pol.inscribed[key] ? 0.5 : 0.15)); }
+  pol.inscribed[key] = false; pol.lawSetAt[key] = -1;
+}
+export function setDial<K extends keyof Dials>(s: State, key: K, val: Dials[K]): void {
+  const pol = s.court?.policy;
+  if (!pol) return;
+  pol.dials[key] = val;
+  // The Crown's share is written into every holding's due to the king's bailiff.
+  if (key === 'share') for (const b of s.bonds) if (b.about === 'yield' && b.way === 'crown') b.share = val as number;
+}
+export function issueOrdinance(s: State, key: OrdKey): boolean {
+  const pol = s.court?.policy;
+  if (!pol || pol.ord[key] > 0) return false;
+  pol.ord[key] = ORD_WEEKS[key];
+  rec(s, 'rule', { a: -1, kind2: 0, q2: -4, way: `ordinance ${key}` });
+  return true;
+}
+/** Write a standing law on the roll: it gains the court legitimacy, and nobody may challenge it; but undoing it is caprice of the worst kind. */
+export function inscribeLaw(s: State, key: LawKey): boolean {
+  const c = s.court, pol = c?.policy;
+  if (!c || !pol || pol.inscribed[key] || pol.lawSetAt[key] < 0) return false;
+  pol.inscribed[key] = true; c.legitimacy = Math.min(5, c.legitimacy + 0.35);
+  rec(s, 'rule', { a: -1, kind2: 0, q2: -5, way: `inscribe ${key}` });
+  return true;
+}
+
+/** Which standing law speaks to a matter, if any. */
+export function lawOf(s: State, p: Petition): LawKey | null {
+  if (p.reason !== 'none') return null;
+  if (p.burdens.length) return 'debt';
+  if (p.side === 'heresy') return 'creed';
+  if (p.side === 'mortmain' || p.side === 'sanctuary' || p.side === 'shrine' || p.side === 'unclean') return 'sacred';
+  if (p.side === 'exceeds' || p.side === 'exit') return 'boon';
+  if (p.side === 'asks' && p.body === undefined) return 'commons';
+  if (p.side === 'heir' || p.side === 'harmed' || p.side === 'unaided' || p.side === 'fears') return 'jurisdiction';
+  const bd = s.bonds.find(b => b.id === p.bond);
+  if (!bd) return null;
+  if (bd.about === 'right' || bd.about === 'land') return 'commons';
+  if (bd.about === 'act' && (p.side === 'owed' || p.side === 'owes')) return 'debt';
+  return null;
+}
+/** What a standing law would cut on a matter: the first of its preferred answers the matter allows. */
+export function lawCut(s: State, p: Petition): string | null {
+  const c = s.court, pol = c?.policy, key = lawOf(s, p);
+  if (!c || !pol || !key || pol.lawSetAt[key] < 0) return null;
+  const v = pol.laws[key] as string, can = cuts(s, p);
+  const remits = can.filter(x => x === 'remit' || x.startsWith('remit:'));
+  const first = (...xs: string[]): string | null => xs.find(x => can.includes(x)) ?? null;
+  if (key === 'debt') {
+    if (v === 'manual') return null;
+    if (p.burdens.length) return v === 'ease' ? can.find(x => x.startsWith('ease:')) ?? null : 'dismiss';
+    return v === 'enforce' ? first('enforce') : first('surety', 'pardon', 'stay', 'answer', 'bar');
+  }
+  if (key === 'boon') return p.side === 'exit' ? (v === 'cap' ? first('tie') : v === 'commute' ? can.find(x => x.startsWith('ease:')) ?? null : first('release')) : v === 'cap' ? first('custom') : v === 'commute' ? first('commute', 'custom') : first('uphold');
+  if (key === 'commons') {
+    const bd = s.bonds.find(b => b.id === p.bond);
+    if (p.side === 'asks') return first(v === 'open' ? 'refuse' : v === 'share' ? 'sell' : 'charter');
+    if (bd?.about === 'right') return first(v === 'open' ? 'strike' : v === 'share' ? 'rival' : 'enforce');
+    return v === 'open' ? first('turn') : v === 'share' ? remits[0] ?? null : first('enforce');
+  }
+  if (key === 'jurisdiction') {
+    if (v === 'crown' || !remits.length) return null;
+    if (v === 'ground' || p.against < 0) return remits[0]!;
+    const lord = top(s, s.bodies[p.against]!).id;
+    return remits.find(x => x === `remit:${lord}`) ?? remits[0]!;
+  }
+  if (key === 'sacred') return v === 'respect' ? first('uphold', 'respect', 'sanction', 'compel') : v === 'translate' ? first('commute', 'abjure', 'inquire', 'penance') : first('break', 'extract', 'suppress', 'depose');
+  return v === 'tolerate' ? first('tolerate') : v === 'parish' ? remits[0] ?? null : first('silence');
+}
+/** Settle a matter by standing law. One hurt enough by a law not on the roll may challenge it, once a year. */
+function byLaw(s: State, c: Court, p: Petition): boolean {
+  if (!live(c) || c.policy.weak) return false;
+  const key = lawOf(s, p), cut = lawCut(s, p);
+  if (!key || !cut) return false;
+  const before = [p.by, p.against].map(w => (w >= 0 ? c.grief[w] ?? 0 : 0));
+  if (!carry(s, c, p, cut)) return false;
+  teach(s, hearthIndex(s), p.by, p.side, FAVOUR[p.side]?.[cut.split(':')[0]!] ?? 0.5, P.pleaOwn);
+  c.policy.lawHits[key]++;
+  rec(s, 'rule', { a: p.by, b: p.against, kind2: 1, q2: -3, way: p.shape });
+  if (c.policy.inscribed[key]) return true;
+  [p.by, p.against].forEach((who, i) => {
+    if (who < 0 || !s.bodies[who]!.alive || (c.grief[who] ?? 0) - before[i]! < P.harmPaid || (c.grief[who] ?? 0) < P.aggrieved) return;
+    const k = `law:${key}`;
+    if (s.t - (c.seen[k] ?? -999) < 52) return;
+    c.seen[k] = s.t;
+    c.docket.push({ id: c.next++, t: s.t, by: who, against: -1, bond: -1, law: key, need: -1, rec: -1, shape: `against the law: ${key} ${c.policy.laws[key]}`, burdens: [], shapes: [], side: 'bare', reason: 'challenge', speaksFor: leaves(s, top(s, s.bodies[who]!)).length, waited: 0, urgency: 0 });
+  });
+  return true;
+}
+
+/** The cockpit's week: ordinances run down, the relief floor, an inquest's findings, and whether the Crown has lost or regained its hold. */
+function policyWeek(s: State, c: Court): void {
+  const pol = c.policy;
+  if (pol.mode === 'regency') return;
+  const idx = hearthIndex(s);
+  // Relief from the Crown's store for houses below the floor; the granaries open wider while ordered.
+  const floor = pol.dials.relief === 'short' ? P.short : pol.dials.relief === 'dire' || pol.ord.granaries > 0 ? P.dire : -1;
+  if (floor > 0 && !pol.weak) {
+    let n = pol.ord.granaries > 0 ? 6 : 3;
+    const want: [Body, number, number][] = [];
+    for (const b of s.bodies) {
+      if (!b.alive || b.parts.length || !b.members.length || b.rank) continue;
+      const cov = cover(b.store, askAhead(s, b));
+      for (let k = 0; k < NN; k++) if (NEEDS[k]!.harm >= 0.5 && cov[k]! < floor) { want.push([b, k, cov[k]!]); break; }
+    }
+    want.sort((x, y) => x[2] - y[2] || x[0].id - y[0].id);
+    for (const [b, need] of want) { if (n <= 0) break; const q = relieve(s, c, b, need); if (q > 0) { n--; rec(s, 'judge', { a: b.id, q, need, way: 'relief by the floor' }); } }
+  }
+  // An inquest in session: false claims are found out, and what was kept back from the Crown is paid.
+  if (pol.ord.inquest > 0) {
+    c.reach -= 0.03;
+    for (const bd of s.bonds) if (bd.about === 'act' && bd.fabricated && bd.denied && bd.q > 0) {
+      bd.q = 0; grieve(c, bd.b, -P.harmPaid);
+      for (const x of around(idx, s.side, s.bodies[bd.b]!.home, P.reach)) if (x.id !== bd.b) x.lore[`house:${bd.b}`] = Math.min(1.5, (x.lore[`house:${bd.b}`] ?? 0) + 0.3);
+      rec(s, 'judge', { a: bd.a, b: bd.b, q2: 1, way: 'inquest finds a false claim' });
+    }
+    for (const X of s.bodies) {
+      if (!X.alive || X.hid.reduce((a, q) => a + (q ?? 0), 0) <= 1) continue;
+      for (let k = 0; k < X.hid.length; k++) { const pay = Math.min(X.hid[k] ?? 0, X.store[k]!); X.store[k] = X.store[k]! - pay; c.store[k] = c.store[k]! + pay; }
+      X.hid = []; grieve(c, X.id, P.harmPaid);
+      rec(s, 'judge', { b: X.id, q2: 1, way: 'inquest finds the Crown’s share kept back' });
+    }
+  }
+  // The Crown's word for newcomers: the fear of strangers fades.
+  if (pol.ord.vouch > 0) for (const b of s.bodies) {
+    if (b.lore.new) b.lore.new *= 0.85;
+    for (const m of grown(s, b)) if (m.lore.new) m.lore.new *= 0.85;
+  }
+  for (const k of Object.keys(pol.ord) as OrdKey[]) if (pol.ord[k] > 0) pol.ord[k]--;
+  // The Crown that has lost its hold is not ended; it is ignored, until it is trusted and obeyed again.
+  if (!pol.weak && (c.legitimacy <= 0 || c.reach <= 0)) { pol.weak = true; rec(s, 'withdraw', { q: -1, q2: 0 }); }
+  else if (pol.weak && c.legitimacy > 1 && c.reach > 1) { pol.weak = false; rec(s, 'withdraw', { q: -2, q2: 0 }); }
+}
+
 /** The rule that settles a matter below, if there is one answer to it. */
 function ruleFor(s: State, c: Court, p: Petition): Rule | 'clash' | null {
   const a = scopeOf(s, p.by), b = p.against >= 0 ? scopeOf(s, p.against) : a;
@@ -1122,11 +1291,11 @@ export function audience(s: State): Petition[] {
         r.uses++; eased = true;
         rec(s, 'rule', { a: p.by, kind2: 1, q2: r.scope, way: p.shapes[i]! });
       });
-      if (eased) teach(s, idx, p.by, 'owes', 0.7, P.pleaOwn); else c.docket.push(p);
+      if (eased) teach(s, idx, p.by, 'owes', 0.7, P.pleaOwn); else if (!byLaw(s, c, p)) c.docket.push(p);
       continue;
     }
     const r = ruleFor(s, c, p);
-    if (r === 'clash') { p.reason = 'clash'; p.shape = `two rules on: ${p.shape}`; c.docket.push(p); } else if (r) below(s, c, p, r); else c.docket.push(p);
+    if (r === 'clash') { p.reason = 'clash'; p.shape = `two rules on: ${p.shape}`; c.docket.push(p); } else if (r) below(s, c, p, r); else if (!byLaw(s, c, p)) c.docket.push(p);
   }
   // Those who waited too long, or whose matter is gone, leave; the rest are ranked.
   c.docket = c.docket.filter(p => {
@@ -1146,6 +1315,8 @@ export function audience(s: State): Petition[] {
   c.docket.sort((x, y) => y.urgency - x.urgency || x.id - y.id);
   const seated: Petition[] = [], shapes = new Set<string>();
   for (const p of c.docket) { if (seated.length >= P.seats) break; if (shapes.has(p.shape)) continue; shapes.add(p.shape); seated.push(p); }
+  // Seats left over go to the most urgent of the rest, so the bench is never half empty while a crowd waits.
+  for (const p of c.docket) { if (seated.length >= P.seats) break; if (!seated.includes(p)) seated.push(p); }
   return seated;
 }
 
@@ -1153,8 +1324,9 @@ export function audience(s: State): Petition[] {
 export function hear(s: State, rulings: Ruling[]): void {
   const c = s.court;
   if (!c) return;
-  const heard = rulings.slice(0, P.hearings + 1);
-  if (heard.length > P.hearings) c.legitimacy -= 0.5;
+  const cap = c.policy.mode === 'regency' ? P.hearings : c.policy.dials.effort;
+  const heard = rulings.slice(0, cap + 1);
+  if (heard.length > cap) c.legitimacy -= 0.5;
   for (const r of heard) {
     const p = c.docket.find(x => x.id === r.petition);
     if (!p || !cuts(s, p).includes(r.cut)) continue;
@@ -1221,9 +1393,10 @@ export function hear(s: State, rulings: Ruling[]): void {
   });
   // The king's bailiffs send up what they took in for the Crown. When the store runs low they take for the king
   // from those with most, and pay nothing: a taking like any other, and the court's own.
-  const low = c.store.reduce((x, y) => x + y, 0) < 0.5 * c.store0 && s.t % 13 === 0;
+  const live2 = c.policy.mode !== 'regency', round = live2 ? c.policy.dials.bailiff : 1;
+  const low = c.store.reduce((x, y) => x + y, 0) < 0.5 * c.store0 && s.t % (live2 ? round : 13) === 0;
   for (const b of s.bodies) {
-    if (!b.alive || b.rank !== 'bailiff') continue;
+    if (!b.alive || b.rank !== 'bailiff' || c.policy.weak || s.t % round !== 0) continue;
     for (let k = 0; k < NK; k++) { const up = Math.min(b.owedUp[k] ?? 0, b.store[k]!); if (up > 0) { c.collected += up; b.store[k] = b.store[k]! - up; c.store[k] = c.store[k]! + up; } }
     b.owedUp = [];
     if (!low) continue;
@@ -1276,9 +1449,10 @@ export function hear(s: State, rulings: Ruling[]): void {
   } else if (c.quiet % 13 === 0) {
     // A quiet season restores legitimacy if the court has kept to its word; reach comes back where the bailiffs collect.
     if (c.caprice < 1) c.legitimacy += 0.25;
-    if (c.collected > 0) c.reach += 0.25;
+    if (c.collected > 0 || c.policy.weak) c.reach += 0.25;
     c.collected = 0;
   }
+  policyWeek(s, c);
   c.legitimacy = Math.max(0, Math.min(5, c.legitimacy)); c.reach = Math.max(0, Math.min(5, c.reach));
   c.standing = Math.min(c.legitimacy, c.reach);
 }

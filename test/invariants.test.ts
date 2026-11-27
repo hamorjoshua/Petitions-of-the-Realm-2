@@ -151,3 +151,38 @@ test('force on holy ground is turned back, and logged', async () => {
   s.cells[T.home]!.sanctity = 0;
   assert.ok(!sheltered(s, A, T));
 });
+
+test('flipping a standing law within the year is caprice; on the roll, worse', async () => {
+  const { openCourt, setLaw, inscribeLaw } = await import('../sim/court/court.ts');
+  const s = found(3);
+  const c = openCourt(s, 'cockpit');
+  setLaw(s, 'debt', 'enforce');
+  assert.equal(c.caprice, 0, 'laying a law down the first time is no caprice');
+  s.t += 10; setLaw(s, 'debt', 'ease');
+  assert.equal(c.caprice, 1);
+  s.t += 60; setLaw(s, 'debt', 'enforce');
+  assert.equal(c.caprice, 1, 'changing a law after a year is no caprice');
+  inscribeLaw(s, 'debt'); s.t += 200; const leg = c.legitimacy; setLaw(s, 'debt', 'ease');
+  assert.equal(c.caprice, 4, 'undoing a law on the roll costs three');
+  assert.ok(c.legitimacy < leg);
+});
+
+test('a stay of debts halts seizures and forfeits for its full year', async () => {
+  const { bond } = await import('../sim/util.ts');
+  const { bind } = await import('../sim/processes/bind.ts');
+  const { openCourt, issueOrdinance } = await import('../sim/court/court.ts');
+  const s = found(3);
+  const c = openCourt(s, 'cockpit');
+  assert.ok(issueOrdinance(s, 'stay'));
+  assert.ok(!issueOrdinance(s, 'stay'), 'an ordinance in force cannot be issued again');
+  const hs = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length);
+  const [X, C] = [hs[0]!, hs[1]!];
+  X.store = X.store.map(() => 0);
+  const land = bond(s, { about: 'land', a: X.id, cell: X.home, basis: 'grant', strength: 2 });
+  const debt = bond(s, { about: 'act', a: X.id, b: C.id, kind: 0, q: 50, due: s.t, basis: 'word' });
+  bond(s, { about: 'bond', a: C.id, b: X.id, on: land.id, secures: debt.id, basis: 'word' });
+  for (let w = 0; w < 52; w++) { s.log = []; bind(s); s.t++; c.policy.ord.stay--; assert.equal(land.a, X.id, `ground forfeit in week ${w} of the stay`); }
+  assert.equal(c.policy.ord.stay, 0);
+  debt.due = s.t; s.log = []; bind(s);
+  assert.equal(land.a, C.id, 'once the stay ends the pledge is forfeit');
+});
