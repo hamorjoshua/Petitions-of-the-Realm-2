@@ -28,10 +28,13 @@ export function openCourt(s: State, mode: Mode = 'regency'): Court {
   }
   const policy: Policy = {
     ...freshLaws(),
-    dials: { share: P.crownDue as Dials['share'], relief: 'off', bailiff: 'regular', patronage: 'none' },
+    dials: freshDials(),
     ord: { stay: 0, granaries: 0, eyre: 0, penance: 0 }, mode, weak: false,
   };
-  return (s.court = { policy, legitimacy: 5, reach: 5, collected: 0, precedent: {}, caprice: 0, standing: 5, docket: [], rules: [], grief: {}, seen: {}, next: 0, quiet: 0, declined: 0, chilled: 0, store, words: [], wordsKept: 0, wordsBroken: 0, store0: store.reduce((x, y) => x + y, 0) });
+  const court: Court = { policy, seat: s.bodies.find(b => b.alive && b.rank === 'bailiff')?.home ?? Math.floor(s.cells.length / 2), legitimacy: 5, reach: 5, collected: 0, precedent: {}, caprice: 0, standing: 5, docket: [], rules: [], grief: {}, seen: {}, next: 0, quiet: 0, declined: 0, chilled: 0, store, words: [], wordsKept: 0, wordsBroken: 0, store0: store.reduce((x, y) => x + y, 0) };
+  s.court = court;
+  levies(s);
+  return court;
 }
 
 /** Give a house three weeks of what it needs out of the Crown's store. False if the store has not got it. */
@@ -818,6 +821,51 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
 }
 
 export const LAWS: LawKey[] = ['forest', 'movement', 'credit', 'swords'];
+/** The dials as a new court finds them. */
+export const freshDials = (): Dials => ({ grainShare: P.crownDue, timberShare: P.crownDue, relief: 'off', bailiff: 'regular', boonCap: 3, tithe: 'protected', toll: 0, budget: { spend: 0, relief: 34, reach: 33, legitimacy: 33 } });
+/** Work out the levies from the dials: grain's share on everything sown that feeds; timber's on timber, wherever it is cut. */
+export function levies(s: State): void {
+  const pol = s.court?.policy;
+  if (!pol) return;
+  const tk = KINDS.findIndex(k => k.id === 'timber');
+  pol.levy = Kn.map((k, i) => (i === tk ? pol.dials.timberShare : pol.dials.grainShare));
+  pol.levyWork = Kn.map((_k, i) => (i === tk ? pol.dials.timberShare : 0));
+}
+/** What share of the tithe the Crown takes. */
+export const titheSkim = (s: State): number => { const pol = s.court?.policy; return !pol || pol.mode !== 'cockpit' || pol.weak ? 0 : pol.dials.tithe === 'taxed' ? 0.5 : pol.dials.tithe === 'shared' ? 0.25 : 0; };
+/** What the Crown takes of a trade between two places, and puts in its store. */
+export function tollOn(s: State, a: number, b: number): number {
+  const pol = s.court?.policy;
+  if (!pol || pol.mode !== 'cockpit' || pol.weak || !pol.dials.toll) return 0;
+  return dist(s.side, a, b) > P.reach ? pol.dials.toll : 0;
+}
+export function toCrown(s: State, k: number, q: number, why: string): void {
+  const c = s.court;
+  if (!c || q <= 0) return;
+  c.store[k] = c.store[k]! + q;
+  note(s, c, 'store', q, why);
+}
+/** Why the Crown cannot hold court at a place now, or '' if it can: a royal progress. */
+export function whyNotSeat(s: State, cell: number): string {
+  const c = s.court;
+  if (!c || c.policy.mode !== 'cockpit') return 'No Crown';
+  if (c.seat === cell) return 'Here now';
+  const w = 13 - (s.t - (c.seatMoved ?? -999));
+  if (w > 0) return `${w}w left`;
+  const gk = KINDS.findIndex(k => k.id === 'grain');
+  if (gk >= 0 && c.store[gk]! < P.progressCost) return `Need ${P.progressCost} grain`;
+  return '';
+}
+export function moveSeat(s: State, cell: number): boolean {
+  const c = s.court;
+  if (!c || whyNotSeat(s, cell)) return false;
+  const gk = KINDS.findIndex(k => k.id === 'grain');
+  if (gk >= 0) { c.store[gk] = c.store[gk]! - P.progressCost; note(s, c, 'store', -P.progressCost, 'a royal progress'); }
+  c.seat = cell; c.seatMoved = s.t;
+  rec(s, 'judge', { a: -1, cell, way: 'royal progress' });
+  return true;
+}
+const nearSeat = (s: State, c: Court, home: number): boolean => c.seat !== undefined && dist(s.side, c.seat, home) <= 2;
 /** The laws as a new court finds them: none laid down. */
 export const freshLaws = (): Pick<Policy, 'laws' | 'lawSetAt' | 'inscribed' | 'lawHits'> => {
   const per = <T,>(v: T) => Object.fromEntries(LAWS.map(k => [k, v])) as Record<LawKey, T>;
@@ -845,7 +893,7 @@ export function setDial<K extends keyof Dials>(s: State, key: K, val: Dials[K]):
   if (!pol) return;
   pol.dials[key] = val;
   // The Crown's share is written into every holding's due to the king's bailiff.
-  if (key === 'share') for (const b of s.bonds) if (b.about === 'yield' && b.way === 'crown') b.share = val as number;
+  if (key === 'grainShare' || key === 'timberShare') levies(s);
 }
 export function issueOrdinance(s: State, key: OrdKey): boolean {
   const pol = s.court?.policy;
@@ -1103,7 +1151,7 @@ function powersWeek(s: State, c: Court): void {
     for (const h of under) if (c.grief[h.id]) c.grief[h.id] = c.grief[h.id]! * 0.97;
     if (s.t % 13 === 0 && !ps.defiant && !c.policy.weak) gauge(s, c, 'reach', 0.05, 'wardens keeping the peace');
     // Ambition grows with the country he keeps, unless a hostage of his is held.
-    if ((ps.hostage ?? -1) <= s.t) ps.ambition = (ps.ambition ?? 0) + P.wardenAmbition * (1 + under.length / 8);
+    if ((ps.hostage ?? -1) <= s.t) ps.ambition = (ps.ambition ?? 0) + P.wardenAmbition * (1 + under.length / 8) * (c.seat !== undefined && dist(s.side, c.seat, B.home) > 5 ? 1.5 : 1);
     if (!ps.defiant && (ps.ambition ?? 0) >= 1) { ps.defiant = true; rec(s, 'defy', { a: id, way: 'warden' }); }
     if (ps.defiant) {
       // A defiant warden keeps the Crown's share of his country for himself.
@@ -1178,15 +1226,37 @@ function policyWeek(s: State, c: Court): void {
       if (T?.alive && cover(T.store, askAhead(s, T)).some((x, k) => NEEDS[k]!.harm >= 0.5 && x < P.short)) grieve(c, T.id, P.harmPaid);
     }
   }
-  // Patronage: each season a twentieth of the store goes to the church or to the lords and bailiffs, and is repaid in trust or in obedience.
-  if (pol.dials.patronage !== 'none' && s.t % 13 === 0 && !pol.weak) {
-    const total = c.store.reduce((x, y) => x + y, 0);
-    if (total > 1) {
-      for (let k = 0; k < NK; k++) c.store[k] = c.store[k]! * 0.95;
-      if (pol.dials.patronage === 'church') gauge(s, c, 'legitimacy', 0.25, 'patronage of the church'); else gauge(s, c, 'reach', 0.25, 'patronage of the lords');
+  // The seasonal budget: a share of the store spent on relief for the neediest, on the bailiffs' reach, and on the parishes' goodwill.
+  const bud = pol.dials.budget;
+  if (bud.spend > 0 && s.t % 13 === 0 && !pol.weak) {
+    const total = storeOf(c), spend = (total * bud.spend) / 100;
+    if (spend > 1) {
+      const fr = bud.relief / 100, fe = bud.reach / 100, fl = bud.legitimacy / 100;
+      for (let k = 0; k < NK; k++) c.store[k] = c.store[k]! * (1 - (bud.spend / 100) * (fe + fl));
+      if (fe > 0) gauge(s, c, 'reach', 0.5 * fe * (bud.spend / 5), 'the budget: bailiffs');
+      if (fl > 0) gauge(s, c, 'legitimacy', 0.5 * fl * (bud.spend / 5), 'the budget: parishes');
+      if (fr > 0) {
+        let left = spend * fr;
+        const want: [Body, number, number][] = [];
+        for (const b of s.bodies) { if (!b.alive || b.parts.length || !b.members.length || b.rank) continue; const cov = cover(b.store, askAhead(s, b)); for (let n = 0; n < NN; n++) if (NEEDS[n]!.harm >= 0.5 && cov[n]! < P.short) { want.push([b, n, cov[n]!]); break; } }
+        want.sort((x, y) => x[2] - y[2] || x[0].id - y[0].id);
+        for (const [b, need] of want) { if (left <= 0) break; left -= relieve(s, c, b, need); }
+      }
     }
   }
-  note(s, c, 'store', storeOf(c) - st1, 'patronage');
+  // The boon cap: a low one pleases tenants and galls lords; the tithe, if the Crown takes of it, costs it the church's goodwill.
+  if (s.t % 13 === 0 && !pol.weak) {
+    const cap = pol.dials.boonCap;
+    if (cap < 3) for (const b of s.bodies) if (b.alive && b.rank === 'lord') grieve(c, b.id, (P.harmPaid * (3 - cap)) / 3);
+    if (cap < 3) for (const bd of s.bonds) if (bd.about === 'bond' && bd.way === 'manor' && c.grief[bd.a]) c.grief[bd.a] = c.grief[bd.a]! * 0.9;
+    if (pol.dials.tithe !== 'protected') {
+      gauge(s, c, 'legitimacy', pol.dials.tithe === 'taxed' ? -0.15 : -0.05, 'the Crown takes of the tithe');
+      for (const b of s.bodies) if (b.alive && b.rank === 'priest') grieve(c, b.id, pol.dials.tithe === 'taxed' ? P.harmPaid : P.harmPaid / 2);
+    }
+  }
+  // Near the Crown's seat, grievance fades fast.
+  if (c.seat !== undefined) for (const b of around(idx, s.side, c.seat, 2)) if (c.grief[b.id]) c.grief[b.id] = c.grief[b.id]! * 0.95;
+  note(s, c, 'store', storeOf(c) - st1, 'the budget');
   for (const k of Object.keys(pol.ord) as OrdKey[]) if (pol.ord[k] > 0) pol.ord[k]--;
   // The Crown that has lost its hold is not ended; it is ignored, until it is trusted and obeyed again.
   if (!pol.weak && (c.legitimacy <= 0 || c.reach <= 0)) { pol.weak = true; rec(s, 'withdraw', { q: -1, q2: 0 }); }
@@ -1672,7 +1742,7 @@ export function hear(s: State, rulings: Ruling[]): void {
   // Scattered grudges do not: it is the largest such group that counts.
   let hearths = 0;
   const aggrieved: Body[] = [];
-  for (const b of s.bodies) if (b.alive && !b.parts.length && b.members.length) { hearths++; if ((c.grief[b.id] ?? 0) >= P.aggrieved && !(c.policy.mode === 'cockpit' && guarded(s, b))) aggrieved.push(b); }
+  for (const b of s.bodies) if (b.alive && !b.parts.length && b.members.length) { hearths++; if ((c.grief[b.id] ?? 0) >= P.aggrieved && !(c.policy.mode === 'cockpit' && (guarded(s, b) || nearSeat(s, c, b.home)))) aggrieved.push(b); }
   const kinMap = kinOf(s), seenF = new Set<number>();
   let sore = 0, factionAt = -1;
   for (const start of aggrieved) {

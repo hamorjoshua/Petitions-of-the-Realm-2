@@ -34,7 +34,8 @@ export function bind(s: State): void {
     // A tenant in want is not called to the lord's fields: the lord takes its spare days, not the ones it lives by.
     const tc = cover(T.store, askAhead(s, T));
     if (BY_HARM.some(n => NEEDS[n]!.harm >= 0.5 && tc[n]! < P.short)) continue;
-    const d = Math.min(asked, 0.5 * muster(s, T), P.boonMax);
+    const cap = s.court?.policy.mode === 'cockpit' ? s.court.policy.dials.boonCap : P.boonMax;
+    const d = Math.min(asked, 0.5 * muster(s, T), cap);
     if (d <= 0) continue;
     T.spent += d; L.spent -= d;
     if (d > bd.boon) T.overworked += d - bd.boon;

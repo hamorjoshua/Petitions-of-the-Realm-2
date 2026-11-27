@@ -3,7 +3,7 @@
 
 import { found } from '../sim/found.ts';
 import { advance } from '../sim/step.ts';
-import { ORD_WEEKS, actOn, powersOf, underPower, whyNotAct, audience, build, clearingBarred, freshLaws, timberKind, whyNotBuild, cuts, hear, inscribeLaw, interventionAt, issueOrdinance, judgeOf, localOrder, localPower, openCourt, planesOf, setDial, setLaw, suretyFor, type Plane, type Ruling, type Width } from '../sim/court/court.ts';
+import { levies, ORD_WEEKS, actOn, freshDials, moveSeat, whyNotSeat, powersOf, underPower, whyNotAct, audience, build, clearingBarred, freshLaws, timberKind, whyNotBuild, cuts, hear, inscribeLaw, interventionAt, issueOrdinance, judgeOf, localOrder, localPower, openCourt, planesOf, setDial, setLaw, suretyFor, type Plane, type Ruling, type Width } from '../sim/court/court.ts';
 import { askAhead, cover } from '../sim/value.ts';
 import { KINDS, NEEDS, P, RECIPES } from '../sim/tables.ts';
 import { grown, top } from '../sim/util.ts';
@@ -496,10 +496,13 @@ const LAW_HINT: Record<LawKey, string> = {
   swords: 'The holy: leave it to the church, strike a bargain with it, or rule over it.',
 };
 const DIALS: { key: keyof Dials; name: string; vals: (number | string)[]; show: (v: any) => string; hint: string }[] = [
-  { key: 'share', name: 'Crown’s share', vals: [0, 0.05, 0.1, 0.15], show: v => `${Math.round(v * 100)}%`, hint: 'Of every harvest, to the bailiffs. Fills the store; weighs on every house.' },
+  { key: 'grainShare', name: 'Grain levy', vals: [0, 0.05, 0.1, 0.15, 0.2], show: v => `${Math.round(v * 100)}%`, hint: 'Of every harvest from sown ground, to the bailiffs. Feeds the store; weighs on every house.' },
+  { key: 'timberShare', name: 'Timber levy', vals: [0, 0.05, 0.1, 0.15, 0.2], show: v => `${Math.round(v * 100)}%`, hint: 'Of all timber cut. It pays for works.' },
+  { key: 'boonCap', name: 'Boon-work cap', vals: [0, 1, 2, 3, 6], show: v => `${v} days`, hint: 'The most a lord may draw from a tenant each week. Below three, tenants are calmer and lords aggrieved.' },
+  { key: 'tithe', name: 'The tithe', vals: ['protected', 'shared', 'taxed'], show: v => ({ protected: 'Protected', shared: 'A quarter', taxed: 'A half' })[v as string]!, hint: 'What of the church’s tithes comes to the store. It costs legitimacy each season, and the priests’ goodwill.' },
+  { key: 'toll', name: 'Tolls', vals: [0, 0.05, 0.12], show: v => `${Math.round(v * 100)}%`, hint: 'Of goods traded between valleys, to the store.' },
   { key: 'relief', name: 'Relief floor', vals: ['off', 'starving', 'want'], show: v => ({ off: 'Off', starving: 'Starving', want: 'In want' })[v as string]!, hint: 'Up to three houses a week below the floor are fed from the store.' },
   { key: 'bailiff', name: 'Bailiff posture', vals: ['light', 'regular', 'strict'], show: v => ({ light: 'Light', regular: 'Regular', strict: 'Strict inquest' })[v as string]!, hint: 'Light: twice a year, and they never take. Strict: every six weeks, and hidden shares and false claims are found out, at a cost to your reach.' },
-  { key: 'patronage', name: 'Crown patronage', vals: ['none', 'church', 'lords'], show: v => ({ none: 'None', church: 'Parishes & shrines', lords: 'Lords & bailiffs' })[v as string]!, hint: 'A twentieth of the store each season: to the church for legitimacy, or to the lords and bailiffs for reach.' },
 ];
 const ORDS: [OrdKey, string, string][] = [
   ['stay', 'Year of stay', 'Nothing is seized or forfeit, and lords ask no more than custom, for a year.'],
@@ -640,6 +643,7 @@ function sheet(): string {
   return `<div class="sheet"><div class="bar"><h3>${star(`c:${i}`)} ${esc(cellWords(i))}</h3><button data-cell="-1" aria-label="Close">✕</button></div>
     ${holy ? `<p class="small">${esc(Cap(holy))}.</p>` : ''}
     ${l.length ? `<ul class="list small">${l.map(b => `<li>${star(`b:${b.id}`)} ${esc(Cap(house(b.id)))}${c && mode === 'cockpit' && (b.rank === 'lord' || b.rank === 'priest' || top(s, b).id !== b.id) ? ` <button class="link" data-power="${b.rank ? b.id : top(s, b).id}">${b.rank ? 'deal with' : 'its body'}</button>` : ''} <span class="soft">· ${b.members.filter(m => s.people[m]!.alive).length} souls${c && (c.grief[b.id] ?? 0) >= P.aggrieved ? ' · <span class="bad">aggrieved</span>' : ''}</span></li>`).join('')}</ul>` : '<p class="soft small">Nobody lives here.</p>'}
+    ${c && mode === 'cockpit' ? (() => { const why = whyNotSeat(s, i); return `<div class="orders"><button data-seat="1" ${why ? 'disabled' : ''}>♛ Hold court here<span class="why">${why || `a royal progress, ${P.progressCost} grain`}</span></button></div>`; })() : ''}
     ${c && mode === 'cockpit' ? `<div class="label">Build here</div><div class="orders works">${WORKS.map(([k, name, g]) => { const why = whyNotBuild(s, i, k); return `<button data-build="${k}" ${why ? 'disabled' : ''}>${g} ${name}<span class="why">${why || `${P.workCost[k]} timber`}</span></button>`; }).join('')}</div>${cell.works?.granary ? `<p class="small soft">The granary holds ${Math.round(cell.works.granary.reduce((a, q) => a + q, 0))} grain.</p>` : ''}<div class="label">Orders</div>` : ''}
     ${c && mode === 'cockpit' ? `<div class="orders">${order('relief', 'Send relief', !l.length ? 'Nobody here' : inWant ? '' : 'No want')}${order('circuit', 'Send the bailiffs')}${order('charter', 'Remit the Crown’s share', !dues.length ? 'No dues' : dues.every(bd => bd.easedTo > s.t) ? 'Remitted' : '')}${order('intervene', ivWords ?? 'Intervene', iv ? '' : 'Nothing amiss')}</div>` : ''}</div>`;
 }
@@ -663,8 +667,10 @@ function lawsDeck(): string {
   }).join('');
 }
 function treasuryDeck(): string {
-  const d = s.court!.policy.dials as Record<string, any>;
-  return DIALS.map(x => { const i = x.vals.indexOf(d[x.key]); return `<div class="dial"><div><strong>${x.name}</strong><div class="small soft">${x.hint}</div></div><div class="step"><button data-dial="${x.key}:-1" ${i <= 0 ? 'disabled' : ''} aria-label="Less">−</button><span>${x.show(d[x.key])}</span><button data-dial="${x.key}:1" ${i >= x.vals.length - 1 ? 'disabled' : ''} aria-label="More">+</button></div></div>`; }).join('');
+  const d = s.court!.policy.dials as Record<string, any>, bud = s.court!.policy.dials.budget;
+  const part = (k: 'relief' | 'reach' | 'legitimacy', name: string): string => `<div class="dial"><div><strong>${name}</strong></div><div class="step"><button data-budget="${k}:-10" ${bud[k] <= 0 ? 'disabled' : ''} aria-label="Less">−</button><span>${bud[k]}%</span><button data-budget="${k}:10" ${bud[k] >= 100 ? 'disabled' : ''} aria-label="More">+</button></div></div>`;
+  const budget = `<div class="label">The season’s budget</div><div class="dial"><div><strong>Spend each season</strong><div class="small soft">A share of the store, divided below.</div></div><div class="step"><button data-spend="-1" ${bud.spend <= 0 ? 'disabled' : ''} aria-label="Less">−</button><span>${bud.spend}% of the store</span><button data-spend="1" ${bud.spend >= 10 ? 'disabled' : ''} aria-label="More">+</button></div></div>${part('relief', 'Relief for the neediest')}${part('reach', 'The bailiffs: reach')}${part('legitimacy', 'The parishes: legitimacy')}`;
+  return budget + '<div class="label">Rates</div>' + DIALS.map(x => { const i = x.vals.indexOf(d[x.key]); return `<div class="dial"><div><strong>${x.name}</strong><div class="small soft">${x.hint}</div></div><div class="step"><button data-dial="${x.key}:-1" ${i <= 0 ? 'disabled' : ''} aria-label="Less">−</button><span>${x.show(d[x.key])}</span><button data-dial="${x.key}:1" ${i >= x.vals.length - 1 ? 'disabled' : ''} aria-label="More">+</button></div></div>`; }).join('');
 }
 function decreesDeck(): string {
   const pol = s.court!.policy;
@@ -786,7 +792,9 @@ function resume(): void {
     const j = JSON.parse(localStorage.getItem(SAVE)!);
     s = j.s; R = new Readers();
     // A realm kept under the old laws keeps its works and its history, but its laws begin again.
-    if (s.court && !('forest' in s.court.policy.laws)) Object.assign(s.court.policy, freshLaws()); R.events = j.events ?? []; mode = j.mode; feed = j.feed ?? []; hist = j.hist ?? []; eras = j.eras ?? []; eraFrom = j.eraFrom ?? 0; eraStats = j.eraStats ?? eraStats;
+    if (s.court && !('forest' in s.court.policy.laws)) Object.assign(s.court.policy, freshLaws());
+    if (s.court && !('grainShare' in s.court.policy.dials)) { const old = s.court.policy.dials as Partial<Dials>; s.court.policy.dials = { ...freshDials(), ...(old.relief ? { relief: old.relief } : {}), ...(old.bailiff ? { bailiff: old.bailiff } : {}) }; levies(s); }
+    if (s.court && s.court.seat === undefined) s.court.seat = s.bodies.find(b => b.alive && b.rank === 'bailiff')?.home ?? Math.floor(s.cells.length / 2); R.events = j.events ?? []; mode = j.mode; feed = j.feed ?? []; hist = j.hist ?? []; eras = j.eras ?? []; eraFrom = j.eraFrom ?? 0; eraStats = j.eraStats ?? eraStats;
     watched.clear(); for (const w of j.watched ?? []) watched.add(w);
     lens = j.lens ?? 'want'; deck = (['dials', 'laws', 'works', 'powers', 'chronicle'].includes(j.deck) ? j.deck : 'laws'); dockOpen = false;
     over = ''; speed = 0; picked = -1; view = 'map'; openGauge = ''; zoom = 1; panX = 0; panY = 0;
@@ -877,7 +885,17 @@ function cockpitClick(b: HTMLButtonElement): boolean {
   if (b.dataset.major !== undefined) { majorOnly = b.dataset.major === '1'; paint(); return true; }
   if (!c) return false;
   if (b.dataset.law) { const [k, v] = b.dataset.law.split(':') as [LawKey, string]; const leg0 = c.legitimacy; setLaw(s, k, v as never); if (c.legitimacy < leg0) doFlash({ legitimacy: 'bad' }); feed.push({ t: s.t, text: `You laid down the law: <strong>${LAW_WORDS[k][0]}: ${LAW_WORDS[k][1].find(x => x[0] === v)![1]}</strong>.`, major: true }); paint(); return true; }
-  if (b.dataset.dial) { const [k, d] = b.dataset.dial.split(':') as [keyof Dials, string]; const x = DIALS.find(y => y.key === k)!, i = x.vals.indexOf((c.policy.dials as any)[k]) + Number(d); if (i >= 0 && i < x.vals.length) { setDial(s, k, x.vals[i] as never); doFlash(k === 'patronage' ? { store: 'warn', ...(x.vals[i] === 'church' ? { legitimacy: 'good' } : x.vals[i] === 'lords' ? { reach: 'good' } : {}) } : k === 'share' ? { store: Number(d) > 0 ? 'good' : 'warn' } : k === 'relief' ? { store: 'warn' } : k === 'bailiff' ? (x.vals[i] === 'strict' ? { store: 'good', reach: 'bad' } : {}) : {}); } paint(); return true; }
+  if (b.dataset.dial) { const [k, d] = b.dataset.dial.split(':') as [keyof Dials, string]; const x = DIALS.find(y => y.key === k)!, i = x.vals.indexOf((c.policy.dials as any)[k]) + Number(d); if (i >= 0 && i < x.vals.length) { setDial(s, k, x.vals[i] as never); doFlash(k === 'tithe' ? { store: 'good', legitimacy: 'bad' } : k === 'grainShare' || k === 'timberShare' || k === 'toll' ? { store: Number(d) > 0 ? 'good' : 'warn' } : k === 'relief' ? { store: 'warn' } : k === 'bailiff' ? (x.vals[i] === 'strict' ? { store: 'good', reach: 'bad' } : {}) : {}); } paint(); return true; }
+  if (b.dataset.spend) { const bud = c.policy.dials.budget, vals = [0, 5, 10] as const, i = vals.indexOf(bud.spend) + Number(b.dataset.spend); if (i >= 0 && i < 3) { bud.spend = vals[i]!; doFlash({ store: 'warn' }); } paint(); return true; }
+  if (b.dataset.budget) {
+    // Moving one share moves the largest of the others the other way, so the three always come to a hundred.
+    const [k, d] = b.dataset.budget.split(':') as ['relief' | 'reach' | 'legitimacy', string], bud = c.policy.dials.budget, step = Number(d);
+    const others = (['relief', 'reach', 'legitimacy'] as const).filter(x => x !== k).sort((x, y) => (step > 0 ? bud[y] - bud[x] : bud[x] - bud[y]));
+    const o = others.find(x => (step > 0 ? bud[x] >= step : bud[x] + -step <= 100));
+    if (o && bud[k] + step >= 0 && bud[k] + step <= 100) { bud[k] += step; bud[o] -= step; }
+    paint(); return true;
+  }
+  if (b.dataset.seat !== undefined && picked >= 0) { if (moveSeat(s, picked)) { doFlash({ store: 'warn', legitimacy: 'good' }); feed.push({ t: s.t, text: `You held court at ${esc(cellWords(picked))}: a royal progress.`, major: true }); } paint(); return true; }
   if (b.dataset.ord) { const k = b.dataset.ord as OrdKey; if (issueOrdinance(s, k)) doFlash(({ stay: { legitimacy: 'good' }, granaries: { store: 'warn' }, eyre: { store: 'warn', legitimacy: 'good', reach: 'good' }, penance: { legitimacy: 'good' } } as Record<OrdKey, typeof flash>)[k]);
     if (c.policy.ord[k] === ORD_WEEKS[k]) feed.push({ t: s.t, text: `You decreed: <strong>${ORDS.find(o => o[0] === k)![1]}</strong>.`, major: true }); paint(); return true; }
   if (b.dataset.inscribe) { const k = b.dataset.inscribe as LawKey; if (inscribeLaw(s, k)) { doFlash({ legitimacy: 'good' }); } if (c.policy.inscribed[k] && c.policy.lawSetAt[k] >= 0) feed.push({ t: s.t, text: `You wrote the law on the roll: <strong>${LAW_WORDS[k][0]}</strong>.`, major: true }); paint(); return true; }

@@ -180,7 +180,19 @@ export interface Rule { /** Written on the roll: it cannot be challenged or undo
 /** The cockpit: standing laws, regulators and timed ordinances the regent sets, and how the realm is played. */
 export type LawKey = 'forest' | 'movement' | 'credit' | 'swords';
 export interface Laws { forest: 'free' | 'stinted' | 'kings'; movement: 'free' | 'bound'; credit: 'enforce' | 'mercy' | 'custom'; swords: 'immunity' | 'concordat' | 'supremacy' }
-export interface Dials { share: 0 | 0.05 | 0.1 | 0.15; relief: 'off' | 'starving' | 'want'; bailiff: 'light' | 'regular' | 'strict'; patronage: 'none' | 'church' | 'lords' }
+export interface Dials {
+  /** The Crown's levies on what is gathered: grain from sown ground, timber from the woods. */
+  grainShare: number; timberShare: number;
+  relief: 'off' | 'starving' | 'want'; bailiff: 'light' | 'regular' | 'strict';
+  /** The most days a week a lord may draw in boon-work from a tenant. */
+  boonCap: 0 | 1 | 2 | 3 | 6;
+  /** What of the church's tithes the Crown takes: none, a quarter, a half. */
+  tithe: 'protected' | 'shared' | 'taxed';
+  /** What the Crown takes of goods traded between valleys. */
+  toll: 0 | 0.05 | 0.12;
+  /** Each season, a share of the store spent, and how it is divided among relief, the bailiffs' reach, and the parishes' goodwill (percent). */
+  budget: { spend: 0 | 5 | 10; relief: number; reach: number; legitimacy: number };
+}
 export type OrdKey = 'stay' | 'granaries' | 'eyre' | 'penance';
 export type LocalOrder = 'relief' | 'circuit' | 'charter' | 'intervene';
 export type Mode = 'cockpit' | 'chronicle' | 'regency';
@@ -198,6 +210,8 @@ export interface Policy {
   mode: Mode;
   /** The Crown has lost its hold: laws go unheeded and bailiffs send nothing up until it recovers. */
   weak: boolean;
+  /** What the Crown levies of each kind gathered from sown ground, and of each kind gathered anywhere (worked out from the dials). */
+  levy?: number[]; levyWork?: number[];
   /** Named powers the Crown has dealt with, by body id. */
   powers?: Record<number, PowerState>;
 }

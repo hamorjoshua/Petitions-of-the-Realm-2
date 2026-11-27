@@ -2,7 +2,7 @@
 // Last week's choices are carried out against what is there now.
 
 import { AIDERS, Kn, NS, P, Rc, St } from '../tables.ts';
-import { clearingBarred } from '../court/court.ts';
+import { clearingBarred, titheSkim, toCrown } from '../court/court.ts';
 import { around, dist, head, near, sheltered, hearthIndex, holdsByCell, kinOf, payRent, rec, struggle, tenancies, tie } from '../util.ts';
 import { bear } from './grow.ts';
 import type { Body, Bond, State, Work } from '../types.ts';
@@ -87,11 +87,20 @@ export function make(s: State): void {
       if (bd.way === 'tithe' && b.creed.purity > 0.6 && (head(s, to)?.stained ?? 0) >= P.stainMark) continue;
       // One with little scruple keeps back half of what it owes the Crown. The bailiff cannot see what is not shown him.
       const hides = bd.way === 'crown' && (head(s, b)?.scruple ?? 1) < 0.4;
+      const lv = bd.way === 'crown' ? s.court?.policy.levy : undefined, skim = bd.way === 'tithe' ? titheSkim(s) : 0;
       for (const [k, q] of r.out) {
-        const owed = Math.min(b.store[k]!, q * m * bd.share), pay = hides ? owed / 2 : owed;
-        b.store[k] = b.store[k]! - pay; to.store[k] = to.store[k]! + pay;
+        const owed = Math.min(b.store[k]!, q * m * (lv?.[k] ?? bd.share)), pay = hides ? owed / 2 : owed;
+        b.store[k] = b.store[k]! - pay; to.store[k] = to.store[k]! + pay * (1 - skim);
+        if (skim > 0) toCrown(s, k, pay * skim, 'the Crown’s part of the tithe');
         if (bd.way === 'crown') { to.owedUp[k] = (to.owedUp[k] ?? 0) + pay; b.paidUp += pay; if (hides) b.hid[k] = (b.hid[k] ?? 0) + owed - pay; }
       }
+    }
+    // What the Crown levies on work wherever it is done, not only on sown ground, through its bailiffs.
+    const lw = s.court?.policy.mode === 'cockpit' ? s.court.policy.levyWork : undefined;
+    if (lw && !r.from.some(([st]) => St[st]!.sown)) for (const bd of dues.get(b.id) ?? []) {
+      if (bd.way !== 'crown' || !s.bodies[bd.b]!.alive) continue;
+      const to = s.bodies[bd.b]!;
+      for (const [k, q] of r.out) if (lw[k]) { const pay = Math.min(b.store[k]!, q * m * lw[k]!); b.store[k] = b.store[k]! - pay; to.store[k] = to.store[k]! + pay; to.owedUp[k] = (to.owedUp[k] ?? 0) + pay; }
     }
     // Whoever holds the sole right to this work here takes a share, unless the worker holds such a right too.
     const sole = rightsOn.get(`${j.w.r}:${j.w.cell}`) ?? [];

@@ -231,6 +231,8 @@ export const P = {
   stint: 60,
   /** How fast a warden's ambition grows each week, before the size of his country is reckoned in: at 1 he defies the Crown. */
   wardenAmbition: 0.004,
+  /** Grain a royal progress costs. */
+  progressCost: 10,
   dikeBank: 1.8, granaryKeep: 0.25, workReach: 1, postReach: 2, granaryFull: 10, granaryShare: 0.15,
   /** The fewest aggrieved houses, bound together, that make a faction, however small the realm. */
   factionMin: 3,

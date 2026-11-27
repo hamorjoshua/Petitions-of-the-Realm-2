@@ -7,7 +7,7 @@ import { askAhead, cover, drive, welfare, welfareLater, zeros } from '../value.t
 import { around, bond, dist, grown, head, hearthIndex, holdsByCell, kinOf, muster, near, rec, struggle, sheltered, tenancies, tie, top, warm, type Tenancy } from '../util.ts';
 import { bear } from './grow.ts';
 import { tBar } from './sky.ts';
-import { boundByLaw, chilled, clearingBarred, freeByLaw, upheld } from '../court/court.ts';
+import { boundByLaw, chilled, clearingBarred, freeByLaw, tollOn, toCrown, upheld } from '../court/court.ts';
 import { weekOf, type Body, type Bond, type Person, type State } from '../types.ts';
 
 interface Opt { r: number; cell: number; mine: number; take: boolean; score: number; rent: number }
@@ -459,8 +459,11 @@ function deal(s: State, L: Land, cs: Map<number, Ctx>, kin: Map<number, Set<numb
     for (let tries = 0; tries < 4 && qk > 0.01; tries++, qk /= 2) {
       const qj = qk * rate;
       if (gain(A, a.store, Wa, [[k, qk], [j, -qj]]) <= 0 || gain(B, b.store, Wb, [[k, -qk], [j, qj]]) <= 0) continue;
-      a.store[k] = a.store[k]! + qk; a.store[j] = a.store[j]! - qj;
-      b.store[k] = b.store[k]! - qk; b.store[j] = b.store[j]! + qj;
+      // Between valleys the Crown takes its part of what each side receives.
+      const cut = tollOn(s, a.home, b.home);
+      a.store[k] = a.store[k]! + qk * (1 - cut); a.store[j] = a.store[j]! - qj;
+      b.store[k] = b.store[k]! - qk; b.store[j] = b.store[j]! + qj * (1 - cut);
+      if (cut > 0) { toCrown(s, k, qk * cut, 'tolls'); toCrown(s, j, qj * cut, 'tolls'); }
       a.spent += Math.min(2, (qk * Kn[k]!.weight + qj * Kn[j]!.weight) * dist(s.side, a.home, b.home) * P.carry);
       warm(s, a.id, b.id, P.warm); warm(s, b.id, a.id, P.warm);
       rec(s, 'trade', { a: a.id, b: b.id, kind: k, q: qk, kind2: j, q2: qj, need: A.scarce, cell: b.home });
