@@ -173,10 +173,11 @@ export interface Petition { /** For a house in want: everything that weighs on i
 /** A rule: a bond that binds every member of a body, or the whole realm (scope -1). */
 export interface Rule { /** Written on the roll: it cannot be challenged or undone. */ roll?: boolean; id: number; scope: number; shape: string; cut: string; since: number; uses: number }
 /** The cockpit: standing laws, regulators and timed ordinances the regent sets, and how the realm is played. */
-export type LawKey = 'debt' | 'boon' | 'commons' | 'jurisdiction' | 'sacred' | 'creed';
-export interface Laws { debt: 'enforce' | 'ease' | 'manual'; boon: 'cap' | 'commute' | 'free'; commons: 'open' | 'share' | 'exclusive'; jurisdiction: 'crown' | 'ground' | 'person'; sacred: 'respect' | 'translate' | 'override'; creed: 'tolerate' | 'parish' | 'suppress' }
-export interface Dials { share: 0 | 0.05 | 0.1 | 0.15; relief: 'off' | 'dire' | 'short'; bailiff: 26 | 13 | 6; effort: 1 | 3 | 4 }
-export type OrdKey = 'stay' | 'granaries' | 'inquest' | 'vouch';
+export type LawKey = 'credit' | 'tenure' | 'inherit' | 'liability' | 'jurisdiction' | 'swords';
+export interface Laws { credit: 'strict' | 'ease' | 'forgive'; tenure: 'custom' | 'commute' | 'lord'; inherit: 'blood' | 'shared' | 'possession'; liability: 'individual' | 'kin' | 'body'; jurisdiction: 'crown' | 'ground' | 'person'; swords: 'defer' | 'concordat' | 'supremacy' }
+export interface Dials { share: 0 | 0.05 | 0.1 | 0.15; relief: 'off' | 'starving' | 'want'; bailiff: 'light' | 'regular' | 'strict'; patronage: 'none' | 'church' | 'lords' }
+export type OrdKey = 'stay' | 'granaries' | 'eyre' | 'penance';
+export type LocalOrder = 'relief' | 'circuit' | 'charter' | 'intervene';
 export type Mode = 'cockpit' | 'chronicle' | 'regency';
 export interface Policy {
   laws: Laws;

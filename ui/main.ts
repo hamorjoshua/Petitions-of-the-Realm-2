@@ -3,13 +3,13 @@
 
 import { found } from '../sim/found.ts';
 import { advance } from '../sim/step.ts';
-import { ORD_WEEKS, audience, cuts, hear, inscribeLaw, issueOrdinance, judgeOf, localPower, openCourt, planesOf, setDial, setLaw, suretyFor, type Plane, type Ruling, type Width } from '../sim/court/court.ts';
+import { ORD_WEEKS, audience, cuts, hear, inscribeLaw, interventionAt, issueOrdinance, judgeOf, localOrder, localPower, openCourt, planesOf, setDial, setLaw, suretyFor, type Plane, type Ruling, type Width } from '../sim/court/court.ts';
 import { askAhead, cover } from '../sim/value.ts';
 import { KINDS, NEEDS, P, RECIPES } from '../sim/tables.ts';
 import { grown, top } from '../sim/util.ts';
 import { Readers, wayWords } from '../readers/readers.ts';
 import { placeName } from '../readers/names.ts';
-import type { Body, Bond, Dials, LawKey, Mode, OrdKey, Petition, State } from '../sim/types.ts';
+import type { Bond, Dials, LawKey, LocalOrder, Mode, OrdKey, Petition, State } from '../sim/types.ts';
 
 const app = document.getElementById('app')!;
 const esc = (x: string): string => x.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -68,7 +68,7 @@ function house(id: number): string {
   if (h >= 0 && b.rank === 'lord') return `${s.people[h]!.sex ? 'Lady' : 'Lord'} ${nameOf(h)} of ${cellWords(b.home)}`;
   if (h >= 0 && b.rank === 'priest') return `${s.people[h]!.sex ? 'Mother' : 'Father'} ${nameOf(h)} of ${cellWords(b.home)}`;
   if (h >= 0 && b.rank === 'bailiff') return `${nameOf(h)}, the king’s bailiff at ${cellWords(b.home)}`;
-  return h < 0 ? `house ${id}` : `${nameOf(h)}’s house`;
+  return h < 0 ? `a house at ${cellWords(b.home)}, now gone` : `${nameOf(h)}’s house`;
 }
 /** Who they are: the speaker, and who is in the house. */
 function who(id: number): string {
@@ -86,7 +86,7 @@ const its = (id: number): string => { const b = s.bodies[id], h = speaker(id); r
 const itself = (id: number): string => { const b = s.bodies[id], h = speaker(id); return b?.rank && h >= 0 ? (s.people[h]!.sex ? 'herself' : 'himself') : 'itself'; };
 
 /** A line from the record, with houses called by name. */
-const named = (x: string): string => x.replace(/house (\d+)/g, (_m, n: string) => house(Number(n))).replace(/\((\d+), ?(\d+)\)/g, (_m, cx: string, cy: string) => placeName(s, Number(cy) * s.side + Number(cx)));
+const named = (x: string): string => x.replace(/([Hh])ouse (\d+)/g, (_m, H: string, n: string) => (H === 'H' ? Cap(house(Number(n))) : house(Number(n)))).replace(/\((\d+), ?(\d+)\)/g, (_m, cx: string, cy: string) => placeName(s, Number(cy) * s.side + Number(cx)));
 
 /** One thing that weighs on a house, as a clause. */
 function burdenWords(bd: Bond, by: number): string {
@@ -453,63 +453,82 @@ function passWeek(): void {
   else openWeek();
 }
 
-// --- The cockpit: the realm runs on its own; the regent sets laws, dials and ordinances, and hears what breaks through ---
+// --- The cockpit: the realm runs on its own. The regent trims it with laws, the treasury and decrees, and gives orders place by place ---
 
 let mode: Mode = 'cockpit';
-let speed: 0 | 1 | 5 | 20 = 0, pauseOnAlert = true, acc = 0, lastFrame = 0, lastPaint = 0, dirty = false;
-let view: 'map' | 'chronicle' | 'alerts' = 'map', deck: 'laws' | 'dials' | 'ords' = 'laws', lens: 'want' | 'factions' | 'sacred' | 'jurisdiction' | 'ecology' = 'want';
-let picked = -1, majorOnly = false, pulse = false;
-const heardOf = new Set<number>();
-/** What the cockpit has to say that the chroniclers do not: laws laid down, ordinances, what was settled below, the Crown's hold. */
+let speed: 0 | 1 | 5 | 20 = 0, acc = 0, lastFrame = 0, lastPaint = 0, dirty = false;
+type Lens = 'want' | 'factions' | 'sacred' | 'jurisdiction' | 'ecology';
+let view: 'map' | 'chronicle' = 'map', deck: 'laws' | 'treasury' | 'decrees' = 'laws', lens: Lens = 'want';
+let picked = -1, majorOnly = false;
+/** The map's zoom and pan, and the pointers on it. */
+let zoom = 1, panX = 0, panY = 0, gesturing = false;
+/** What the cockpit has to say that the chroniclers do not: laws laid down, decrees, orders, what was settled below, the Crown's hold. */
 let feed: { t: number; text: string; major: boolean }[] = [];
 const RATE = { 0: 0, 1: 1 / 1.5, 5: 3, 20: 20 } as const;
-const capOf = (): number => (s.court && mode !== 'regency' ? s.court.policy.dials.effort : P.hearings);
+const capOf = (): number => P.hearings;
 
 const LAW_WORDS: Record<LawKey, [string, [string, string][]]> = {
-  debt: ['Debts', [['enforce', 'Enforce'], ['ease', 'Ease'], ['manual', 'Hear them']]],
-  boon: ['Lords’ boon-work', [['cap', 'Hold to custom'], ['commute', 'Commute'], ['free', 'Free hand']]],
-  commons: ['Ground & sole rights', [['open', 'Open'], ['share', 'Share'], ['exclusive', 'Exclusive']]],
-  jurisdiction: ['Who judges below', [['crown', 'The Crown'], ['ground', 'Lord of the ground'], ['person', 'Lord of the person']]],
-  sacred: ['Holy matters', [['respect', 'Respect'], ['translate', 'Translate'], ['override', 'Override']]],
-  creed: ['Creeds', [['tolerate', 'Tolerate'], ['parish', 'To the parish'], ['suppress', 'Suppress']]],
+  credit: ['Credit & debt', [['strict', 'Strict'], ['ease', 'Ease'], ['forgive', 'Forgive']]],
+  tenure: ['Tenure & labour', [['custom', 'Custom'], ['commute', 'Commute'], ['lord', 'Lord’s hand']]],
+  inherit: ['Inheritance & commons', [['blood', 'Blood & open'], ['shared', 'Shared'], ['possession', 'Possession']]],
+  liability: ['Liability', [['individual', 'Individual'], ['kin', 'Kin'], ['body', 'Whole body']]],
+  jurisdiction: ['Jurisdiction', [['crown', 'Crown'], ['ground', 'Ground'], ['person', 'Person']]],
+  swords: ['The two swords', [['defer', 'Defer'], ['concordat', 'Concordat'], ['supremacy', 'Supremacy']]],
+};
+const LAW_HINT: Record<LawKey, string> = {
+  credit: 'Whether debts are held to, put off, or let go; and what is lifted from a house in want.',
+  tenure: 'Lords’ demands for labour, and tenants who would leave.',
+  inherit: 'Claims by blood, sole rights, and ground one holds and another wants.',
+  liability: 'Who answers: the one who did it, their kin, or the body they belong to.',
+  jurisdiction: 'Whoever judges what no other law reaches: your own assize, the lord of the ground, or the lord of the one accused.',
+  swords: 'The holy: defer to the church, strike a bargain with it, or rule over it.',
 };
 const DIALS: { key: keyof Dials; name: string; vals: (number | string)[]; show: (v: any) => string; hint: string }[] = [
   { key: 'share', name: 'Crown’s share', vals: [0, 0.05, 0.1, 0.15], show: v => `${Math.round(v * 100)}%`, hint: 'Of every harvest, to the bailiffs. Fills the store; weighs on every house.' },
-  { key: 'relief', name: 'Relief floor', vals: ['off', 'dire', 'short'], show: v => ({ off: 'Off', dire: 'Dire want', short: 'Any want' })[v as string]!, hint: 'Up to three houses a week below the floor are fed from the store.' },
-  { key: 'bailiff', name: 'Bailiff rounds', vals: [26, 13, 6], show: v => `${v} wk`, hint: 'How often the bailiffs send up the Crown’s share, and take when the store runs low.' },
-  { key: 'effort', name: 'Hearings a week', vals: [1, 3, 4], show: v => String(v), hint: 'How many matters you can hear. One more than this costs half a seal.' },
+  { key: 'relief', name: 'Relief floor', vals: ['off', 'starving', 'want'], show: v => ({ off: 'Off', starving: 'Starving', want: 'In want' })[v as string]!, hint: 'Up to three houses a week below the floor are fed from the store.' },
+  { key: 'bailiff', name: 'Bailiff posture', vals: ['light', 'regular', 'strict'], show: v => ({ light: 'Light', regular: 'Regular', strict: 'Strict inquest' })[v as string]!, hint: 'Light: twice a year, and they never take. Strict: every six weeks, and hidden shares and false claims are found out, at a cost to your reach.' },
+  { key: 'patronage', name: 'Crown patronage', vals: ['none', 'church', 'lords'], show: v => ({ none: 'None', church: 'Parishes & shrines', lords: 'Lords & bailiffs' })[v as string]!, hint: 'A twentieth of the store each season: to the church for legitimacy, or to the lords and bailiffs for reach.' },
 ];
 const ORDS: [OrdKey, string, string][] = [
-  ['stay', 'Stay of debts', 'Nothing is seized or forfeit, and lords ask no more than custom, for a year.'],
-  ['granaries', 'Open the granaries', 'The relief floor feeds six houses a week, at least the dire, for a season.'],
-  ['inquest', 'General inquest', 'False claims and hidden shares are found out, for a season. It wears on your reach.'],
-  ['vouch', 'The Crown’s peace for strangers', 'The fear of newcomers fades, for half a year.'],
+  ['stay', 'Year of stay', 'Nothing is seized or forfeit, and lords ask no more than custom, for a year.'],
+  ['granaries', 'Open the granaries', 'The relief floor feeds six houses a week, at least the starving, for a season.'],
+  ['eyre', 'Royal eyre', 'Your justices ride the realm for half a year: false claims are found out, and your legitimacy and reach rebuild.'],
+  ['penance', 'Solemn penance', 'For half a year interdicts lift sooner, stains and bans fade, and the fear of strangers cools.'],
 ];
+const LEGEND: Record<Lens, string> = {
+  want: 'Darker: more of the houses there are in want. Numbers: houses.',
+  factions: 'Darker: more of the houses there hold a grievance against the Crown.',
+  sacred: 'Gold: holy ground; ✦ a shrine; red: under interdict.',
+  jurisdiction: 'Each colour is one body of houses, and whoever leads it.',
+  ecology: 'Darker red: soil worn out or ground flooded.',
+};
 
 function seals(v: number, label: string): string {
   return `<span class="inst"><span class="label">${label}</span><span class="seals" title="${v.toFixed(1)} of 5">${[0, 1, 2, 3, 4].map(i => `<span class="seal${v >= i + 1 ? '' : v >= i + 0.5 ? ' half' : ' gone'}"></span>`).join('')}</span></span>`;
 }
+const factionNeed = (hearths: number): number => Math.max(P.factionMin, Math.ceil(P.faction * hearths));
 function strip(): string {
   const c = s.court, hs = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length);
   const when = `Y${Math.floor(s.t / 52) + 1}·W${(s.t % 52) + 1} · ${seasonOf(s.t)}`;
   const throttle = `<div class="throttle">${([0, 1, 5, 20] as const).map(v => `<button data-speed="${v}" aria-pressed="${speed === v}" aria-label="${v ? v + ' times' : 'Pause'}">${v ? v + '×' : '❙❙'}</button>`).join('')}</div>`;
   if (!c) return `<header class="strip"><div class="row"><span class="inst"><span class="label">Souls</span><span>${s.people.filter(p => p.alive).length}</span></span><span class="inst"><span class="label">Houses</span><span>${hs.length}</span></span></div><div class="row"><span class="when">${when}</span>${throttle}</div></header>`;
-  const sore = Object.values(c.grief).filter(g => g >= P.aggrieved).length, need = Math.ceil(P.faction * hs.length);
-  const store = c.store.map((q, k) => [q, k] as const).filter(([q]) => q >= 1).sort((a, b) => b[0] - a[0]).slice(0, 2).map(([q, k]) => `${Math.round(q)} ${KINDS[k]!.id}`).join(' · ') || 'empty';
+  const sore = Object.values(c.grief).filter(g => g >= P.aggrieved).length, need = factionNeed(hs.length);
+  const kindOf = (id: string): number => KINDS.findIndex(k => k.id === id);
+  const store = ['grain', 'timber'].map(id => { const k = kindOf(id); return k >= 0 ? `${Math.round(c.store[k] ?? 0)} ${id}` : ''; }).filter(Boolean).join(' · ');
   return `<header class="strip"><div class="row inst4">${seals(c.legitimacy, 'Legitimacy')}${seals(c.reach, 'Reach')}
     <span class="inst"><span class="label">Store</span><span class="gilt">${store}</span></span>
-    <span class="inst ${sore >= need ? 'bad' : sore >= 0.7 * need ? 'warn' : ''}"><span class="label">Factions</span><span>${sore} / ${need}</span></span></div>
+    <span class="inst ${sore >= need ? 'bad' : sore >= 0.7 * need ? 'warn' : ''}"><span class="label">Aggrieved</span><span>${sore} / ${need}</span></span></div>
     <div class="row"><span class="when">${when}${c.policy.weak ? '<br><span class="bad small">The Crown is weak</span>' : ''}</span>${throttle}</div></header>`;
 }
 
 function mapView(): string {
-  const n = s.side, hs = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length), at = new Map<number, typeof hs>();
+  const hs = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length), at = new Map<number, typeof hs>();
   for (const b of hs) { const l = at.get(b.home); if (l) l.push(b); else at.set(b.home, [b]); }
   const c = s.court;
   const val = (i: number): [number, string] => {
     const cell = s.cells[i]!, l = at.get(i) ?? [];
-    if (lens === 'ecology') return [Math.max(0, Math.min(1, 1 - cell.soil / Math.max(0.01, cell.soil0))) * 0.7 + Math.min(0.3, cell.flood), 'var(--seal)'];
-    if (lens === 'sacred') return [Math.min(1, cell.sanctity + (cell.shrine ? 0.4 : 0)), cell.interdict > 0 ? 'var(--seal)' : 'var(--gilt)'];
+    if (lens === 'ecology') { const worn = Math.max(0, 1 - cell.soil / Math.max(0.01, cell.soil0)); return [Math.min(1, worn * 2.5 + Math.min(0.5, cell.flood * 2) + Math.min(0.3, cell.cleared)), 'var(--seal)']; }
+    if (lens === 'sacred') return [Math.min(1, cell.sanctity + (cell.shrine ? 0.4 : 0) + (cell.interdict > 0 ? 0.6 : 0)), cell.interdict > 0 ? 'var(--seal)' : 'var(--gilt)'];
     if (!l.length) return [0, 'var(--soft)'];
     if (lens === 'want') return [l.filter(b => cover(b.store, askAhead(s, b)).some((x, k) => NEEDS[k]!.harm >= 0.5 && x < P.short)).length / l.length, 'var(--seal)'];
     if (lens === 'factions') return [c ? l.filter(b => (c.grief[b.id] ?? 0) >= P.aggrieved).length / l.length : 0, 'var(--seal)'];
@@ -518,80 +537,74 @@ function mapView(): string {
   };
   const cells = s.cells.map((cell, i) => { const [v, col] = val(i), l = at.get(i)?.length ?? 0; return `<button class="cell${i === picked ? ' on' : ''}${cell.shrine ? ' shrine' : ''}" data-cell="${i}" style="--v:${Math.round(v * 100)}%;--c:${col}" aria-label="${esc(cellWords(i))}">${l ? `<i>${l}</i>` : ''}</button>`; }).join('');
   const lenses = (['want', 'factions', 'sacred', 'jurisdiction', 'ecology'] as const).map(k => `<button data-lens="${k}" aria-pressed="${lens === k}">${({ want: 'Want', factions: 'Factions', sacred: 'Sacred', jurisdiction: 'Jurisdiction', ecology: 'Ecology' })[k]}</button>`).join('');
-  return `<div class="pills">${lenses}</div><div class="map" style="grid-template-columns:repeat(${n},1fr)">${cells}</div>${picked >= 0 ? sheet(picked, at.get(picked) ?? []) : '<p class="soft small">Tap a place to see who is there.</p>'}`;
+  return `<div class="pills">${lenses}</div><p class="legend small soft">${LEGEND[lens]}</p>
+    <div class="map-viewport">${zoom > 1 ? '<button class="reset" data-reset="1">Reset zoom</button>' : ''}<div class="map" style="grid-template-columns:repeat(${s.side},1fr);transform:translate(${panX}px,${panY}px) scale(${zoom})">${cells}</div></div>
+    ${picked < 0 ? '<p class="soft small">Pinch to zoom. Tap a place to see who is there and give orders.</p>' : ''}`;
 }
-function sheet(i: number, l: Body[]): string {
-  const cell = s.cells[i]!, c = s.court;
-  const tensions = c ? c.docket.filter(p => s.bodies[p.by]!.home === i || (p.against >= 0 && s.bodies[p.against]!.home === i)).length : 0;
+function sheet(): string {
+  if (picked < 0 || view !== 'map') return '';
+  const i = picked, cell = s.cells[i]!, c = s.court, l = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length && b.home === i);
   const holy = [cell.sanctity >= P.sanctuary ? 'holy ground' : '', cell.shrine ? `a shrine kept by ${house(cell.shrine.of)}${cell.shrine.sanctioned ? ', sanctioned' : ''}` : '', cell.interdict > 0 ? `under interdict ${cell.interdict} more weeks` : ''].filter(Boolean).join('; ');
+  const iv = interventionAt(s, i), ivWords = ({ interdict: 'Lift the interdict', shrine: 'Sanction the shrine', stained: 'Put the stained priest to penance', feud: 'Impose the king’s peace on a feud' } as Record<string, string>)[iv];
+  const wait = (k: string): number => (c ? Math.max(0, 13 - (s.t - (c.seen[`local:${k}:${i}`] ?? -999))) : 0);
+  const order = (k: LocalOrder, t: string, ok = true): string => { const w = wait(k); return `<button data-local="${k}" ${!ok || w > 0 ? 'disabled' : ''}>${t}${w > 0 ? ` <span class="small">(${w}w)</span>` : ''}</button>`; };
   return `<div class="sheet"><div class="bar"><h3>${esc(cellWords(i))}</h3><button data-cell="-1" aria-label="Close">✕</button></div>
     ${holy ? `<p class="small">${esc(Cap(holy))}.</p>` : ''}
     ${l.length ? `<ul class="list small">${l.map(b => `<li>${esc(Cap(house(b.id)))} <span class="soft">· ${b.members.filter(m => s.people[m]!.alive).length} souls${c && (c.grief[b.id] ?? 0) >= P.aggrieved ? ' · <span class="bad">aggrieved</span>' : ''}</span></li>`).join('')}</ul>` : '<p class="soft small">Nobody lives here.</p>'}
-    ${tensions ? `<p class="small warn">${tensions} matter${tensions > 1 ? 's' : ''} from here wait on the court.</p>` : ''}</div>`;
+    ${c && mode === 'cockpit' ? `<div class="orders">${order('relief', 'Send relief', l.some(b => cover(b.store, askAhead(s, b)).some((x, k) => NEEDS[k]!.harm >= 0.5 && x < P.short)))}${order('circuit', 'Send the bailiffs')}${order('charter', 'Remit the Crown’s share', s.bonds.some(bd => bd.about === 'yield' && bd.way === 'crown' && bd.easedTo <= s.t && l.some(b => b.id === bd.a)))}${order('intervene', ivWords ?? 'Nothing to intervene in', !!iv)}</div>` : ''}</div>`;
 }
 function chronicleView(): string {
-  const ev = R.events.slice(-150).map(e => ({ t: e.t1, text: named(e.text), major: e.chain.length > 0 || e.size >= 3, why: e.chain[0] }));
+  const ev = R.events.slice(-150).map(e => ({ t: e.t1, text: esc(named(e.text)), major: e.chain.length > 0 || e.size >= 3, why: e.chain[0] }));
   const all = [...ev, ...feed.map(f => ({ ...f, why: '' as string | undefined }))].filter(x => !majorOnly || x.major).sort((a, b) => b.t - a.t).slice(0, 80);
   return `<div class="pills"><button data-major="0" aria-pressed="${!majorOnly}">All</button><button data-major="1" aria-pressed="${majorOnly}">Major</button></div>
     <ul class="list">${all.map(x => `<li><span class="label">Y${Math.floor(x.t / 52) + 1}·W${(x.t % 52) + 1}</span> ${x.text}${x.why ? `<div class="small soft">because ${esc(named(x.why))}</div>` : ''}</li>`).join('') || '<li class="soft">Nothing yet. Let time run.</li>'}</ul>`;
-}
-function alertsView(): string {
-  const c = s.court!;
-  return `<div class="bar"><p class="soft small">${seated.length ? `${c.docket.length} matter${c.docket.length > 1 ? 's' : ''} your laws and rules do not settle. Hear up to ${capOf()}; rulings take effect as the week turns.` : 'Nothing has broken through.'}</p>
-    <label class="small"><input type="checkbox" id="pauseOnAlert" ${pauseOnAlert ? 'checked' : ''}> Pause when a matter breaks through</label></div>
-    <div class="matters">${seated.map(matterCard).join('')}</div>`;
 }
 
 function lawsDeck(): string {
   const pol = s.court!.policy;
   return (Object.keys(LAW_WORDS) as LawKey[]).map(k => {
     const [name, opts] = LAW_WORDS[k], set = pol.lawSetAt[k] >= 0, warm = set && s.t - pol.lawSetAt[k] < 52;
-    return `<div class="law"><div class="lname"><strong>${name}</strong>${pol.inscribed[k] ? ' <span class="gilt" title="On the roll">◉</span>' : ''}${warm ? ' <span class="dot" title="Laid down within the year: changing it now is caprice"></span>' : ''}<span class="small soft">${set ? `${pol.lawHits[k]} settled` : 'not laid down'}</span></div>
+    return `<div class="law" title="${esc(LAW_HINT[k])}"><div class="lname"><strong>${name}</strong>${pol.inscribed[k] ? ' <span class="gilt" title="On the roll">◉</span>' : ''}${warm ? ' <span class="dot" title="Laid down within the year: changing it now is caprice"></span>' : ''}<span class="small soft">${set ? `${pol.lawHits[k]} settled` : 'not laid down'}</span></div>
       <div class="seg">${opts.map(([v, t]) => `<button data-law="${k}:${v}" aria-pressed="${set && pol.laws[k] === v}">${t}</button>`).join('')}</div></div>`;
   }).join('');
 }
-function dialsDeck(): string {
+function treasuryDeck(): string {
   const d = s.court!.policy.dials as Record<string, any>;
   return DIALS.map(x => { const i = x.vals.indexOf(d[x.key]); return `<div class="dial"><div><strong>${x.name}</strong><div class="small soft">${x.hint}</div></div><div class="step"><button data-dial="${x.key}:-1" ${i <= 0 ? 'disabled' : ''} aria-label="Less">−</button><span>${x.show(d[x.key])}</span><button data-dial="${x.key}:1" ${i >= x.vals.length - 1 ? 'disabled' : ''} aria-label="More">+</button></div></div>`; }).join('');
 }
-function ordsDeck(): string {
+function decreesDeck(): string {
   const pol = s.court!.policy;
   const can = (Object.keys(LAW_WORDS) as LawKey[]).filter(k => pol.lawSetAt[k] >= 0 && !pol.inscribed[k]);
   return ORDS.map(([k, name, hint]) => { const left = pol.ord[k]; return `<button class="ord" data-ord="${k}" ${left > 0 ? 'disabled' : ''}><strong>${name}</strong><span class="small soft">${left > 0 ? `${left}w left` : hint}</span>${left > 0 ? `<progress max="${ORD_WEEKS[k]}" value="${left}"></progress>` : ''}</button>`; }).join('')
-    + `<div class="ord"><strong>Write a law on the roll</strong><span class="small soft">It gains you legitimacy and cannot be challenged; undoing it later is caprice of the worst kind.</span><div class="seg">${can.map(k => `<button data-inscribe="${k}">${LAW_WORDS[k][0]}</button>`).join('') || '<span class="small soft">Lay a law down first.</span>'}</div></div>`;
+    + `<div class="ord"><strong>Write a law on the roll</strong><span class="small soft">It gains you legitimacy; undoing it later is caprice of the worst kind.</span><div class="seg">${can.map(k => `<button data-inscribe="${k}">${LAW_WORDS[k][0]}</button>`).join('') || '<span class="small soft">Lay a law down first.</span>'}</div></div>`;
 }
 
 function shell(): void {
-  const live = mode !== 'chronicle';
+  const live = mode === 'cockpit';
   document.body.classList.add('cockpit-on');
   app.innerHTML = `<div class="cockpit"><div id="strip"></div>
-    <nav class="tabs vt">${(live ? ['map', 'chronicle', 'alerts'] : ['map', 'chronicle']).map(v => `<button data-view="${v}" aria-pressed="${view === v}">${v === 'alerts' ? `Alerts <b id="badge"></b>` : v === 'map' ? 'Map' : 'Chronicle'}</button>`).join('')}</nav>
-    <main class="view" id="view"></main>
-    ${live ? `<footer class="deck"><nav class="tabs">${(['laws', 'dials', 'ords'] as const).map(d => `<button data-deck="${d}" aria-pressed="${deck === d}">${({ laws: 'Laws', dials: 'Dials', ords: 'Ordinances' })[d]}</button>`).join('')}</nav><div class="deckin" id="deck"></div></footer>` : ''}</div>`;
+    <nav class="tabs vt">${(['map', 'chronicle'] as const).map(v => `<button data-view="${v}" aria-pressed="${view === v}">${v === 'map' ? 'Map' : 'Chronicle'}</button>`).join('')}</nav>
+    <div class="viewwrap"><main class="view" id="view"></main><div id="sheet"></div></div>
+    ${live ? `<footer class="deck"><nav class="tabs">${(['laws', 'treasury', 'decrees'] as const).map(d => `<button data-deck="${d}" aria-pressed="${deck === d}">${({ laws: 'Laws', treasury: 'Treasury', decrees: 'Decrees' })[d]}</button>`).join('')}</nav><div class="deckin" id="deck"></div></footer>` : ''}</div>`;
   paint(true);
 }
 const swap = (id: string, html: string): void => { const el = document.getElementById(id); if (el && el.dataset.h !== html) { const top = el.scrollTop; el.innerHTML = html; el.dataset.h = html; el.scrollTop = top; } };
 function paint(force = false): void {
-  if (force) for (const id of ['strip', 'view', 'deck']) { const el = document.getElementById(id); if (el) el.dataset.h = ''; }
+  if (force) for (const id of ['strip', 'view', 'deck', 'sheet']) { const el = document.getElementById(id); if (el) el.dataset.h = ''; }
   document.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === view)));
   document.querySelectorAll<HTMLButtonElement>('[data-deck]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.deck === deck)));
   swap('strip', strip());
-  swap('view', view === 'map' ? mapView() : view === 'chronicle' ? chronicleView() : alertsView());
-  if (s.court && mode !== 'chronicle') swap('deck', deck === 'laws' ? lawsDeck() : deck === 'dials' ? dialsDeck() : ordsDeck());
-  const badge = document.getElementById('badge');
-  if (badge) { const n = s.court?.docket.length ?? 0; badge.textContent = n ? String(n) : ''; badge.classList.toggle('pulse', pulse); }
+  if (!gesturing) swap('view', view === 'map' ? mapView() : chronicleView());
+  swap('sheet', sheet());
+  if (s.court && mode === 'cockpit') swap('deck', deck === 'laws' ? lawsDeck() : deck === 'treasury' ? treasuryDeck() : decreesDeck());
 }
 
-/** One week of the living realm: what was ruled is heard, the realm lives, and the next week's matters gather. */
+/** One week of the living realm: the court's reckoning, the realm lives, and the next week's matters are settled below by the laws. */
 function tickWeek(): void {
   const c = s.court;
   if (c) {
-    const rulings: Ruling[] = [...chosen].map(([petition, v]) => ({ petition, cut: v.cut, width: v.width }));
-    for (const r of rulings) { const p = seated.find(x => x.id === r.petition); if (p) feed.push({ t: s.t, text: `You ruled: <strong>${esc(cutWords(p, r.cut)[0])}</strong>, ${esc(house(p.by))}${p.against >= 0 ? ' against ' + esc(house(p.against)) : ''}.`, major: true }); }
     const weak = c.policy.weak;
-    hear(s, rulings);
-    const byLaw = s.log.filter(r => r.k === 'rule' && r.kind2 === 1 && r.q2 === -3).length, byRule = s.log.filter(r => r.k === 'rule' && r.kind2 === 1 && r.q2 !== -3).length;
-    if (byLaw + byRule) feed.push({ t: s.t, text: `<span class="soft">Settled below: ${byLaw ? `${byLaw} by your laws` : ''}${byLaw && byRule ? ', ' : ''}${byRule ? `${byRule} by your rules` : ''}.</span>`, major: false });
+    hear(s, []);
     if (s.log.some(r => r.k === 'withdraw' && (r.q ?? 0) > 0)) feed.push({ t: s.t, text: '<span class="bad">A faction withdrew its confidence: your reach falls.</span>', major: true });
     if (!weak && c.policy.weak) feed.push({ t: s.t, text: '<span class="bad">The Crown has lost its hold. Your laws go unheeded and the bailiffs send nothing up, until you are trusted and obeyed again.</span>', major: true });
     if (weak && !c.policy.weak) feed.push({ t: s.t, text: '<span class="good">The Crown has its hold again.</span>', major: true });
@@ -599,14 +612,12 @@ function tickWeek(): void {
   advance(s, true);
   R.read(s);
   s.log = [];
-  if (feed.length > 400) feed = feed.slice(-300);
   if (c) {
-    seated = audience(s);
-    chosen.clear();
-    const fresh = seated.filter(p => !heardOf.has(p.id));
-    for (const p of seated) heardOf.add(p.id);
-    if (fresh.length && pauseOnAlert && s.t > 1) { speed = 0; pulse = true; }
+    audience(s);
+    const byLaw = s.log.filter(r => r.k === 'rule' && r.kind2 === 1 && r.q2 === -3).length, byLord = s.log.filter(r => r.k === 'rule' && r.kind2 === 1 && r.q2 === -6).length;
+    if (byLaw + byLord) feed.push({ t: s.t, text: `<span class="soft">Settled below: ${[byLaw ? `${byLaw} by your laws` : '', byLord ? `${byLord} by the lords and bodies` : ''].filter(Boolean).join(', ')}.</span>`, major: false });
   }
+  if (feed.length > 400) feed = feed.slice(-300);
 }
 function frame(now: number): void {
   if (s && mode !== 'regency' && document.getElementById('view')) {
@@ -622,19 +633,68 @@ function frame(now: number): void {
 }
 requestAnimationFrame(frame);
 
+// --- Zooming the map, and only the map ---
+// iOS Safari ignores user-scalable=no, so pinches outside the map are stopped here; on the map, two fingers zoom and one pans.
+for (const g of ['gesturestart', 'gesturechange']) document.addEventListener(g, e => { if (!(e.target as HTMLElement)?.closest?.('.map-viewport')) e.preventDefault(); }, { passive: false });
+const ptrs = new Map<number, { x: number; y: number }>();
+let pinch0 = 0, zoom0 = 1, pan0 = { x: 0, y: 0 }, start0 = { x: 0, y: 0 }, moved = false;
+const clampPan = (): void => { const vp = document.querySelector('.map-viewport') as HTMLElement | null; const w = vp?.clientWidth ?? 300, h = vp?.clientHeight ?? 300, mx = (w * (zoom - 1)) / 2, my = (h * (zoom - 1)) / 2; panX = Math.max(-mx, Math.min(mx, panX)); panY = Math.max(-my, Math.min(my, panY)); };
+const applyZoom = (): void => { const m = document.querySelector('.map') as HTMLElement | null; if (m) m.style.transform = `translate(${panX}px,${panY}px) scale(${zoom})`; };
+app.addEventListener('pointerdown', e => {
+  if (!(e.target as HTMLElement).closest('.map-viewport')) return;
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  gesturing = true; moved = false;
+  const pts = [...ptrs.values()];
+  if (pts.length === 2) { pinch0 = Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y); zoom0 = zoom; }
+  pan0 = { x: panX, y: panY }; start0 = { x: e.clientX, y: e.clientY };
+});
+window.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId)) return;
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  const pts = [...ptrs.values()];
+  if (pts.length >= 2 && pinch0 > 0) { zoom = Math.max(1, Math.min(3.5, (zoom0 * Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y)) / pinch0)); moved = true; }
+  else if (pts.length === 1 && zoom > 1) { const dx = e.clientX - start0.x, dy = e.clientY - start0.y; if (Math.abs(dx) + Math.abs(dy) > 6) moved = true; panX = pan0.x + dx; panY = pan0.y + dy; }
+  clampPan(); applyZoom();
+});
+const lift = (e: PointerEvent): void => {
+  if (!ptrs.delete(e.pointerId)) return;
+  if (ptrs.size < 2) pinch0 = 0;
+  if (ptrs.size === 1) { const p = [...ptrs.values()][0]!; start0 = { x: p.x, y: p.y }; pan0 = { x: panX, y: panY }; }
+  if (!ptrs.size) { gesturing = false; if (zoom <= 1.02) { zoom = 1; panX = 0; panY = 0; applyZoom(); } setTimeout(() => { moved = false; paint(); }, 0); }
+};
+window.addEventListener('pointerup', lift); window.addEventListener('pointercancel', lift);
+// A drag or a pinch that ends on a place is not a tap on it.
+app.addEventListener('click', e => {
+  const t = e.target as HTMLElement;
+  if (moved && t.closest('.map-viewport')) { e.stopImmediatePropagation(); e.preventDefault(); return; }
+  // A tap that falls in the gap between places picks the nearest one.
+  if (t.classList.contains('map')) {
+    for (const [dx, dy] of [[0, 0], [5, 0], [-5, 0], [0, 5], [0, -5], [5, 5], [-5, -5], [5, -5], [-5, 5]]) {
+      const hit = document.elementFromPoint(e.clientX + dx!, e.clientY + dy!)?.closest('.cell') as HTMLElement | null;
+      if (hit) { e.stopImmediatePropagation(); picked = Number(hit.dataset.cell); paint(); return; }
+    }
+  }
+}, true);
+
 function cockpitClick(b: HTMLButtonElement): boolean {
   const c = s?.court;
-  if (b.dataset.speed !== undefined) { speed = Number(b.dataset.speed) as typeof speed; if (speed) pulse = false; paint(); return true; }
-  if (b.dataset.view) { view = b.dataset.view as typeof view; if (view === 'alerts') pulse = false; paint(); return true; }
+  if (b.dataset.speed !== undefined) { speed = Number(b.dataset.speed) as typeof speed; paint(); return true; }
+  if (b.dataset.view) { view = b.dataset.view as typeof view; paint(); return true; }
   if (b.dataset.deck) { deck = b.dataset.deck as typeof deck; paint(); return true; }
-  if (b.dataset.lens) { lens = b.dataset.lens as typeof lens; paint(); return true; }
+  if (b.dataset.lens) { lens = b.dataset.lens as Lens; paint(); return true; }
+  if (b.dataset.reset) { zoom = 1; panX = 0; panY = 0; paint(); return true; }
   if (b.dataset.cell !== undefined) { picked = Number(b.dataset.cell); paint(); return true; }
   if (b.dataset.major !== undefined) { majorOnly = b.dataset.major === '1'; paint(); return true; }
   if (!c) return false;
   if (b.dataset.law) { const [k, v] = b.dataset.law.split(':') as [LawKey, string]; setLaw(s, k, v as never); feed.push({ t: s.t, text: `You laid down the law: <strong>${LAW_WORDS[k][0]}: ${LAW_WORDS[k][1].find(x => x[0] === v)![1]}</strong>.`, major: true }); paint(); return true; }
   if (b.dataset.dial) { const [k, d] = b.dataset.dial.split(':') as [keyof Dials, string]; const x = DIALS.find(y => y.key === k)!, i = x.vals.indexOf((c.policy.dials as any)[k]) + Number(d); if (i >= 0 && i < x.vals.length) setDial(s, k, x.vals[i] as never); paint(); return true; }
-  if (b.dataset.ord) { const k = b.dataset.ord as OrdKey; if (issueOrdinance(s, k)) feed.push({ t: s.t, text: `You issued an ordinance: <strong>${ORDS.find(o => o[0] === k)![1]}</strong>.`, major: true }); paint(); return true; }
+  if (b.dataset.ord) { const k = b.dataset.ord as OrdKey; if (issueOrdinance(s, k)) feed.push({ t: s.t, text: `You decreed: <strong>${ORDS.find(o => o[0] === k)![1]}</strong>.`, major: true }); paint(); return true; }
   if (b.dataset.inscribe) { const k = b.dataset.inscribe as LawKey; if (inscribeLaw(s, k)) feed.push({ t: s.t, text: `You wrote the law on the roll: <strong>${LAW_WORDS[k][0]}</strong>.`, major: true }); paint(); return true; }
+  if (b.dataset.local && picked >= 0) {
+    const k = b.dataset.local as LocalOrder, what = b.textContent?.replace(/\s*\(\d+w\)/, '') ?? k;
+    feed.push({ t: s.t, text: localOrder(s, picked, k) ? `You ordered at ${esc(cellWords(picked))}: <strong>${esc(what)}</strong>.` : `<span class="soft">Your order at ${esc(cellWords(picked))} came to nothing.</span>`, major: true });
+    paint(); return true;
+  }
   return false;
 }
 
@@ -643,7 +703,7 @@ function cockpitClick(b: HTMLButtonElement): boolean {
 function start(seed: number, side: number, souls: number, years: number): void {
   s = found(seed, -years * 52, side, souls);
   R = new Readers();
-  over = ''; lastWeek = []; tab = 'week'; heardOf.clear(); chosen.clear(); seated = [];
+  over = ''; lastWeek = []; tab = 'week'; chosen.clear(); seated = []; zoom = 1; panX = 0; panY = 0;
   const total = years * 52;
   const tick = (): void => {
     const t0 = performance.now();
@@ -654,7 +714,7 @@ function start(seed: number, side: number, souls: number, years: number): void {
       return;
     }
     if (mode === 'regency') { document.body.classList.remove('cockpit-on'); openCourt(s); openWeek(); render(); return; }
-    if (mode === 'cockpit') { openCourt(s, 'cockpit'); seated = audience(s); for (const p of seated) heardOf.add(p.id); }
+    if (mode === 'cockpit') { openCourt(s, 'cockpit'); audience(s); s.log = []; }
     speed = 0; feed = []; picked = -1; view = 'map'; deck = 'laws';
     shell();
   };
@@ -665,9 +725,9 @@ function welcome(): void {
   document.body.classList.remove('cockpit-on'); speed = 0;
   app.innerHTML = `<div class="wrap"><section class="start">
     <h1>Vicarius Regis</h1>
-    <p>The king is away for three years and you hold his court. Each week those whom nothing below could settle come before you. Rule on up to three. A ruling for one case settles one case, and the question will come back. A rule for the realm settles every like case without you, and every arrangement built on the old understanding is disturbed.</p>
+    <p>The king is away and the realm is yours to keep in his name. Govern it from above with laws, the treasury and decrees; watch it live without you; or sit in his court and hear its quarrels one by one.</p>
     <p class="soft">Nothing in this realm is scripted. Its people farm, deal, quarrel and believe by their own lights, and they will learn what to expect of you.</p>
-    <div class="modes">${([['cockpit', 'The Cockpit', 'Time runs on its own. Lay down laws, turn the dials, issue ordinances, and hear what breaks through.'], ['chronicle', 'The Chronicle', 'Watch the realm live: no court, no Crown, just people, decades of them.'], ['regency', 'The Regency', 'The king is away three years. Week by week, hear up to three matters; lose the realm’s confidence and you fall.']] as const).map(([k, t, d]) => `<button class="mode" data-mode="${k}" aria-pressed="${mode === k}"><strong>${t}</strong><span>${d}</span></button>`).join('')}</div>
+    <div class="modes">${([['cockpit', 'The Cockpit', 'Time runs on its own. Trim the realm with laws, the treasury and decrees, and give orders place by place. Nobody petitions you.'], ['chronicle', 'The Chronicle', 'Watch the realm live: no court, no Crown, just people, decades of them.'], ['regency', 'The Regency', 'The king is away three years. Week by week, petitioners come before you: hear up to three; lose the realm’s confidence and you fall.']] as const).map(([k, t, d]) => `<button class="mode" data-mode="${k}" aria-pressed="${mode === k}"><strong>${t}</strong><span>${d}</span></button>`).join('')}</div>
     <div><label class="label" for="seed">Seed of the realm</label><br><input id="seed" type="number" min="1" value="${1 + Math.floor(Math.random() * 999)}"></div>
     <div class="choices"><button class="go" id="small">A small realm: about 200 souls, ready in seconds</button><button id="full">The realm: about 900 souls, takes a minute to found</button></div>
   </section></div>`;
@@ -694,6 +754,5 @@ app.addEventListener('click', ev => {
   if (b.dataset.width) { const [id, w] = b.dataset.width.split(':'), had = chosen.get(Number(id)); if (had) { had.width = w as Width; if (mode !== 'regency' && document.getElementById('view')) paint(); else render(); } }
 });
 
-app.addEventListener('change', ev => { const t = ev.target as HTMLInputElement; if (t.id === 'pauseOnAlert') pauseOnAlert = t.checked; });
 
 welcome();

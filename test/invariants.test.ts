@@ -156,13 +156,13 @@ test('flipping a standing law within the year is caprice; on the roll, worse', a
   const { openCourt, setLaw, inscribeLaw } = await import('../sim/court/court.ts');
   const s = found(3);
   const c = openCourt(s, 'cockpit');
-  setLaw(s, 'debt', 'enforce');
+  setLaw(s, 'credit', 'strict');
   assert.equal(c.caprice, 0, 'laying a law down the first time is no caprice');
-  s.t += 10; setLaw(s, 'debt', 'ease');
+  s.t += 10; setLaw(s, 'credit', 'ease');
   assert.equal(c.caprice, 1);
-  s.t += 60; setLaw(s, 'debt', 'enforce');
+  s.t += 60; setLaw(s, 'credit', 'strict');
   assert.equal(c.caprice, 1, 'changing a law after a year is no caprice');
-  inscribeLaw(s, 'debt'); s.t += 200; const leg = c.legitimacy; setLaw(s, 'debt', 'ease');
+  inscribeLaw(s, 'credit'); s.t += 200; const leg = c.legitimacy; setLaw(s, 'credit', 'ease');
   assert.equal(c.caprice, 4, 'undoing a law on the roll costs three');
   assert.ok(c.legitimacy < leg);
 });

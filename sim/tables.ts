@@ -219,6 +219,8 @@ export const P = {
   practise: 0.004, mastery: 1.6, rust: 0.002, green: 0.6,
   blame: 0.5, forget: 0.995, tell: 0.2, heed: 0.5, mind: 12,
   /** The court: hearings a week, seats at the audience, weeks a matter waits before it is dropped, weeks a reign lasts. */
+  /** The fewest aggrieved houses, bound together, that make a faction, however small the realm. */
+  factionMin: 3,
   hearings: 3, seats: 6, wait: 13, reign: 156,
   /** Going to court: what it costs beside what is hoped for, the days it takes, and how far one ruling moves what a house expects (its own; its neighbours'). */
   /** The Crown's store at the start, in weeks of each pressing need for the whole realm; the share of what it enforces that it keeps; weeks the regent's word runs; the harm of breaking it. */
