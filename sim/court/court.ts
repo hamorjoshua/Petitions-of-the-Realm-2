@@ -129,7 +129,7 @@ export function planesOf(s: State, p: Petition): [Plane, Plane] {
   const bd = s.bonds.find(b => b.id === p.bond);
   if (!bd) return pair(p.shape.includes('shunned') ? 'normative' : 'material', 'material');
   if (bd.about === 'act' && bd.denied) return pair('epistemic', 'material');
-  if (bd.about === 'act' && bd.basis === 'wrong') return pair(p.side === 'owes' ? 'epistemic' : 'material', bd.way === 'blood' ? 'relational' : 'epistemic');
+  if (bd.about === 'act' && bd.basis === 'wrong') return pair(bd.way === 'blood' ? 'relational' : 'material', p.side === 'owes' || bd.way !== 'blood' ? 'epistemic' : 'material');
   if (bd.about === 'act') return pair('material', 'relational');
   return pair('positional', 'material');
 }
@@ -783,7 +783,8 @@ export function audience(s: State): Petition[] {
   c.docket = c.docket.filter(p => {
     if (!s.bodies[p.by]!.alive) return false;
     if (p.burdens.length) { if (!p.burdens.some(id => byId.has(id))) return false; } else if (p.reason !== 'challenge' && p.bond >= 0) { const bd = byId.get(p.bond); if (!bd || (bd.about === 'act' && bd.q <= 0.05) || (bd.about === 'land' && bd.strength < 0.05)) return false; }
-    if (p.waited > P.wait) { grieve(c, p.by, P.harmUnheard * 2); teach(s, idx, p.by, p.side, 0, P.pleaOwn / 2); return false; }
+    // Left unheard a whole season: that is held against the court by the week.
+    if (p.waited > P.wait) { grieve(c, p.by, P.harmUnheard * p.waited); teach(s, idx, p.by, p.side, 0, P.pleaOwn / 2); return false; }
     return true;
   });
   for (const p of c.docket) {
@@ -810,7 +811,10 @@ export function hear(s: State, rulings: Ruling[]): void {
     if (!p || !cuts(s, p).includes(r.cut)) continue;
     const done = carry(s, c, p, r.cut);
     if (r.cut === 'inquire' && done && p.side !== 'suspects') continue;
-    if (p.reason === 'none') teach(s, hearthIndex(s), p.by, p.side, done ? FAVOUR[p.side]?.[r.cut.split(':')[0]!] ?? 0.5 : 0, P.pleaOwn);
+    const favour = done ? FAVOUR[p.side]?.[r.cut.split(':')[0]!] ?? 0.5 : 0;
+    if (p.reason === 'none') teach(s, hearthIndex(s), p.by, p.side, favour, P.pleaOwn);
+    // One the court found for thinks the better of it.
+    if (favour >= 0.7) c.grief[p.by] = Math.max(0, (c.grief[p.by] ?? 0) - P.harmPaid);
     c.docket = c.docket.filter(x => x !== p);
     if (r.width === 'case' || p.reason === 'challenge') continue;
     // A rule: for the body the petitioner belongs to, or for everyone. It replaces any rule it contradicts there.
@@ -878,8 +882,28 @@ export function hear(s: State, rulings: Ruling[]): void {
   // Those still waiting in real want hold it against the court. (Urgency is no test of that: it also counts whom they speak for.)
   for (const p of c.docket) { p.waited++; if ((p.press ?? 0) > 0.5) grieve(c, p.by, P.harmUnheard); }
   // Enough houses with enough grievance withdraw their confidence.
-  let hearths = 0, sore = 0;
-  for (const b of s.bodies) if (b.alive && !b.parts.length && b.members.length) { hearths++; if ((c.grief[b.id] ?? 0) >= P.aggrieved) sore++; }
+  // Enough aggrieved houses bound to one another, as kin, as fellows of one body, or as neighbours, make a faction.
+  // Scattered grudges do not: it is the largest such group that counts.
+  let hearths = 0;
+  const aggrieved: Body[] = [];
+  for (const b of s.bodies) if (b.alive && !b.parts.length && b.members.length) { hearths++; if ((c.grief[b.id] ?? 0) >= P.aggrieved) aggrieved.push(b); }
+  const kinMap = kinOf(s), seenF = new Set<number>();
+  let sore = 0;
+  for (const start of aggrieved) {
+    if (seenF.has(start.id)) continue;
+    let size = 0;
+    const stack = [start];
+    seenF.add(start.id);
+    while (stack.length) {
+      const x = stack.pop()!;
+      size++;
+      for (const y of aggrieved) {
+        if (seenF.has(y.id)) continue;
+        if (kinMap.get(x.id)?.has(y.id) || dist(s.side, x.home, y.home) <= 1 || (x.of >= 0 && top(s, x).id === top(s, y).id)) { seenF.add(y.id); stack.push(y); }
+      }
+    }
+    sore = Math.max(sore, size);
+  }
   for (const k in c.grief) { const v = c.grief[k]! * P.griefFade; if (v < 0.5 || !s.bodies[Number(k)]!.alive) delete c.grief[k]; else c.grief[k] = v; }
   // Confidence once withdrawn is not withdrawn again for a season: people wait to see what the court does next.
   c.quiet++;
