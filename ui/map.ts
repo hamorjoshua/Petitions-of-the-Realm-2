@@ -93,4 +93,5 @@ export function riverEdges(g: Geometry, low: number[], flow: number[], over: num
 /** Filters: the island's lift off the table, and the pieces' shadows. */
 export const FILTERS = `
 <filter id="board-drop" x="-10%" y="-10%" width="120%" height="120%"><feDropShadow dx="0" dy="0.08" stdDeviation="0.12" flood-opacity="0.22"/></filter>
+<filter id="paper" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="1.6" numOctaves="3" seed="7"/><feColorMatrix values="0 0 0 0 .2  0 0 0 0 .17  0 0 0 0 .13  0 0 0 1 0"/></filter>
 <filter id="token-drop" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="0.02" stdDeviation="0.02" flood-opacity="0.35"/></filter>`;

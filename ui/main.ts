@@ -524,7 +524,7 @@ const LEGEND: Record<Lens, string> = {
   jurisdiction: 'Each colour is one body of houses, and whoever leads it.',
   ecology: 'Darker red: soil worn out or ground flooded.',
 };
-const GLYPHS = 'Pieces: a dot is a hamlet, a square a lord’s seat, a gold ring a parish; the gold circle is your seat; a small square beside a place is a work, a gold diamond a shrine; a red ring marks trouble (aggrieved houses or an interdict); a blue ring what you watch. Blue water inland is a lake; ink edges are where lordships meet; each shire has its own pale wash.';
+const GLYPHS = 'Pieces: a dot is a hamlet, a square a lord’s seat, a gold ring a parish; the gold circle is your seat; a small square beside a place is a work, a gold diamond a shrine; a red ring marks trouble (aggrieved houses or an interdict); a blue ring what you watch. Blue water inland is a lake; ink edges bound each shire or lordship, faint lines are roads; each shire has its own pale wash.';
 
 const storeTotal = (): number => (s.court ? s.court.store.reduce((x, y) => x + y, 0) : 0);
 /** Up, down or level against a season ago. */
@@ -626,7 +626,23 @@ function mapView(): string {
     const w = washOf(i), base = w ? `color-mix(in srgb, ${w} 13%, var(--elev${step}))` : `var(--elev${step})`;
     return `<polygon data-cell="${i}" class="${i === picked ? 'on' : ''}" points="${polyPath(poly)}" style="fill:color-mix(in srgb, ${col} ${Math.round(v * 60)}%, ${base})"><title>${esc(cellWords(i))}</title></polygon>`;
   }).join('');
-  const borders = edgesWhere(g, (i, j) => { const a = land[i]!, b = land[j]!; return a !== b && a >= 0 && b >= 0; });
+  // Jurisdictions: a lordship where there is one, otherwise the shire about a settled place. Their outer edges are inked.
+  const realm = s.cells.map((_x, i) => { if (water(i)) return -2; const k = shire[i]!; if (k < 0) return -1; const L = lordAt(at, k); return L >= 0 ? 100000 + L : k; });
+  const borders = edgesWhere(g, (i, j) => { const a = realm[i]!, b = realm[j]!; return a !== b && a !== -2 && b !== -2 && (a >= 0 || b >= 0); });
+  const coast = edgesWhere(g, (i, j) => water(i) !== water(j));
+  // Roads: each settlement to its nearest neighbouring settlements, as faint worn lines.
+  const towns = s.cells.map((_x, i) => i).filter(i => !water(i) && ((at.get(i)?.length ?? 0) > 0 || ranked.has(i)));
+  const roadSet = new Set<string>(), roads: string[] = [];
+  for (const a of towns) {
+    const pa = g.pts[a]!, near = towns.filter(b => b !== a).map(b => [b, Math.hypot(g.pts[b]![0] - pa[0], g.pts[b]![1] - pa[1])] as const).filter(([, d]) => d <= 2.6).sort((x, y) => x[1] - y[1]).slice(0, 2);
+    for (const [b] of near) {
+      const key = a < b ? `${a}:${b}` : `${b}:${a}`;
+      if (roadSet.has(key)) continue;
+      roadSet.add(key);
+      const pb = g.pts[b]!, mx = (pa[0] + pb[0]) / 2 + (pb[1] - pa[1]) * 0.08, my = (pa[1] + pb[1]) / 2 - (pb[0] - pa[0]) * 0.08;
+      roads.push(`M${pa[0].toFixed(3)},${(pa[1] - 0.06).toFixed(3)}Q${mx.toFixed(3)},${(my - 0.06).toFixed(3)} ${pb[0].toFixed(3)},${(pb[1] - 0.06).toFixed(3)}`);
+    }
+  }
   // Tokens: plain board pieces at each place's centre.
   const tokens: string[] = [], labels: string[] = [];
   g.pts.forEach(([x, y0], i) => {
@@ -648,10 +664,12 @@ function mapView(): string {
   return `<div class="map-viewport"><div class="map" style="transform:translate(${panX}px,${panY}px) scale(${zoom})"><svg viewBox="0 0 ${N} ${N}" preserveAspectRatio="xMidYMid meet">
     <defs>${FILTERS}</defs>
     <rect class="sea" x="-2" y="-2" width="${N + 4}" height="${N + 4}"/>
+    <path class="coast-halo" d="${coast}"/>
     <g class="land-shadow" filter="url(#board-drop)"><g class="regions">${regions}</g></g>
-    <g class="borders"><path d="${borders}"/></g>
+    <g class="borders"><path d="${borders}"/></g><path class="coast" d="${coast}"/><path class="roads" d="${roads.join('')}"/>
     <g class="tokens" filter="url(#token-drop)">${tokens.join('')}</g>
-    <g class="labels">${labels.join('')}</g></svg></div></div>`;
+    <g class="labels">${labels.join('')}</g>
+    <rect class="paper" x="-2" y="-2" width="${N + 4}" height="${N + 4}" filter="url(#paper)"/></svg></div></div>`;
 }
 /** The lens bar, and the key when asked for. */
 function lensBar(): string {
@@ -863,7 +881,7 @@ const ptrs = new Map<number, { x: number; y: number }>();
 let pinch0 = 0, zoom0 = 1, pan0 = { x: 0, y: 0 }, start0 = { x: 0, y: 0 }, moved = false;
 /** The map is a square as wide as the screen's narrower side; at the zoom that fills the screen, panning reaches its edges. */
 const mapBox = (): { w: number; h: number; m: number } => { const vp = document.querySelector('.map-viewport') as HTMLElement | null; const w = vp?.clientWidth ?? 390, h = vp?.clientHeight ?? 800; return { w, h, m: Math.min(w, h) }; };
-const fitZoom = (): number => { const { w, h, m } = mapBox(); return Math.min(1.6, Math.max(1, Math.min(w, h * 0.78) / m * (h > w ? 1.45 : 1))); };
+const fitZoom = (): number => { const { w, h, m } = mapBox(); return h > w ? Math.min(1.85, Math.max(1, ((h - 230) / m) * 1.15)) : Math.min(1.3, Math.max(1, (w * 0.9) / m)); };
 const clampPan = (): void => { const { w, h, m } = mapBox(), mx = Math.max(0, (m * zoom - w) / 2 + 24), my = Math.max(0, (m * zoom - h) / 2 + 120); panX = Math.max(-mx, Math.min(mx, panX)); panY = Math.max(-my, Math.min(my, panY)); };
 const applyZoom = (): void => { const m = document.querySelector('.map') as HTMLElement | null; if (m) m.style.transform = `translate(${panX}px,${panY}px) scale(${zoom})`; };
 app.addEventListener('pointerdown', e => {
