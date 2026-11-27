@@ -1,7 +1,7 @@
 // Bind. People make bonds, keep or break them, and contest them when they cannot all be met.
 // Use makes a holding; a taking makes a debt; a debt falls due; two people wed.
 
-import { Kn, NEEDS, NK, NN, P, TOIL } from '../tables.ts';
+import { BY_HARM, Kn, NEEDS, NK, NN, P, TOIL } from '../tables.ts';
 import { askAhead, cover } from '../value.ts';
 import { around, bond, leaves, setTie, dist, head, holdsByCell, kinOf, might, muster, rec, served as remember, struggle, tie, warm } from '../util.ts';
 import type { Body, Bond, Person, State } from '../types.ts';
@@ -21,6 +21,24 @@ function canSpare(s: State, b: Body, kind: number, q: number): boolean {
 
 export function bind(s: State): void {
   const kin = kinOf(s);
+
+  // A house near starving, with little scruple, may claim a spoken debt that was never made, from one it has lately dealt with.
+  // The one it names denies it, truly. Nothing but the ledger can tell this from a real debt denied.
+  if (s.t % 4 === 0) for (const b of s.bodies) {
+    if (!b.alive || b.parts.length || !b.members.length) continue;
+    const h = head(s, b);
+    if (!h || h.scruple >= 0.3) continue;
+    const ahead = askAhead(s, b), cov = cover(b.store, ahead), first = BY_HARM[0]!;
+    if (cov[first]! >= P.dire) continue;
+    const mark = b.recent.map(([sg]) => sg).filter(sg => sg.startsWith('house:')).map(sg => s.bodies[Number(sg.slice(6))]).find(x => x && x.alive && !x.parts.length && x.id !== b.id);
+    if (!mark || s.bonds.some(x => x.about === 'act' && x.a === mark.id && x.b === b.id && x.fabricated)) continue;
+    let k = -1;
+    for (let j = 0; j < NK; j++) if (!Kn[j]!.fixed && Kn[j]!.serves[first]! > 0 && (k < 0 || Kn[j]!.keep < Kn[k]!.keep)) k = j;
+    if (k < 0) continue;
+    const e = rec(s, 'claim', { a: b.id, b: mark.id, kind: k });
+    bond(s, { about: 'act', a: mark.id, b: b.id, kind: k, q: 3 * ahead[first]!, due: s.t, basis: 'word', proof: 'spoken', broken: true, denied: true, fabricated: true, rec: e.id });
+    warm(s, mark.id, b.id, -0.4);
+  }
 
   // Use makes and strengthens a holding, unless others already hold the ground.
   const holds = holdsByCell(s);
@@ -121,6 +139,8 @@ export function bind(s: State): void {
         bd.q = 0; pledge.secures = -2;
         continue;
       }
+      // A debt spoken with nobody by may be denied by one with little scruple. Nobody can prove it, so nobody helps take it.
+      if (bd.proof === 'spoken' && !bd.denied && hD.scruple < 0.45) { bd.denied = true; rec(s, 'deny', { a: D.id, b: C.id, kind: bd.kind, q: bd.q, cause: bd.rec }); warm(s, C.id, D.id, -0.4); }
       bd.broken = true;
       remember(s, bd, false);
       bd.due = s.t + 2;
@@ -131,6 +151,8 @@ export function bind(s: State): void {
       }
       continue;
     }
+    // What cannot be proved is not taken by force.
+    if (bd.denied) { bd.due = s.t + 13; continue; }
     // The one owed weighs what is at stake against their own temper, and their strength against the other's.
     const aheadC = askAhead(s, C);
     let stake = 0.5;

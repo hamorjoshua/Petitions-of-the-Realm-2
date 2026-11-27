@@ -388,7 +388,9 @@ function arrange(s: State, L: Land, cs: Map<number, Ctx>, A: Ctx, need: number):
     if (it.t === 'G') { from.store[it.kind] = from.store[it.kind]! - it.q; to.store[it.kind] = to.store[it.kind]! + it.q; }
     else if (it.t === 'L' || it.t === 'LS' || it.t === 'D' || it.t === 'DS') {
       const labour = it.t === 'D' || it.t === 'DS';
-      const debt = bond(s, { about: 'act', a: from.id, b: to.id, kind: labour ? -1 : it.kind, q: it.q, due: labour ? s.t : s.t + P.term, labour, basis: 'word', rec: e.id, way });
+      // Between strangers a promise is spoken with nobody to bear witness; kin and fellows witness one another's.
+      const witnessed = (kinOf(s).get(from.id)?.has(to.id) ?? false) || (from.of >= 0 && from.of === to.of);
+      const debt = bond(s, { about: 'act', a: from.id, b: to.id, kind: labour ? -1 : it.kind, q: it.q, due: labour ? s.t : s.t + P.term, labour, basis: 'word', rec: e.id, way, proof: witnessed ? 'witnessed' : 'spoken' });
       if ((it.t === 'LS' || it.t === 'DS') && surety) bond(s, { about: 'bond', a: to.id, b: from.id, on: surety.id, secures: debt.id, basis: 'word', rec: e.id, way });
     } else if (it.t === 'U' && it.rb) bond(s, { about: 'bond', a: to.id, b: from.id, on: it.rb.id, share: 0, due: s.t + P.lease, used: s.t, basis: 'word', rec: e.id, way });
   };

@@ -2,7 +2,7 @@
 // Last week's choices are carried out against what is there now.
 
 import { AIDERS, Kn, NS, P, Rc, St } from '../tables.ts';
-import { around, dist, near, hearthIndex, holdsByCell, kinOf, payRent, rec, struggle, tenancies, tie } from '../util.ts';
+import { around, dist, head, near, hearthIndex, holdsByCell, kinOf, payRent, rec, struggle, tenancies, tie } from '../util.ts';
 import { bear } from './grow.ts';
 import type { Body, Bond, State, Work } from '../types.ts';
 
@@ -32,6 +32,8 @@ export function make(s: State): void {
   const lets = tenancies(s);
   const kin = kinOf(s);
   const hearths = hearthIndex(s);
+  // What has been kept back from the Crown, and paid to it, fades from memory over a year or two.
+  for (const b of s.bodies) { if (!b.alive) continue; b.paidUp *= P.workedFade; for (let k = 0; k < b.hid.length; k++) if (b.hid[k]) b.hid[k] = b.hid[k]! * P.workedFade; }
   // Who works where fades, so that it tells of the last year or two.
   for (const key in s.worked) {
     const row = s.worked[key]!;
@@ -77,10 +79,12 @@ export function make(s: State): void {
     if (r.from.some(([st]) => St[st]!.sown)) for (const bd of dues.get(b.id) ?? []) {
       const to = s.bodies[bd.b]!;
       if (!to.alive) continue;
+      // One with little scruple keeps back half of what it owes the Crown. The bailiff cannot see what is not shown him.
+      const hides = bd.way === 'crown' && (head(s, b)?.scruple ?? 1) < 0.4;
       for (const [k, q] of r.out) {
-        const pay = Math.min(b.store[k]!, q * m * bd.share);
+        const owed = Math.min(b.store[k]!, q * m * bd.share), pay = hides ? owed / 2 : owed;
         b.store[k] = b.store[k]! - pay; to.store[k] = to.store[k]! + pay;
-        if (bd.way === 'crown') to.owedUp[k] = (to.owedUp[k] ?? 0) + pay;
+        if (bd.way === 'crown') { to.owedUp[k] = (to.owedUp[k] ?? 0) + pay; b.paidUp += pay; if (hides) b.hid[k] = (b.hid[k] ?? 0) + owed - pay; }
       }
     }
     // Whoever holds the sole right to this work here takes a share, unless the worker holds such a right too.

@@ -49,7 +49,7 @@ export function formOf(byId: Map<number, Bond>, b: Bond | undefined, depth = 0):
   if (b.about === 'land') return `holding by ${b.basis}`;
   if (b.about === 'right') return b.kind < 0 ? 'ban on working the ground' : `sole right to ${Rc[b.kind]!.id} by ${b.basis}`;
   if (b.about === 'yield') return `share of all it gathers owed by ${b.basis}${b.way ? ' (' + b.way + ')' : ''}`;
-  if (b.about === 'act') return `${b.labour ? 'work' : 'goods'} owed by ${b.basis}${b.way ? ' (' + b.way + ')' : ''}`;
+  if (b.about === 'act') return `${b.labour ? 'work' : 'goods'} owed by ${b.basis}${b.way ? ' (' + b.way + ')' : ''}${b.denied ? ', denied, with no witness' : ''}`;
   return `tie of ${b.basis}`;
 }
 
@@ -62,6 +62,7 @@ const FAVOUR: Record<string, Record<string, number>> = {
   asks: { charter: 1, install: 1, sell: 0.7, remit: 0.5, refuse: 0, confirm: 0 },
   fears: { forbid: 1, remit: 0.5, dismiss: 0.1, override: 0 },
   exit: { free: 1, release: 0.8, ease: 0.7, tie: 0 },
+  suspects: { assess: 1, inquire: 0.7, dismiss: 0 },
   bare: { give: 1, vouch: 1, levy: 1, promise: 0.8, dismiss: 0 },
 };
 
@@ -171,6 +172,8 @@ export function cuts(s: State, p: Petition): string[] {
   if (p.side === 'fears') return ['forbid', 'override', ...remit, 'dismiss'];
   // A tenant who says it will leave: give it its ground outright, let it go, tie it to the land, or lift the lord's share a year.
   if (p.side === 'exit') return ['free', 'release', 'tie', `ease:${p.bond}`];
+  // The bailiff suspects a house of keeping back the Crown's share: find out, assess it on his word, or send him away.
+  if (p.side === 'suspects') return ['inquire', 'assess', 'dismiss'];
   const bd = s.bonds.find(b => b.id === p.bond);
   // A want with nothing behind it: relief, or none. One shunned may also be vouched for.
   if (!bd) return p.shape.includes('shunned') ? ['vouch', 'give', 'dismiss'] : ['give', 'dismiss'];
@@ -186,7 +189,7 @@ export function cuts(s: State, p: Petition): string[] {
   const third = bd.about === 'act' && bd.basis === 'wrong' ? 'bar' : shared ? 'expel' : inBody ? 'answer' : bd.about === 'act' && suretyFor(s, bd.a) >= 0 ? 'surety' : 'stay';
   const c = ['enforce', 'strike', third, ...remit];
   // Whoever is said to have done a wrong may or may not have. An inquest can be held on any of them, once.
-  if (bd.about === 'act' && bd.basis === 'wrong' && bd.doer >= 0) c.push('inquire');
+  if (bd.about === 'act' && ((bd.basis === 'wrong' && bd.doer >= 0) || bd.denied)) c.push('inquire');
   return c;
 }
 
@@ -207,6 +210,30 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
     if (p.side === 'exit') by.threat = -1;
     grieve(c, other(eb, p.by), P.harmUnheard * 2);
     rec(s, 'judge', { a: p.by, b: other(eb, p.by), need: p.need, cause: eb.rec, way: `ease ${formOf(new Map(s.bonds.map(b => [b.id, b])), eb)}` });
+    return true;
+  }
+  if (p.side === 'suspects') {
+    const X = s.bodies[p.against]!, hidden = X.hid.reduce((a, q) => a + (q ?? 0), 0);
+    const e = rec(s, 'judge', { a: p.by, b: X.id, q: hidden, way: `${cut} ${p.shape}` });
+    if (cut === 'inquire') {
+      // The truth: what was kept back is paid to the Crown and the house is shamed, or the bailiff is shown wrong.
+      e.q2 = hidden > 1 ? 1 : 0;
+      if (hidden > 1) {
+        for (let k = 0; k < X.hid.length; k++) { const pay = Math.min(X.hid[k] ?? 0, X.store[k]!); X.store[k] = X.store[k]! - pay; c.store[k] = c.store[k]! + pay; }
+        X.hid = [];
+        for (const x of around(hearthIndex(s), s.side, X.home, P.reach)) if (x !== X) x.lore[`house:${X.id}`] = Math.min(1.5, (x.lore[`house:${X.id}`] ?? 0) + 0.3);
+        grieve(c, X.id, P.harmPaid);
+      } else { grieve(c, X.id, P.harmUnheard); warm(s, X.id, p.by, -0.3); }
+    } else if (cut === 'assess') {
+      // On the bailiff's word: a share of what it has most of goes to the Crown, guilty or not.
+      let k = -1;
+      for (let j = 0; j < NK; j++) if (!Kn[j]!.fixed && (k < 0 || X.store[j]! > X.store[k]!)) k = j;
+      if (k < 0) return false;
+      const q = X.store[k]! * 0.15;
+      X.store[k] = X.store[k]! - q; c.store[k] = c.store[k]! + q;
+      X.hid = [];
+      grieve(c, X.id, hidden > 1 ? P.harmPaid : P.harmLost); warm(s, X.id, p.by, -0.3);
+    } else grieve(c, p.by, P.harmUnheard);
     return true;
   }
   if (p.side === 'exit') {
@@ -334,6 +361,16 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
   const bears = bd.about === 'right' ? p.by : bd.about === 'act' || bd.about === 'yield' ? bd.a : bd.about === 'land' ? (p.side === 'outside' ? p.by : other(bd, p.by)) : bd.secures >= 0 ? bd.b : bd.a;
   const gains = bd.about === 'right' ? bd.a : bd.about === 'act' || bd.about === 'yield' ? bd.b : bd.about === 'land' ? bd.a : bd.secures >= 0 ? bd.a : bd.b;
   const e = rec(s, 'judge', { a: p.by, b: p.against, kind: bd.kind, q: bd.q, cell: bd.cell, need: p.need, cause: bd.rec, way: `${cut} ${p.shape}` });
+  if (cut === 'inquire' && bd.denied) {
+    // An inquest into a debt denied: was it ever made? A false claim is struck and its maker shamed; a true one goes on
+    // the roll, and the one who denied it is shamed.
+    const liar = bd.fabricated ? bd.b : bd.a;
+    e.q2 = bd.fabricated ? 1 : 0; e.kind2 = liar;
+    for (const x of around(hearthIndex(s), s.side, s.bodies[liar]!.home, P.reach)) if (x.id !== liar) x.lore[`house:${liar}`] = Math.min(1.5, (x.lore[`house:${liar}`] ?? 0) + 0.3);
+    if (bd.fabricated) { bd.q = 0; grieve(c, bd.a, -P.harmPaid); }
+    else { bd.denied = false; bd.proof = 'roll'; }
+    return true;
+  }
   if (cut === 'inquire') {
     // An inquest shows what the ledger knows: who truly did it.
     e.b = bd.doer; e.q2 = bd.doer !== bd.a ? 1 : 0;
@@ -501,7 +538,7 @@ export function audience(s: State): Petition[] {
   const shapeFor = (by: number, against: number, bd: Bond | undefined, side: Petition['side'], need: number, extra = ''): string => {
     const A = s.bodies[by]!, B = against >= 0 ? s.bodies[against]! : undefined;
     const near = !B ? 'nobody' : kin.get(by)?.has(against) ? 'kin' : A.of >= 0 && top(s, A).id === top(s, B).id ? 'of one body' : dist(s.side, A.home, B.home) <= P.reach ? 'a neighbour' : 'a stranger';
-    return `${side === 'owed' ? 'owed on' : side === 'owes' ? 'bound by' : side === 'outside' ? 'shut out by' : side === 'asks' ? 'asks leave for' : side === 'fears' ? 'will not abide' : side === 'exit' ? 'will leave' : 'in want'} ${bd ? formOf(byId, bd) : extra}; for ${need >= 0 ? NEEDS[need]!.id : 'nothing pressing'}; against ${near}`;
+    return `${side === 'owed' ? 'owed on' : side === 'owes' ? 'bound by' : side === 'outside' ? 'shut out by' : side === 'asks' ? 'asks leave for' : side === 'fears' ? 'will not abide' : side === 'exit' ? 'will leave' : side === 'suspects' ? 'suspects' : 'in want'} ${bd ? formOf(byId, bd) : extra}; for ${need >= 0 ? NEEDS[need]!.id : 'nothing pressing'}; against ${near}`;
   };
   const add = (by: number, against: number, bd: Bond | undefined, side: Petition['side'], need: number, recId: number, extra = '', keyed = ''): void => {
     const key = keyed || (bd ? `${side}${bd.id}` : `w${by}:${need}`);
@@ -652,6 +689,17 @@ export function audience(s: State): Petition[] {
       if (fresh.length > before) { const q = fresh[fresh.length - 1]!; q.sign = sg; q.cell = at; raised++; break; }
     }
   }
+  // The king's bailiff suspects those who pay least for the ground they hold. Some hide what they owe; some had a bad year.
+  for (const B of s.bodies) {
+    if (!B.alive || B.rank !== 'bailiff') continue;
+    const dues = s.bonds.filter(x => x.about === 'yield' && x.b === B.id && x.way === 'crown' && s.bodies[x.a]?.alive && !s.bodies[x.a]!.rank);
+    const held = (id: number): number => s.bonds.filter(x => (x.about === 'land' && x.a === id && x.strength >= 0.5) || (x.about === 'bond' && x.a === id && x.way === 'manor')).length;
+    const rate = dues.map(x => ({ x, h: held(x.a), r: s.bodies[x.a]!.paidUp / Math.max(1, held(x.a)) })).filter(v => v.h >= 1);
+    if (rate.length < 4) continue;
+    const median = rate.map(v => v.r).sort((a, b) => a - b)[rate.length >> 1]!;
+    const low = rate.filter(v => median > 0.5 && v.r < 0.5 * median).sort((a, b) => a.r - b.r)[0];
+    if (low) add(B.id, low.x.a, low.x, 'suspects', -1, low.x.rec, '', `s${low.x.a}`);
+  }
   // A tenant that has told its lord it will leave comes to the court before it goes.
   for (const b of s.bodies) {
     if (!b.alive || b.threat < 0 || s.t - b.threat >= P.wait) continue;
@@ -730,7 +778,7 @@ export function hear(s: State, rulings: Ruling[]): void {
     const p = c.docket.find(x => x.id === r.petition);
     if (!p || !cuts(s, p).includes(r.cut)) continue;
     const done = carry(s, c, p, r.cut);
-    if (r.cut === 'inquire' && done) continue;
+    if (r.cut === 'inquire' && done && p.side !== 'suspects') continue;
     if (p.reason === 'none') teach(s, hearthIndex(s), p.by, p.side, done ? FAVOUR[p.side]?.[r.cut.split(':')[0]!] ?? 0.5 : 0, P.pleaOwn);
     c.docket = c.docket.filter(x => x !== p);
     if (r.width === 'case' || p.reason === 'challenge') continue;

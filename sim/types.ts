@@ -58,6 +58,8 @@ export interface Body {
   head: number;
   /** When it told its lord it would leave, or -1. */
   threat: number;
+  /** What it has kept back from the Crown's share, kind by kind, and what it has paid of it, both fading. */
+  hid: number[]; paidUp: number;
   alive: boolean;
   since: number;
   /** What its members will do next week, and where it means to go. */
@@ -121,6 +123,10 @@ export interface Bond {
   easedTo: number;
   /** For a debt that came of a taking: the body that truly did it, whoever it was laid to. */
   doer: number;
+  /** What can be shown of it: spoken between two alone, witnessed, or on the court's roll. */
+  proof: 'spoken' | 'witnessed' | 'roll';
+  /** The one said to owe denies it. Whether it was ever made is another matter: `fabricated` is the ledger's truth. */
+  denied: boolean; fabricated: boolean;
 }
 
 /** One elementary happening. `k` is always the name of an act or a process, never of a situation. */
@@ -140,7 +146,7 @@ export interface Rec {
 export interface Wrong { by: number; to: number; kind: number; q: number; rec: number; doer: number }
 
 /** A matter before the court: who brings it, against whom, about which bond or want, and why it climbed this far. */
-export interface Petition { /** For a house in want: everything that weighs on it, heaviest first, and the shape of each. */ burdens: number[]; shapes: string[]; id: number; t: number; by: number; against: number; bond: number; need: number; rec: number; shape: string; side: 'owed' | 'owes' | 'outside' | 'bare' | 'asks' | 'fears' | 'exit'; work?: number; cell?: number; sign?: string; body?: number; press?: number; reason: 'none' | 'clash' | 'challenge'; speaksFor: number; waited: number; urgency: number }
+export interface Petition { /** For a house in want: everything that weighs on it, heaviest first, and the shape of each. */ burdens: number[]; shapes: string[]; id: number; t: number; by: number; against: number; bond: number; need: number; rec: number; shape: string; side: 'owed' | 'owes' | 'outside' | 'bare' | 'asks' | 'fears' | 'exit' | 'suspects'; work?: number; cell?: number; sign?: string; body?: number; press?: number; reason: 'none' | 'clash' | 'challenge'; speaksFor: number; waited: number; urgency: number }
 /** A rule: a bond that binds every member of a body, or the whole realm (scope -1). */
 export interface Rule { id: number; scope: number; shape: string; cut: string; since: number; uses: number }
 export interface Court { standing: number; docket: Petition[]; rules: Rule[]; grief: Record<number, number>; seen: Record<string, number>; next: number; quiet: number; declined: number; chilled: number;
