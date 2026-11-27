@@ -4,7 +4,7 @@
 // and fade. Nothing here knows which beliefs are true.
 
 import { P } from '../tables.ts';
-import { around, dist, head, hearthIndex, kinOf, leaves, rec, tie, warm } from '../util.ts';
+import { around, dist, fellows, head, hearthIndex, kinOf, leaves, rec, tie, warm } from '../util.ts';
 import type { Body, State } from '../types.ts';
 
 function believe(s: State, b: Body, sign: string, strength: number, from: number): void {
@@ -29,6 +29,16 @@ export function learn(s: State): void {
     for (const sg of signs) believe(s, b, sg, (b.lore[sg] ?? 0) + (P.blame * weight) / Math.max(1, Math.sqrt(signs.size)), -1);
   };
   for (const r of s.log) {
+    // Stain: a house seen breaking what it holds forbidden, dealing so or working that ground, is thought the less of
+    // by its fellows, and they come to hold that it brings harm.
+    const broke = (id: number, sign: string): void => {
+      const X = s.bodies[id];
+      if (!X || !X.alive || (X.lore[sign] ?? 0) <= P.heed) return;
+      rec(s, 'stain', { a: id, way: sign });
+      for (const f of fellows(s, X)) { const F = s.bodies[f]!; warm(s, f, id, -0.2); believe(s, F, `house:${id}`, (F.lore[`house:${id}`] ?? 0) + 0.3, id); }
+    };
+    if (r.k === 'promise' && r.way) { broke(r.a, `way:${r.way}`); broke(r.b, `way:${r.way}`); }
+    if (r.k === 'make' && r.cell >= 0) broke(r.a, `cell:${r.cell}`);
     if ((r.k === 'trade' || r.k === 'promise') && r.b >= 0) {
       meet(r.a, `house:${r.b}`); meet(r.b, `house:${r.a}`);
       if (r.way) { meet(r.a, `way:${r.way}`); meet(r.b, `way:${r.way}`); }

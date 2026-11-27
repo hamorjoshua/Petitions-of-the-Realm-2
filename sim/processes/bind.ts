@@ -3,7 +3,7 @@
 
 import { Kn, NEEDS, NK, NN, P, TOIL } from '../tables.ts';
 import { askAhead, cover } from '../value.ts';
-import { around, bond, setTie, dist, head, holdsByCell, kinOf, might, muster, rec, served as remember, struggle, tie, warm } from '../util.ts';
+import { around, bond, leaves, setTie, dist, head, holdsByCell, kinOf, might, muster, rec, served as remember, struggle, tie, warm } from '../util.ts';
 import type { Body, Bond, Person, State } from '../types.ts';
 
 /** The needs a kind serves, for saying why someone's cover fell. */
@@ -75,7 +75,9 @@ export function bind(s: State): void {
       if (bd.q <= 0.05) { remember(s, bd, true); rec(s, 'keep', { a: D.id, b: C.id, q2: 1, cause: bd.rec }); warm(s, C.id, D.id, 0.2); bd.q = 0; }
       continue;
     }
-    const hD = head(s, D), hC = head(s, C);
+    // A body of bodies answers through the hearth that leads it.
+    const lead = (x: Body) => head(s, x) ?? (x.head >= 0 ? head(s, s.bodies[x.head]!) : undefined);
+    const hD = lead(D), hC = lead(C);
     if (!hD || !hC) continue;
     const have = D.store[bd.kind]!;
     if (canSpare(s, D, bd.kind, bd.q) || (!bd.broken && bd.basis === 'word' && have >= bd.q && hD.scruple > 0.8)) { pay(bd, D, C); continue; }
@@ -95,6 +97,16 @@ export function bind(s: State): void {
     if (bd.broken && (hD.scruple > 0.4 || might(s, kin, C, D.id) > might(s, kin, D, C.id)) && dist(s.side, D.home, C.home) <= P.dealReach) {
       bd.q = bd.q * TOIL[bd.kind]!; bd.labour = true; bd.broken = false; bd.strength = 1;
       bd.rec = rec(s, 'promise', { a: D.id, b: C.id, kind: bd.kind, q2: bd.q, kind2: 1, cause: bd.rec }).id;
+      continue;
+    }
+    // A house that cannot pay may be answered for by the body it belongs to, out of what that body holds in common.
+    // Its fellows think the less of it.
+    const parent = D.of >= 0 ? s.bodies[D.of] : undefined;
+    if (!bd.broken && parent && parent.alive && parent.store[bd.kind]! >= bd.q) {
+      parent.store[bd.kind] = parent.store[bd.kind]! - bd.q; C.store[bd.kind] = C.store[bd.kind]! + bd.q;
+      rec(s, 'keep', { a: parent.id, b: C.id, kind: bd.kind, q: bd.q, kind2: D.id, cause: bd.rec });
+      for (const f of leaves(s, parent)) if (f !== D.id) warm(s, f, D.id, -0.1);
+      bd.q = 0;
       continue;
     }
     if (!bd.broken) {

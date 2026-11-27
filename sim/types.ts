@@ -56,6 +56,8 @@ export interface Body {
   of: number;
   /** For a body of bodies: the hearth that leads it, and judges what is left to the body. */
   head: number;
+  /** When it told its lord it would leave, or -1. */
+  threat: number;
   alive: boolean;
   since: number;
   /** What its members will do next week, and where it means to go. */
@@ -87,7 +89,7 @@ export interface Body {
   aim: { kind: number; q: number; for: number; worth: number; since: number; want: string } | null;
 }
 
-export type Basis = 'birth' | 'word' | 'use' | 'grant' | 'wrong';
+export type Basis = 'birth' | 'word' | 'use' | 'grant' | 'wrong' | 'bound';
 
 /** Something that holds between parties about an object: a person, land, an act still owed, or another bond. */
 export interface Bond {
@@ -138,7 +140,7 @@ export interface Rec {
 export interface Wrong { by: number; to: number; kind: number; q: number; rec: number; doer: number }
 
 /** A matter before the court: who brings it, against whom, about which bond or want, and why it climbed this far. */
-export interface Petition { /** For a house in want: everything that weighs on it, heaviest first, and the shape of each. */ burdens: number[]; shapes: string[]; id: number; t: number; by: number; against: number; bond: number; need: number; rec: number; shape: string; side: 'owed' | 'owes' | 'outside' | 'bare' | 'asks' | 'fears'; work?: number; cell?: number; sign?: string; body?: number; press?: number; reason: 'none' | 'clash' | 'challenge'; speaksFor: number; waited: number; urgency: number }
+export interface Petition { /** For a house in want: everything that weighs on it, heaviest first, and the shape of each. */ burdens: number[]; shapes: string[]; id: number; t: number; by: number; against: number; bond: number; need: number; rec: number; shape: string; side: 'owed' | 'owes' | 'outside' | 'bare' | 'asks' | 'fears' | 'exit'; work?: number; cell?: number; sign?: string; body?: number; press?: number; reason: 'none' | 'clash' | 'challenge'; speaksFor: number; waited: number; urgency: number }
 /** A rule: a bond that binds every member of a body, or the whole realm (scope -1). */
 export interface Rule { id: number; scope: number; shape: string; cut: string; since: number; uses: number }
 export interface Court { standing: number; docket: Petition[]; rules: Rule[]; grief: Record<number, number>; seen: Record<string, number>; next: number; quiet: number; declined: number; chilled: number;

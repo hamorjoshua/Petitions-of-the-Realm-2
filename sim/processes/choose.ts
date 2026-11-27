@@ -611,7 +611,12 @@ function roam(s: State, L: Land, c: Ctx): void {
   // One barred from where it lives must go. Otherwise only want of the most harmful thing uproots a body, and not one that has only just settled.
   const barredAt = (cell: number): boolean => L.bars.some(x => x.b === b.id && dist(s.side, x.cell, cell) <= P.reach);
   const outcast = barredAt(b.home);
-  if (!outcast && (c.pressNeed !== BY_HARM[0] || s.t - b.since < 26)) return;
+  // A tenant tied to the land may not go. One that holds of a lord and could do better elsewhere, in want or reaching
+  // for ground of its own, first tells its lord it will leave, and waits a season to see what comes of it.
+  const manor = s.bonds.find(x => x.about === 'bond' && x.a === b.id && x.way === 'manor');
+  if (manor && manor.basis === 'bound' && !outcast) return;
+  const reaching = !!manor && c.drive > 0.3 && s.t - b.since >= 26;
+  if (!outcast && !reaching && (c.pressNeed !== BY_HARM[0] || s.t - b.since < 26)) return;
   const here = prospect(s, L, c, b.home);
   let best = -1, bestP = outcast ? 0 : here * P.stay;
   for (const cell of near(s.side, b.home, P.scout)) {
@@ -620,6 +625,11 @@ function roam(s: State, L: Land, c: Ctx): void {
     if (p > bestP) { bestP = p; best = cell; }
   }
   if (best < 0) return;
+  if (manor && !outcast) {
+    if (b.threat < 0) { b.threat = s.t; rec(s, 'tell', { a: b.id, b: manor.b, cell: best }); return; }
+    if (s.t - b.threat < P.wait) return;
+    b.threat = -1;
+  }
   b.goto = best;
   b.plan = [];
 }

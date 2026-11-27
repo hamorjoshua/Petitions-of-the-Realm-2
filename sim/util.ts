@@ -99,9 +99,13 @@ export function might(s: State, kin: Map<number, Set<number>>, b: Body, against:
   let m = grown(s, b).length;
   const allies = new Set<number>(kin.get(b.id) ?? []);
   for (const f of fellows(s, b)) allies.add(f);
+  // Kin and fellows overlap: one bound to both sides stands with whichever it holds the better.
+  const other = s.bodies[against], theirs = new Set<number>(other ? [...(kin.get(against) ?? []), ...fellows(s, other)] : []);
   for (const k of allies) {
     const kb = s.bodies[k]!;
-    if (kb.alive && k !== against && k !== b.id && dist(s.side, kb.home, b.home) <= P.reach + 1 && tie(s, k, against) <= 0.2) m += 0.5 * grown(s, kb).length;
+    if (!kb.alive || k === against || k === b.id || dist(s.side, kb.home, b.home) > P.reach + 1 || tie(s, k, against) > 0.2) continue;
+    if (theirs.has(k) && tie(s, k, against) >= tie(s, k, b.id)) continue;
+    m += 0.5 * grown(s, kb).length;
   }
   return m;
 }
@@ -113,6 +117,9 @@ export function struggle(s: State, kin: Map<number, Set<number>>, taker: Body, h
   for (const x of grown(s, holder)) { x.wear += P.blow * p; x.blow = at; x.blowAt = s.t; x.blowBy = taker.id; }
   for (const x of grown(s, taker)) { x.wear += P.blow * (1 - p); x.blow = at; x.blowAt = s.t; x.blowBy = holder.id; }
   warm(s, holder.id, taker.id, -0.6); warm(s, taker.id, holder.id, -0.3);
+  // Those bound to both sides chose one, and the other side remembers it.
+  const ofT = new Set<number>([...(kin.get(taker.id) ?? []), ...fellows(s, taker)]), ofH = new Set<number>([...(kin.get(holder.id) ?? []), ...fellows(s, holder)]);
+  for (const k of ofT) if (ofH.has(k) && k !== taker.id && k !== holder.id) { const sideT = tie(s, k, taker.id) > tie(s, k, holder.id); warm(s, sideT ? holder.id : taker.id, k, -0.25); }
   for (const k of kin.get(holder.id) ?? []) warm(s, k, taker.id, -0.2);
   for (const k of kin.get(taker.id) ?? []) warm(s, k, holder.id, -0.2);
   return p;
