@@ -4,7 +4,7 @@
 import { exp } from '../math.ts';
 import { AIDERS, BY_HARM, Kn, NEEDS, NK, NN, NS, P, Rc, St, TOIL } from '../tables.ts';
 import { askAhead, cover, drive, welfare, welfareLater, zeros } from '../value.ts';
-import { around, bond, dist, grown, head, holdsByCell, kinOf, muster, near, rec, struggle, sheltered, tenancies, tie, top, warm, type Tenancy } from '../util.ts';
+import { around, bond, dist, grown, head, hearthIndex, holdsByCell, kinOf, muster, near, rec, struggle, sheltered, tenancies, tie, top, warm, type Tenancy } from '../util.ts';
 import { bear } from './grow.ts';
 import { tBar } from './sky.ts';
 import { chilled, upheld } from '../court/court.ts';
@@ -610,10 +610,29 @@ function work(s: State, L: Land, c: Ctx): void {
     b.plan.push({ r: o.r, cell: o.cell, days: d });
     spare -= d;
   }
+  // A starving house that works ground it holds cursed lives, and pays for it after: its head is stained, and the priest
+  // it tithes to, and those near it who hold the same fear, think the worse of it.
+  if (desperate(c) && b.plan.some(w => (b.lore[`cell:${w.cell}`] ?? 0) > P.heed)) {
+    const was = c.h.stained, cursed = b.plan.find(x => (b.lore[`cell:${x.cell}`] ?? 0) > P.heed)!.cell;
+    c.h.stained = Math.min(1.5, c.h.stained + P.defyStain);
+    // Having worked the ground and come to no harm by it, the house fears it less; so does anyone who sees it done.
+    for (const w of b.plan) {
+      const sign = `cell:${w.cell}`;
+      if ((b.lore[sign] ?? 0) <= P.heed) continue;
+      b.lore[sign] = b.lore[sign]! * P.defyDoubt;
+      for (const m of grown(s, b)) if (m.lore[sign]) m.lore[sign] *= P.defyDoubt;
+    }
+    for (const bd of s.bonds) if (bd.about === 'yield' && bd.way === 'tithe' && bd.a === b.id) warm(s, bd.b, b.id, -0.05);
+    if (was < P.stainMark && c.h.stained >= P.stainMark) {
+      rec(s, 'defy', { a: b.id, cell: cursed });
+      for (const x of around(hearthIndex(s), s.side, b.home, P.reach)) if (x !== b && (x.lore[`cell:${cursed}`] ?? 0) > P.heed) warm(s, x.id, b.id, -0.15);
+    }
+  }
 }
 
-/** Near starving, with little scruple: the state in which a house will do what it holds forbidden. */
-const desperate = (c: Ctx): boolean => c.cov[BY_HARM[0]!]! < P.dire && c.h.scruple < 0.6;
+/** In want: the state in which a house will do what it holds forbidden, whatever its scruple, and pay for it after. Waiting
+ *  until it is starving is too late: a field ploughed then feeds nobody before they die. */
+const desperate = (c: Ctx): boolean => c.cov[BY_HARM[0]!]! < P.short;
 
 // --- Moving: a body goes where the ground within reach promises more ---
 

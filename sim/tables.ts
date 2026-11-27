@@ -219,6 +219,10 @@ export const P = {
   practise: 0.004, mastery: 1.6, rust: 0.002, green: 0.6,
   blame: 0.5, forget: 0.995, tell: 0.2, heed: 0.5, mind: 12,
   /** The court: hearings a week, seats at the audience, weeks a matter waits before it is dropped, weeks a reign lasts. */
+  /** The most days a week a lord may draw in boon-work from one tenant; the stain a starving house takes each week it works cursed ground. */
+  boonMax: 3, defyStain: 0.1,
+  /** How much of its fear of cursed ground a house keeps for each week it works that ground and comes to no harm. */
+  defyDoubt: 0.85,
   /** The fewest aggrieved houses, bound together, that make a faction, however small the realm. */
   factionMin: 3,
   hearings: 3, seats: 6, wait: 13, reign: 156,

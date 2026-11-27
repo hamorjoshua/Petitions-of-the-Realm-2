@@ -737,8 +737,8 @@ app.addEventListener('click', ev => {
   const b = (ev.target as HTMLElement).closest('button');
   if (!b) return;
   const seedOf = (): number => Math.max(1, Number((document.getElementById('seed') as HTMLInputElement | null)?.value) || 1);
-  if (b.id === 'small') return start(seedOf(), P.side, P.souls, 12);
-  if (b.id === 'full') return start(seedOf(), P.realmSide, P.realmSouls, 10);
+  if (b.id === 'small') return start(seedOf(), P.side, P.souls, 6);
+  if (b.id === 'full') return start(seedOf(), P.realmSide, P.realmSouls, 6);
   if (b.id === 'again') return welcome();
   if (b.dataset.mode) { mode = b.dataset.mode as Mode; document.querySelectorAll('[data-mode]').forEach(x => x.setAttribute('aria-pressed', String((x as HTMLElement).dataset.mode === mode))); return; }
   if (mode !== 'regency' && s && document.getElementById('view') && cockpitClick(b as HTMLButtonElement)) return;

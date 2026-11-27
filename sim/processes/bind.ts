@@ -31,7 +31,10 @@ export function bind(s: State): void {
     if (!T || !L || !T.alive || !L.alive || !L.pressed) continue;
     const stayed = (s.court?.policy.ord.stay ?? 0) > 0;
     const asked = bd.capped || stayed ? bd.boon : bd.boon * (1 + 2 * drive(s, L));
-    const d = Math.min(asked, 0.5 * muster(s, T));
+    // A tenant in want is not called to the lord's fields: the lord takes its spare days, not the ones it lives by.
+    const tc = cover(T.store, askAhead(s, T));
+    if (BY_HARM.some(n => NEEDS[n]!.harm >= 0.5 && tc[n]! < P.short)) continue;
+    const d = Math.min(asked, 0.5 * muster(s, T), P.boonMax);
     if (d <= 0) continue;
     T.spent += d; L.spent -= d;
     if (d > bd.boon) T.overworked += d - bd.boon;
