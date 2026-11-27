@@ -1,15 +1,14 @@
-# The emergent realm
+# Petitions of the Realm 2
 
-The build of [The Emergent Realm](../docs/living-realm-design.md), stage by stage. The current game (`../index.html`) and the first build (`../realm/`) are untouched; `realm/` stays as a reference until stage 2 replaces its harness.
+Vicarius Regis, rebuilt from first principles: a realm of people, land and the bonds between them, with nothing scripted, and a court that hears only what nothing below could settle. The design is in [docs/living-realm-design.md](docs/living-realm-design.md).
 
-**Stages 1 to 6 of 9 are here, with stage 7 settled at a smaller size and the first part of stage 8, the court.** Stage 5 leaves out forged records and beliefs about who holds what. Stage 1 is a toy: land of 100 cells, about 200 people, fourteen kinds of matter, and no court. Stage 2 is the readers: they recognise events, write a chronicle and take the design's measures. Stage 3 is bonds on bonds. Stage 4 is bodies made of bodies. Stage 5 so far is ways of dealing that people find for themselves, and beliefs about what brings harm. Stage 6 is the living land. The prediction log is not built. Stages 7 to 9 are not started.
+**Play it:** open `index.html`. It is one file and runs offline.
 
-**The tables and findings below "What thirty years look like" were taken before stage 3.** The sections "After stage 3", "After stage 4" and "Stage 5 so far" have the later figures; the last of them, "At the size a run is played on", is current.
+This repository began as the `emergent/` folder of [Vicarius-Regis-R16-](https://github.com/hamorjoshua/Vicarius-Regis-R16-), where the earlier game, the two earlier builds (`core/` and `realm/`) and the older versions of the design remain. The sections below are a record of the build, stage by stage, in the order it happened; the later ones are current.
 
 ## Run it
 
 ```
-cd emergent
 npm install                          # typescript only, for the typecheck
 npm test                             # the invariants
 npm run check                        # typecheck
@@ -512,7 +511,7 @@ Five courts on eight full-size realms, a three-year reign each (means):
 
 ## The screen, and a world with power in it
 
-`index.html` is the game in one file that runs offline (`npm run build` rebuilds it from `ui/`). The same build also writes the site's front page, `../index.html`, with the few lines the site's existing service worker needs before it will hand a new page to returning visitors. The earlier game, Petitions of the Realm, is kept whole under `../petitions/`. It founds a realm in the browser, lets it live through its past, and seats the regent.
+`index.html` is the game in one file that runs offline (`npm run build` rebuilds it from `ui/`).  It founds a realm in the browser, lets it live through its past, and seats the regent.
 
 Played, the first screen showed that matters were dull: nearly all were one house owing another goods or ground. The measures had counted how far matters differed as text, not whether they were worth hearing. Three things were changed in answer.
 
