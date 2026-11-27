@@ -103,6 +103,37 @@ export function chilled(s: State, id: number): void {
   grieve(s.court, id, P.harmChilled);
 }
 
+/** The five planes a matter can set against one another. */
+export type Plane = 'material' | 'positional' | 'relational' | 'normative' | 'epistemic';
+
+/** The plane a burden on a house belongs to. */
+function planeOfBond(s: State, bd: Bond, by: number): Plane {
+  if (bd.about === 'yield') return bd.way === 'tithe' ? 'normative' : 'positional';
+  if (bd.about === 'right' || bd.about === 'land' || (bd.about === 'bond' && bd.secures < 0)) return 'positional';
+  if (bd.about === 'act' && bd.denied) return 'epistemic';
+  return 'relational';
+}
+
+/**
+ * The two planes a matter sets against each other: where the demands of one cannot be met without breaking another.
+ * A reading for the screen and the measures; nothing in the rules looks at it.
+ */
+export function planesOf(s: State, p: Petition): [Plane, Plane] {
+  const pair = (a: Plane, b: Plane): [Plane, Plane] => (a <= b ? [a, b] : [b, a]);
+  if (p.reason === 'challenge') return pair('normative', 'material');
+  if (p.burdens.length) { const bd = s.bonds.find(b => b.id === p.burdens[0]); return pair('material', bd ? planeOfBond(s, bd, p.by) : 'relational'); }
+  if (p.side === 'asks') return pair('positional', p.body !== undefined ? 'relational' : 'material');
+  if (p.side === 'fears') return pair('normative', (p.sign ?? '').startsWith('house:') || p.sign === 'new' ? 'relational' : 'material');
+  if (p.side === 'exit') return pair('relational', 'positional');
+  if (p.side === 'suspects') return pair('epistemic', 'positional');
+  const bd = s.bonds.find(b => b.id === p.bond);
+  if (!bd) return pair(p.shape.includes('shunned') ? 'normative' : 'material', 'material');
+  if (bd.about === 'act' && bd.denied) return pair('epistemic', 'material');
+  if (bd.about === 'act' && bd.basis === 'wrong') return pair(p.side === 'owes' ? 'epistemic' : 'material', bd.way === 'blood' ? 'relational' : 'epistemic');
+  if (bd.about === 'act') return pair('material', 'relational');
+  return pair('positional', 'material');
+}
+
 /** Who answers for a bond on the other side from a body. */
 const other = (bd: Bond, by: number): number => (bd.a === by ? bd.b : bd.a);
 

@@ -3,7 +3,7 @@
 
 import { inherit } from '../sim/found.ts';
 import { advance } from '../sim/step.ts';
-import { SIDES, audience, cuts, hear, openCourt, type Ruling, type Width } from '../sim/court/court.ts';
+import { SIDES, audience, cuts, hear, openCourt, planesOf, type Ruling, type Width } from '../sim/court/court.ts';
 import { askAhead, cover } from '../sim/value.ts';
 import { NEEDS, P } from '../sim/tables.ts';
 import type { Petition, State } from '../sim/types.ts';
@@ -37,7 +37,7 @@ const COURTS: Record<string, () => Script> = {
 };
 
 const seeds = (process.argv[2] ?? '1,2,3').split(',').map(Number), weeks = Number(process.argv[3] ?? P.reign);
-const rows: Record<string, { kept: number; standing: number; heard: number; arose: number; below: number; repeats: number; top5: number; shapes: number; rules: number; souls: number; sore: number; declined: number; chilled: number; store: number; wordKept: number; wordBroke: number; plea: number[] }> = {};
+const rows: Record<string, { kept: number; standing: number; heard: number; arose: number; below: number; repeats: number; top5: number; shapes: number; rules: number; souls: number; sore: number; declined: number; chilled: number; store: number; wordKept: number; wordBroke: number; plea: number[]; pairs: Map<string, number> }> = {};
 for (const seed of seeds) {
   const past = process.argv[4] === 'toy' ? inherit(seed, 6, 10, 200) : inherit(seed);
   const t0 = Date.now();
@@ -60,13 +60,15 @@ for (const seed of seeds) {
         if (heardShapes.some(h => h.shape === p.shape && s.t - h.t <= 26)) repeats++;
         heardShapes.push({ t: s.t, shape: p.shape });
         count.set(p.shape, (count.get(p.shape) ?? 0) + 1);
+        const pp = planesOf(s, p).join(' × '), rw = (rows[name] ??= { kept: 0, standing: 0, heard: 0, arose: 0, below: 0, repeats: 0, top5: 0, shapes: 0, rules: 0, souls: 0, sore: 0, declined: 0, chilled: 0, store: 0, wordKept: 0, wordBroke: 0, plea: [0, 0, 0, 0], pairs: new Map() });
+        rw.pairs.set(pp, (rw.pairs.get(pp) ?? 0) + 1);
       }
       hear(s, rulings);
       for (const r of s.log) if (r.k === 'rule' && r.kind2 === 1) below++;
       advance(s, true);
     }
     const top5 = [...count.values()].sort((a, b) => b - a).slice(0, 5).reduce((a, b) => a + b, 0);
-    const row = (rows[name] ??= { kept: 0, standing: 0, heard: 0, arose: 0, below: 0, repeats: 0, top5: 0, shapes: 0, rules: 0, souls: 0, sore: 0, declined: 0, chilled: 0, store: 0, wordKept: 0, wordBroke: 0, plea: [0, 0, 0, 0] });
+    const row = (rows[name] ??= { kept: 0, standing: 0, heard: 0, arose: 0, below: 0, repeats: 0, top5: 0, shapes: 0, rules: 0, souls: 0, sore: 0, declined: 0, chilled: 0, store: 0, wordKept: 0, wordBroke: 0, plea: [0, 0, 0, 0], pairs: new Map() });
     const c = s.court!;
     row.kept += c.standing > 0 ? 1 : 0; row.standing += Math.max(0, c.standing); row.heard += heard; row.arose += arose; row.below += below;
     row.repeats += repeats; row.top5 += top5; row.shapes += count.size; row.rules += c.rules.length;
@@ -91,3 +93,11 @@ console.log('\nWho came, and what houses had come to expect of the court by the 
 console.log(`| Court | Crown's store left | The regent's word kept / broken | Dealings the law stood in the way of | Kept their own counsel | ${SIDES.map(x => ({ owed: 'Owed on a bond', owes: 'Bound by a bond', outside: 'Shut out by a bond', bare: 'In bare want' })[x]).join(' | ')} |`);
 console.log('| --- | --- | --- | --- | --- | --- | --- | --- | --- |');
 for (const [name, r] of Object.entries(rows)) console.log(`| ${name} | ${Math.round((100 * r.store) / n)}% | ${(r.wordKept / n).toFixed(1)} / ${(r.wordBroke / n).toFixed(1)} | ${Math.round(r.chilled / n)} | ${Math.round(r.declined / n)} | ${r.plea.map(v => (v / n).toFixed(2)).join(' | ')} |`);
+
+console.log('\nWhich planes the heard matters set against each other (of the ten possible pairs, plus matters on one plane alone):\n');
+for (const [name, r] of Object.entries(rows)) {
+  const tot = [...r.pairs.values()].reduce((a, b) => a + b, 0);
+  if (!tot) continue;
+  const list = [...r.pairs].sort((a, b) => b[1] - a[1]);
+  console.log(`  ${name}: ${list.filter(([k]) => k.includes('×') && !/^(\w+) × \1$/.test(k)).length} pairs; ${list.map(([k, v]) => `${k} ${Math.round((100 * v) / tot)}%`).join(', ')}`);
+}
