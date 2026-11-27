@@ -9,7 +9,7 @@ import { KINDS, NEEDS, P, RECIPES, St } from '../sim/tables.ts';
 import { grown, top } from '../sim/util.ts';
 import { Readers, wayWords } from '../readers/readers.ts';
 import { placeName } from '../readers/names.ts';
-import { edgesWhere, FILTERS, geometry, polyPath } from './map.ts';
+import { edgesWhere, geometry, polyPath } from './map.ts';
 import { route } from '../sim/processes/move.ts';
 import type { Body, Bond, Dials, LawKey, LocalOrder, Mode, OrdKey, Petition, PowerAct, State, WorkKey } from '../sim/types.ts';
 
@@ -524,7 +524,7 @@ const LEGEND: Record<Lens, string> = {
   jurisdiction: 'Each colour is one body of houses, and whoever leads it.',
   ecology: 'Darker red: soil worn out or ground flooded.',
 };
-const GLYPHS = 'Pieces: a dot is a hamlet, a square a lord’s seat, a gold ring a parish; the gold circle is your seat; a small square beside a place is a work, a gold diamond a shrine; a red ring marks trouble (aggrieved houses or an interdict); a blue ring what you watch. Blue water inland is a lake; ink edges bound each shire or lordship, faint lines are roads; each shire has its own pale wash.';
+const GLYPHS = 'Marks: a dot is a hamlet, sized by its people; a filled square a lord’s seat, a hollow one a bailiff’s; a gold ring a parish; the gold circle is your seat; a small square beside a place is a work, a gold diamond a shrine; a red ring marks trouble (aggrieved houses or an interdict); a blue ring what you watch. Water inland is a lake; dark edges bound lordships; light lines are roads. Fills step in four shades of the lens colour.';
 
 const storeTotal = (): number => (s.court ? s.court.store.reduce((x, y) => x + y, 0) : 0);
 /** Up, down or level against a season ago. */
@@ -615,6 +615,7 @@ function mapView(): string {
     if (lens === 'ecology') { const worn = Math.max(0, 1 - cell.soil / Math.max(0.01, cell.soil0)); return [Math.min(1, worn * 2.5 + Math.min(0.5, cell.flood * 2) + Math.min(0.3, cell.cleared / 200)), 'var(--seal)']; }
     if (lens === 'sacred') return [Math.min(1, cell.sanctity + (cell.shrine ? 0.4 : 0) + (cell.interdict > 0 ? 0.6 : 0)), cell.interdict > 0 ? 'var(--seal)' : 'var(--gilt)'];
     if (lens === 'jurisdiction') { const L = land[i]!; return L < 0 ? [0, 'var(--soft)'] : [l.length ? 0.5 : 0.25, herald(L)]; }
+    if (lens === 'factions') return [c ? l.filter(b => (c.grief[b.id] ?? 0) >= P.aggrieved).length / Math.max(1, l.length) : 0, 'var(--seal)'];
     if (!l.length) return [0, 'var(--soft)'];
     if (lens === 'want') return [l.filter(b => cover(b.store, askAhead(s, b)).some((x, k) => NEEDS[k]!.harm >= 0.5 && x < P.short)).length / l.length, 'var(--seal)'];
     return [c ? l.filter(b => (c.grief[b.id] ?? 0) >= P.aggrieved).length / l.length : 0, 'var(--seal)'];
@@ -622,13 +623,14 @@ function mapView(): string {
   // Regions: flat fills in three steps of height, tinted by the lens; the sea shows between them as a gutter.
   const regions = g.polys.map((poly, i) => {
     if (water(i)) return `<polygon data-cell="${i}" class="water${i === picked ? ' on' : ''}" points="${polyPath(poly)}"><title>${esc(cellWords(i))}</title></polygon>`;
-    const step = highs[i]! >= q(0.67) ? 3 : highs[i]! >= q(0.33) ? 2 : 1, [v, col] = lensOf(i);
-    const w = washOf(i), base = w ? `color-mix(in srgb, ${w} 13%, var(--elev${step}))` : `var(--elev${step})`;
-    return `<polygon data-cell="${i}" class="${i === picked ? 'on' : ''}" points="${polyPath(poly)}" style="fill:color-mix(in srgb, ${col} ${Math.round(v * 60)}%, ${base})"><title>${esc(cellWords(i))}</title></polygon>`;
+    // Four flat steps of one signal colour, like a chart: none, a little, more, much.
+    const [v, col] = lensOf(i), pct = v <= 0.05 ? 0 : v < 0.34 ? 14 : v < 0.67 ? 35 : 65;
+    return `<polygon data-cell="${i}" class="${i === picked ? 'on' : ''}" points="${polyPath(poly)}"${pct ? ` style="fill:color-mix(in srgb, ${col} ${pct}%, var(--land))"` : ''}><title>${esc(cellWords(i))}</title></polygon>`;
   }).join('');
   // Jurisdictions: a lordship where there is one, otherwise the shire about a settled place. Their outer edges are inked.
   const realm = s.cells.map((_x, i) => { if (water(i)) return -2; const k = shire[i]!; if (k < 0) return -1; const L = lordAt(at, k); return L >= 0 ? 100000 + L : k; });
-  const borders = edgesWhere(g, (i, j) => { const a = realm[i]!, b = realm[j]!; return a !== b && a !== -2 && b !== -2 && (a >= 0 || b >= 0); });
+  const borders = edgesWhere(g, (i, j) => { const a = land[i]!, b = land[j]!; return a !== b && a !== -2 && b !== -2 && (a >= 0 || b >= 0); });
+  void realm;
   const coast = edgesWhere(g, (i, j) => water(i) !== water(j));
   // Roads: each settlement to its nearest neighbouring settlements, as faint worn lines.
   const towns = s.cells.map((_x, i) => i).filter(i => !water(i) && ((at.get(i)?.length ?? 0) > 0 || ranked.has(i)));
@@ -638,6 +640,10 @@ function mapView(): string {
     for (const [b] of near) {
       const key = a < b ? `${a}:${b}` : `${b}:${a}`;
       if (roadSet.has(key)) continue;
+      // No road across water: every point along the way must lie in a land place (the nearest centre is the place it lies in).
+      const pb0 = g.pts[b]!;
+      const wetWay = [0.2, 0.35, 0.5, 0.65, 0.8].some(t => { const x = pa[0] + (pb0[0] - pa[0]) * t, y = pa[1] + (pb0[1] - pa[1]) * t; let best = 0, bd = Infinity; g.pts.forEach((p, k) => { const d = (p[0] - x) ** 2 + (p[1] - y) ** 2; if (d < bd) { bd = d; best = k; } }); return water(best); });
+      if (wetWay) continue;
       roadSet.add(key);
       const pb = g.pts[b]!, mx = (pa[0] + pb[0]) / 2 + (pb[1] - pa[1]) * 0.08, my = (pa[1] + pb[1]) / 2 - (pb[0] - pa[0]) * 0.08;
       roads.push(`M${pa[0].toFixed(3)},${(pa[1] - 0.06).toFixed(3)}Q${mx.toFixed(3)},${(my - 0.06).toFixed(3)} ${pb[0].toFixed(3)},${(pb[1] - 0.06).toFixed(3)}`);
@@ -654,22 +660,20 @@ function mapView(): string {
     if (sore(i) || cell.interdict > 0) tokens.push(`<circle class="t-alarm" cx="${X}" cy="${Y}" r="0.24"/>`);
     if (i === seat) tokens.push(`<circle class="t-seat" cx="${X}" cy="${Y}" r="0.18"/>`);
     if (watched.has(`c:${i}`) || (at.get(i) ?? []).some(b => watched.has(`b:${b.id}`))) tokens.push(`<circle class="t-watch" cx="${X}" cy="${Y}" r="0.3"/>`);
-    if (rk?.rank === 'lord' || rk?.rank === 'bailiff') tokens.push(`<rect class="t-lord" x="${(x - 0.095).toFixed(3)}" y="${(y - 0.095).toFixed(3)}" width="0.19" height="0.19" rx="0.03"/><circle class="t-pip" cx="${X}" cy="${Y}" r="0.035"/>`);
+    const souls = (at.get(i) ?? []).reduce((a, b) => a + b.members.filter(m => s.people[m]!.alive).length, 0);
+    if (rk?.rank === 'lord' || rk?.rank === 'bailiff') tokens.push(`<rect class="t-lord${rk.rank === 'bailiff' ? ' hollow' : ''}" x="${(x - 0.08).toFixed(3)}" y="${(y - 0.08).toFixed(3)}" width="0.16" height="0.16"/>`);
     else if (rk?.rank === 'priest') tokens.push(`<circle class="t-parish" cx="${X}" cy="${Y}" r="0.11"/>`);
-    else if (n) tokens.push(`<circle class="t-hamlet" cx="${X}" cy="${Y}" r="0.085"/>`);
+    else if (n) tokens.push(`<circle class="t-hamlet" cx="${X}" cy="${Y}" r="${(0.04 + 0.015 * Math.sqrt(souls)).toFixed(3)}"/>`);
     if (cell.works && Object.values(cell.works).some(Boolean)) tokens.push(`<rect class="t-work" x="${(x + 0.13).toFixed(3)}" y="${(y - 0.2).toFixed(3)}" width="0.07" height="0.07"/>`);
     if (cell.shrine) tokens.push(`<rect class="t-shrine" x="${(x - 0.2).toFixed(3)}" y="${(y - 0.2).toFixed(3)}" width="0.07" height="0.07" transform="rotate(45 ${(x - 0.165).toFixed(3)} ${(y - 0.165).toFixed(3)})"/>`);
     if (rk || i === seat) labels.push(`<text x="${X}" y="${ly.toFixed(3)}">${esc(cellWords(i))}</text>`);
   });
   return `<div class="map-viewport"><div class="map" style="transform:translate(${panX}px,${panY}px) scale(${zoom})"><svg viewBox="0 0 ${N} ${N}" preserveAspectRatio="xMidYMid meet">
-    <defs>${FILTERS}</defs>
     <rect class="sea" x="-2" y="-2" width="${N + 4}" height="${N + 4}"/>
-    <path class="coast-halo" d="${coast}"/>
-    <g class="land-shadow" filter="url(#board-drop)"><g class="regions">${regions}</g></g>
-    <g class="borders"><path d="${borders}"/></g><path class="coast" d="${coast}"/><path class="roads" d="${roads.join('')}"/>
-    <g class="tokens" filter="url(#token-drop)">${tokens.join('')}</g>
-    <g class="labels">${labels.join('')}</g>
-    <rect class="paper" x="-2" y="-2" width="${N + 4}" height="${N + 4}" filter="url(#paper)"/></svg></div></div>`;
+    <g class="regions">${regions}</g>
+    <path class="roads" d="${roads.join('')}"/><path class="coast" d="${coast}"/><g class="borders"><path d="${borders}"/></g>
+    <g class="tokens">${tokens.join('')}</g>
+    <g class="labels">${labels.join('')}</g></svg></div></div>`;
 }
 /** The lens bar, and the key when asked for. */
 function lensBar(): string {

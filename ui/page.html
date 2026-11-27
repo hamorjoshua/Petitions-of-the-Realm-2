@@ -1,24 +1,19 @@
 <title>Vicarius Regis</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=Source+Sans+3:wght@400;600&display=swap">
 <style>
 /* Layout: a sticky tally bar over one column: the audience first, then the week's record and the rolls. */
 :root {
-  --cloth: #ece4d1; --panel: #f4efe2; --ink: #231f1a; --soft: #6b6152; --rule: #cfc3a8;
-  --woad: #2f5d78; --woad-ink: #ffffff; --seal: #8f2a1e; --gilt: #9a6b1f; --good: #3d6b3a;
-  --land: #efe6cf; --hill: #8a7a58; --water: #4f7d96; --sea: #9fb1b8; --sea-deep: #8aa0a9; --bank: #e9eef0;
-  --elev1: #f2ead6; --elev2: #e7dcc2; --elev3: #dcd0b2; --seam: #c7bca2;
-  --display: "IM Fell English", "Iowan Old Style", Georgia, serif;
-  --body: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --sea: #e9e9e5; --land: #f7f7f4; --panel: #ffffff; --rule: #d6d6d0; --ink: #141413; --soft: #6b6b66; --cloth: #e9e9e5;
+  --seal: #c9332b; --woad: #1d5fa7; --woad-ink: #ffffff; --gilt: #b87d14; --good: #2d6e4e; --water: #1d5fa7;
+  --body: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", sans-serif;
+  --display: var(--body);
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --cloth: #111a18; --panel: #18231f; --ink: #dfe6dc; --soft: #9aa9a1; --rule: #2e3d37;
-  --woad: #7fb3d6; --woad-ink: #0c1620; --seal: #e07a70; --gilt: #d9b659; --good: #7fc394; color-scheme: dark;
-  --land: #2a2a22; --hill: #c9b98f; --water: #6fa3c0; --sea: #1c2a30; --sea-deep: #18242a; --bank: #2c3a40; --elev1: #34312a; --elev2: #2d2a24; --elev3: #26241f; --seam: #4a453b } }
+  --sea: #111211; --land: #1a1b19; --panel: #20211f; --rule: #32332f; --ink: #ecece8; --soft: #8e8e88; --cloth: #111211;
+  --seal: #e0574f; --woad: #5c9be0; --woad-ink: #0b1220; --gilt: #d9a23a; --good: #5fae86; --water: #5c9be0; color-scheme: dark; } }
 :root[data-theme="dark"] {
-  --cloth: #111a18; --panel: #18231f; --ink: #dfe6dc; --soft: #9aa9a1; --rule: #2e3d37;
-  --woad: #7fb3d6; --woad-ink: #0c1620; --seal: #e07a70; --gilt: #d9b659; --good: #7fc394; color-scheme: dark;
-  --land: #2a2a22; --hill: #c9b98f; --water: #6fa3c0; --sea: #1c2a30; --sea-deep: #18242a; --bank: #2c3a40; --elev1: #34312a; --elev2: #2d2a24; --elev3: #26241f; --seam: #4a453b }
+  --sea: #111211; --land: #1a1b19; --panel: #20211f; --rule: #32332f; --ink: #ecece8; --soft: #8e8e88; --cloth: #111211;
+  --seal: #e0574f; --woad: #5c9be0; --woad-ink: #0b1220; --gilt: #d9a23a; --good: #5fae86; --water: #5c9be0; color-scheme: dark; }
 body { background: var(--cloth); color: var(--ink); font: 16px/1.5 var(--body); }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--panel); }
 .wrap { max-width: 60rem; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 1rem 3rem; display: flex; flex-direction: column; gap: 1.25rem; }
@@ -161,24 +156,21 @@ button.ord { cursor: pointer; } button.ord:disabled { cursor: default; opacity: 
 .cockpit.full .map { width: min(100vw, 100dvh); aspect-ratio: 1; display: block; }
 .map svg { width: 100%; height: 100%; display: block; overflow: visible; }
 .map .sea { fill: var(--sea); }
-.map .regions polygon { stroke: var(--seam); stroke-width: 0.018; stroke-linejoin: round; cursor: pointer; }
+.map .regions polygon { fill: var(--land); stroke: var(--rule); stroke-width: 1px; vector-effect: non-scaling-stroke; stroke-linejoin: round; cursor: pointer; }
 .map .regions polygon.water { fill: transparent; stroke: none; }
-.map .regions polygon.on { stroke: var(--woad); stroke-width: 0.07; paint-order: stroke; }
-.map .rivers path { fill: none; stroke: var(--water); stroke-width: 0.065; stroke-linecap: round; pointer-events: none; }
-.map .borders path { fill: none; stroke: rgba(35, 31, 26, 0.45); stroke-width: 0.04; stroke-linecap: round; pointer-events: none; }
-.map .coast { fill: none; stroke: #5a5041; stroke-width: 0.045; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
-.map .coast-halo { fill: none; stroke: rgba(255, 255, 255, 0.25); stroke-width: 0.14; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
-.map .roads { fill: none; stroke: rgba(110, 84, 48, 0.38); stroke-width: 0.022; stroke-linecap: round; pointer-events: none; }
-.map .paper { opacity: 0.045; mix-blend-mode: multiply; pointer-events: none; }
+.map .regions polygon.on { stroke: var(--woad); stroke-width: 2px; paint-order: stroke; }
+.map .coast { fill: none; stroke: var(--soft); stroke-width: 1px; vector-effect: non-scaling-stroke; pointer-events: none; }
+.map .borders path { fill: none; stroke: var(--ink); stroke-width: 1.5px; vector-effect: non-scaling-stroke; stroke-linecap: round; pointer-events: none; }
+.map .roads { fill: none; stroke: var(--rule); stroke-width: 1px; vector-effect: non-scaling-stroke; pointer-events: none; }
 .map .tokens, .map .labels { pointer-events: none; }
 .map .t-hamlet { fill: var(--ink); }
-.map .t-lord { fill: var(--ink); } .map .t-pip { fill: var(--panel); }
-.map .t-parish { fill: var(--panel); stroke: var(--gilt); stroke-width: 0.045; }
-.map .t-seat { fill: none; stroke: var(--gilt); stroke-width: 0.04; }
+.map .t-lord { fill: var(--ink); } .map .t-lord.hollow { fill: var(--panel); stroke: var(--ink); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+.map .t-parish { fill: var(--panel); stroke: var(--gilt); stroke-width: 2px; vector-effect: non-scaling-stroke; }
+.map .t-seat { fill: none; stroke: var(--gilt); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
 .map .t-work { fill: var(--ink); } .map .t-shrine { fill: var(--gilt); }
-.map .t-alarm { fill: none; stroke: var(--seal); stroke-width: 0.035; }
-.map .t-watch { fill: none; stroke: var(--woad); stroke-width: 0.03; stroke-dasharray: 0.06 0.04; }
-.map .labels text { font-family: var(--display); font-size: 0.165px; font-variant: small-caps; letter-spacing: 0.03em; text-anchor: middle; dominant-baseline: hanging; fill: var(--ink); opacity: 0.85; paint-order: stroke; stroke: var(--land); stroke-width: 0.05px; stroke-linejoin: round; }
+.map .t-alarm { fill: none; stroke: var(--seal); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+.map .t-watch { fill: none; stroke: var(--woad); stroke-width: 1px; vector-effect: non-scaling-stroke; stroke-dasharray: 3 2; }
+.map .labels text { font-family: var(--body); font-size: 0.145px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; text-anchor: middle; dominant-baseline: hanging; fill: var(--ink); }
 .hud-top { position: fixed; top: 0; left: 0; right: 0; z-index: 4; display: flex; flex-direction: column; align-items: stretch; pointer-events: none; }
 .hud-top > * { pointer-events: auto; }
 .cockpit.full .strip { background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-bottom: 1px solid var(--rule); max-width: 44rem; width: 100%; margin: 0 auto; box-sizing: border-box; }
@@ -196,5 +188,29 @@ button.ord { cursor: pointer; } button.ord:disabled { cursor: default; opacity: 
 .dock .tabs button[aria-pressed="true"] { border-top-color: var(--woad); font-weight: 600; background: none; color: var(--ink); }
 .dock .half .list li { padding: 6px 0; }
 body.cockpit-on .strip .row:first-child { padding-top: 0; }
+
+/* The flat instrument skin: system type, tabular figures, crisp rules, no blur or shadow, small radii. */
+body { font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { font-family: var(--body); font-weight: 600; letter-spacing: -0.01em; }
+.label, .inst .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; color: var(--soft); }
+.cockpit.full .strip, .lensbar button, .dock, .key, .sheet, .gpop, #sheet { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; box-shadow: none !important; }
+.cockpit.full .strip { background: var(--panel); border-bottom: 1px solid var(--rule); }
+.strip .when { font-family: var(--body); font-weight: 600; font-size: 0.95rem; }
+.inst.gauge, .inst { font-variant-numeric: tabular-nums; }
+.throttle { border: 1px solid var(--rule); border-radius: 4px; }
+.throttle button { min-height: 32px; font-size: 0.85rem; }
+.throttle button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+.home { border-radius: 4px; }
+.lensbar button, .pills button { background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; min-height: 28px; font-size: 0.78rem; font-weight: 500; }
+.lensbar button[aria-pressed="true"], .pills button[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.seg { border-radius: 2px; } .seg button { font-size: 0.82rem; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+.step { border-radius: 2px; } .orders button, .ord, .mode, .star, button.go { border-radius: 4px; }
+.sheet, .gpop, .key { border-radius: 4px; background: var(--panel); border: 1px solid var(--rule); }
+.cockpit.full #sheet { border-radius: 4px; }
+.dock { background: var(--panel); border-top: 1px solid var(--rule); border-radius: 0; }
+.dock .tabs button { font-size: 0.82rem; font-weight: 500; border-top: 1.5px solid transparent; }
+.dock .tabs button[aria-pressed="true"] { border-top: 1.5px solid var(--ink); font-weight: 600; }
+.flash-good, .flash-bad, .flash-warn { animation-duration: 0.6s; }
 </style>
 <div id="app"></div>
