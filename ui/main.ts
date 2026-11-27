@@ -524,7 +524,7 @@ const LEGEND: Record<Lens, string> = {
   jurisdiction: 'Each colour is one body of houses, and whoever leads it.',
   ecology: 'Darker red: soil worn out or ground flooded.',
 };
-const GLYPHS = 'Marks: a dot is a hamlet, sized by its people; a filled square a lord’s seat, a hollow one a bailiff’s; a gold ring a parish; the gold circle is your seat; a small square beside a place is a work, a gold diamond a shrine; a red ring marks trouble (aggrieved houses or an interdict); the small grey line under a seat’s name is its figure for the lens; a blue ring what you watch. Water inland is a lake; dark edges bound lordships; light lines are roads. Fills step in four shades of the lens colour.';
+const GLYPHS = 'Marks: a dot is a hamlet, sized by its people; a filled square a lord’s seat, a hollow one a bailiff’s; a gold-edged diamond a parish; a gold dot at the upper right your seat; a small square at the upper left a work, a gold diamond to the right a shrine, a blue dot to the left what you watch; a red ring marks trouble (aggrieved houses or an interdict); the small grey line under a seat’s name is its figure for the lens; Bright land is settled, darker land wild. Water inland is a lake; dark edges bound lordships; light lines are roads. Fills step in four shades of the lens colour.';
 
 const storeTotal = (): number => (s.court ? s.court.store.reduce((x, y) => x + y, 0) : 0);
 /** Up, down or level against a season ago. */
@@ -594,9 +594,11 @@ function microData(i: number, at: Map<number, Body[]>): string {
 /** The lens's four steps, as a small legend above the dock. */
 function legend(): string {
   if (lens === 'jurisdiction') return `<div class="legend-scale"><span class="label">Lords</span><span class="small soft">each colour a lordship</span></div>`;
-  const col = lens === 'sacred' ? 'var(--gilt)' : 'var(--seal)', name = ({ want: 'Want', factions: 'Aggrieved', sacred: 'Holiness', ecology: 'Worn land' } as Record<string, string>)[lens]!;
+  const col = lens === 'sacred' ? 'var(--gilt)' : lens === 'ecology' ? 'var(--good)' : 'var(--seal)', name = ({ want: 'Want', factions: 'Aggrieved', sacred: 'Holiness', ecology: 'Worn land' } as Record<string, string>)[lens]!;
   return `<div class="legend-scale"><span class="label">${name}</span>${[0, 14, 35, 65].map((p, k) => `<span class="sw"><i style="background:${p ? `color-mix(in srgb, ${col} ${p}%, var(--land))` : 'var(--land)'}"></i>${['None', 'Low', 'High', 'Severe'][k]}</span>`).join('')}</div>`;
 }
+/** Room around the realm so nothing at its edge is clipped. */
+const PAD = 0.45;
 function mapView(): string {
   const hs = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length), at = new Map<number, Body[]>();
   for (const b of hs) { const l = at.get(b.home); if (l) l.push(b); else at.set(b.home, [b]); }
@@ -627,7 +629,7 @@ function mapView(): string {
   const sore = (i: number): boolean => !!c && (at.get(i) ?? []).some(b => (c.grief[b.id] ?? 0) >= P.aggrieved);
   const lensOf = (i: number): [number, string] => {
     const cell = s.cells[i]!, l = at.get(i) ?? [];
-    if (lens === 'ecology') { const worn = Math.max(0, 1 - cell.soil / Math.max(0.01, cell.soil0)); return [Math.min(1, worn * 2.5 + Math.min(0.5, cell.flood * 2) + Math.min(0.3, cell.cleared / 200)), 'var(--seal)']; }
+    if (lens === 'ecology') { const worn = Math.max(0, 1 - cell.soil / Math.max(0.01, cell.soil0)); return [Math.min(1, worn * 2.5 + Math.min(0.5, cell.flood * 2) + Math.min(0.3, cell.cleared / 200)), 'var(--good)']; }
     if (lens === 'sacred') return [Math.min(1, cell.sanctity + (cell.shrine ? 0.4 : 0) + (cell.interdict > 0 ? 0.6 : 0)), cell.interdict > 0 ? 'var(--seal)' : 'var(--gilt)'];
     if (lens === 'jurisdiction') { const L = land[i]!; return L < 0 ? [0, 'var(--soft)'] : [l.length ? 0.5 : 0.25, herald(L)]; }
     if (lens === 'factions') return [c ? l.filter(b => (c.grief[b.id] ?? 0) >= P.aggrieved).length / Math.max(1, l.length) : 0, 'var(--seal)'];
@@ -639,8 +641,11 @@ function mapView(): string {
   const regions = g.polys.map((poly, i) => {
     if (water(i)) return `<polygon data-cell="${i}" class="water${i === picked ? ' on' : ''}" points="${polyPath(poly)}"><title>${esc(cellWords(i))}</title></polygon>`;
     // Four flat steps of one signal colour, like a chart: none, a little, more, much.
+    // Settled places stand forward in bright land; the wild moor lies darker, a shade darker again on high ground.
     const [v, col] = lensOf(i), pct = v <= 0.05 ? 0 : v < 0.34 ? 14 : v < 0.67 ? 35 : 65;
-    return `<polygon data-cell="${i}" class="${i === picked ? 'on' : ''}" points="${polyPath(poly)}"${pct ? ` style="fill:color-mix(in srgb, ${col} ${pct}%, var(--land))"` : ''}><title>${esc(cellWords(i))}</title></polygon>`;
+    const home = held(i), tier = home ? '' : highs[i]! >= q(0.75) ? 'wild3' : highs[i]! >= q(0.45) ? 'wild2' : 'wild';
+    const base = home ? 'var(--land)' : `var(--${tier})`;
+    return `<polygon data-cell="${i}" class="${tier}${i === picked ? ' on' : ''}" points="${polyPath(poly)}"${pct ? ` style="fill:color-mix(in srgb, ${col} ${pct}%, ${base})"` : ''}><title>${esc(cellWords(i))}</title></polygon>`;
   }).join('');
   // Jurisdictions: a lordship where there is one, otherwise the shire about a settled place. Their outer edges are inked.
   const realm = s.cells.map((_x, i) => { if (water(i)) return -2; const k = shire[i]!; if (k < 0) return -1; const L = lordAt(at, k); return L >= 0 ? 100000 + L : k; });
@@ -660,8 +665,12 @@ function mapView(): string {
       const wetWay = Array.from({ length: 15 }, (_v, k) => (k + 1) / 16).some(t => { const u = 1 - t, x = u * u * pa[0] + 2 * u * t * cx0 + t * t * pb0[0], y = u * u * pa[1] + 2 * u * t * cy0 + t * t * pb0[1]; let best = 0, bd = Infinity; g.pts.forEach((p, k) => { const d = (p[0] - x) ** 2 + (p[1] - y) ** 2; if (d < bd) { bd = d; best = k; } }); return water(best); });
       if (wetWay) continue;
       roadSet.add(key);
-      const pb = g.pts[b]!, mx = (pa[0] + pb[0]) / 2 + (pb[1] - pa[1]) * 0.08, my = (pa[1] + pb[1]) / 2 - (pb[0] - pa[0]) * 0.08;
-      roads.push(`M${pa[0].toFixed(3)},${(pa[1] - 0.06).toFixed(3)}Q${mx.toFixed(3)},${(my - 0.06).toFixed(3)} ${pb[0].toFixed(3)},${(pb[1] - 0.06).toFixed(3)}`);
+      // Each road stops short of the marks at both ends.
+      const pb = g.pts[b]!, len = Math.hypot(pb[0] - pa[0], pb[1] - pa[1]);
+      if (len < 0.5) continue;
+      const ux = (pb[0] - pa[0]) / len, uy = (pb[1] - pa[1]) / len, a0 = [pa[0] + ux * 0.18, pa[1] + uy * 0.18], b0 = [pb[0] - ux * 0.18, pb[1] - uy * 0.18];
+      const mx = (a0[0]! + b0[0]!) / 2 + (b0[1]! - a0[1]!) * 0.08, my = (a0[1]! + b0[1]!) / 2 - (b0[0]! - a0[0]!) * 0.08;
+      roads.push(`M${a0[0]!.toFixed(3)},${(a0[1]! - 0.06).toFixed(3)}Q${mx.toFixed(3)},${(my - 0.06).toFixed(3)} ${b0[0]!.toFixed(3)},${(b0[1]! - 0.06).toFixed(3)}`);
     }
   }
   // Tokens: plain board pieces at each place's centre.
@@ -669,21 +678,22 @@ function mapView(): string {
   g.pts.forEach(([x, y0], i) => {
     let y = y0;
     if (water(i)) return;
-    const n = at.get(i)?.length ?? 0, rk = ranked.get(i), cell = s.cells[i]!, ly = y + 0.21;
+    const n = at.get(i)?.length ?? 0, rk = ranked.get(i), cell = s.cells[i]!, ly = y + 0.32;
     y -= 0.06;
     const X = x.toFixed(3), Y = y.toFixed(3);
-    if (sore(i) || cell.interdict > 0) tokens.push(`<circle class="t-alarm" cx="${X}" cy="${Y}" r="0.29"/>`);
-    if (i === seat) tokens.push(`<circle class="t-seat" cx="${X}" cy="${Y}" r="0.18"/>`);
-    if (watched.has(`c:${i}`) || (at.get(i) ?? []).some(b => watched.has(`b:${b.id}`))) tokens.push(`<circle class="t-watch" cx="${X}" cy="${Y}" r="0.3"/>`);
+    // One centre mark; everything else is a small badge at a corner, or a single ring well clear of the mark.
+    if (sore(i) || cell.interdict > 0) tokens.push(`<circle class="t-alarm" cx="${X}" cy="${Y}" r="0.25"/>`);
     const souls = (at.get(i) ?? []).reduce((a, b) => a + b.members.filter(m => s.people[m]!.alive).length, 0);
-    if (rk?.rank === 'lord' || rk?.rank === 'bailiff') tokens.push(`<rect class="t-lord${rk.rank === 'bailiff' ? ' hollow' : ''}" x="${(x - 0.08).toFixed(3)}" y="${(y - 0.08).toFixed(3)}" width="0.16" height="0.16"/>`);
-    else if (rk?.rank === 'priest') tokens.push(`<circle class="t-parish" cx="${X}" cy="${Y}" r="0.11"/>`);
-    else if (n) tokens.push(`<circle class="t-hamlet" cx="${X}" cy="${Y}" r="${(0.04 + 0.015 * Math.sqrt(souls)).toFixed(3)}"/>`);
-    if (cell.works && Object.values(cell.works).some(Boolean)) tokens.push(`<rect class="t-work" x="${(x + 0.13).toFixed(3)}" y="${(y - 0.2).toFixed(3)}" width="0.07" height="0.07"/>`);
-    if (cell.shrine) tokens.push(`<rect class="t-shrine" x="${(x - 0.2).toFixed(3)}" y="${(y - 0.2).toFixed(3)}" width="0.07" height="0.07" transform="rotate(45 ${(x - 0.165).toFixed(3)} ${(y - 0.165).toFixed(3)})"/>`);
+    if (rk?.rank === 'lord' || rk?.rank === 'bailiff') tokens.push(`<rect class="t-lord${rk.rank === 'bailiff' ? ' hollow' : ''}" x="${(x - 0.075).toFixed(3)}" y="${(y - 0.075).toFixed(3)}" width="0.15" height="0.15" rx="0.025"/>`);
+    else if (rk?.rank === 'priest') tokens.push(`<path class="t-parish" d="M${X},${(y - 0.095).toFixed(3)}L${(x + 0.095).toFixed(3)},${Y}L${X},${(y + 0.095).toFixed(3)}L${(x - 0.095).toFixed(3)},${Y}Z"/>`);
+    else if (n) tokens.push(`<circle class="t-hamlet" cx="${X}" cy="${Y}" r="${Math.min(0.12, 0.04 + 0.012 * Math.sqrt(souls)).toFixed(3)}"/>`);
+    if (i === seat) tokens.push(`<circle class="t-crown" cx="${(x + 0.25).toFixed(3)}" cy="${(y - 0.25).toFixed(3)}" r="0.045"/>`);
+    if (cell.works && Object.values(cell.works).some(Boolean)) tokens.push(`<rect class="t-work" x="${(x - 0.3).toFixed(3)}" y="${(y - 0.3).toFixed(3)}" width="0.065" height="0.065"/>`);
+    if (cell.shrine) tokens.push(`<rect class="t-shrine" x="${(x + 0.3).toFixed(3)}" y="${(y - 0.03).toFixed(3)}" width="0.06" height="0.06" transform="rotate(45 ${(x + 0.33).toFixed(3)} ${Y})"/>`);
+    if (watched.has(`c:${i}`) || (at.get(i) ?? []).some(b => watched.has(`b:${b.id}`))) tokens.push(`<circle class="t-watchdot" cx="${(x - 0.33).toFixed(3)}" cy="${Y}" r="0.035"/>`);
     if (rk || i === seat) { labels.push(`<text x="${X}" y="${ly.toFixed(3)}">${esc(cellWords(i))}</text>`); const sub = microData(i, at); if (sub) labels.push(`<text class="sub" x="${X}" y="${(ly + 0.17).toFixed(3)}">${esc(sub)}</text>`); }
   });
-  return `<div class="map-viewport"><div class="map" style="transform:translate(${panX}px,${panY}px) scale(${zoom})"><svg viewBox="0 0 ${N} ${N}" preserveAspectRatio="xMidYMid meet">
+  return `<div class="map-viewport"><div class="map" style="transform:translate(${panX}px,${panY}px) scale(${zoom})"><svg viewBox="${-PAD} ${-PAD} ${N + 2 * PAD} ${N + 2 * PAD}" preserveAspectRatio="xMidYMid meet">
     <rect class="sea" x="-2" y="-2" width="${N + 4}" height="${N + 4}"/>
     <g class="regions">${regions}</g>
     <path class="roads" d="${roads.join('')}"/><path class="coast" d="${coast}"/><g class="borders"><path d="${borders}"/></g>
@@ -693,7 +703,7 @@ function mapView(): string {
 /** The lens bar, and the key when asked for. */
 function lensBar(): string {
   const lenses = (['want', 'factions', 'sacred', 'jurisdiction', 'ecology'] as const).map(k => `<button data-lens="${k}" aria-pressed="${lens === k}">${({ want: 'Want', factions: 'Factions', sacred: 'Sacred', jurisdiction: 'Lords', ecology: 'Land' })[k]}</button>`).join('');
-  return `<div class="pills lensbar">${lenses}<button data-key="1" aria-pressed="${keyOpen}" aria-label="Map key">?</button>${zoom > 1.01 ? '<button data-reset="1">Fit</button>' : ''}</div>${keyOpen ? `<p class="key small">${LEGEND[lens]} ${GLYPHS}</p>` : ''}`;
+  return `<div class="lensseg">${lenses}</div><div class="tools"><button data-key="1" aria-pressed="${keyOpen}" aria-label="Map key">?</button><button data-reset="1" aria-label="Fit the realm">Fit</button></div>${keyOpen ? `<p class="key small">${LEGEND[lens]} ${GLYPHS}</p>` : ''}`;
 }
 function sheet(): string {
   if (picked < 0 || view !== 'map') return '';
@@ -804,7 +814,7 @@ function centreOn(cell: number): void {
   const pt = geometry(s.side, s.seed).pts[cell];
   if (!pt) return;
   const { m } = mapBox();
-  panX = -(pt[0] / s.side - 0.5) * m * zoom; panY = -(pt[1] / s.side - 0.5) * m * zoom;
+  panX = -((pt[0] + PAD) / (s.side + 2 * PAD) - 0.5) * m * zoom; panY = -((pt[1] + PAD) / (s.side + 2 * PAD) - 0.5) * m * zoom;
   clampPan(); applyZoom();
 }
 const swap = (id: string, html: string): void => { const el = document.getElementById(id); if (el && el.dataset.h !== html) { const top = el.scrollTop; el.innerHTML = html; el.dataset.h = html; el.scrollTop = top; } };

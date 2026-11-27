@@ -3,16 +3,16 @@
 <style>
 /* Layout: a sticky tally bar over one column: the audience first, then the week's record and the rolls. */
 :root {
-  --sea: #e9e9e5; --land: #f7f7f4; --panel: #ffffff; --rule: #d6d6d0; --ink: #141413; --soft: #6b6b66; --cloth: #e9e9e5;
-  --seal: #c9332b; --woad: #1d5fa7; --woad-ink: #ffffff; --gilt: #b87d14; --good: #2d6e4e; --water: #1d5fa7;
+  --sea: #8ea3af; --land: #f4edde; --wild: #e4dbc7; --wild2: #dcd2bc; --wild3: #d3c8b0; --panel: #f6f1e6; --recess: #e8e0ce; --rule: #cfc5b0; --ink: #1f1b16; --soft: #6e6558; --cloth: #f6f1e6;
+  --seal: #b8382a; --woad: #2f5d78; --woad-ink: #ffffff; --gilt: #b07c1f; --good: #3e6e48; --water: #2f5d78; --coast: #5c5346;
   --body: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", sans-serif;
   --display: var(--body);
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --sea: #111211; --land: #1a1b19; --panel: #20211f; --rule: #32332f; --ink: #ecece8; --soft: #8e8e88; --cloth: #111211;
+  --sea: #1b2227; --land: #2a2722; --wild: #22201c; --wild2: #1f1d19; --wild3: #1c1a17; --panel: #24221e; --recess: #1c1a17; --rule: #3a362f; --ink: #ece6da; --soft: #9a9182; --cloth: #24221e; --coast: #a89b85;
   --seal: #e0574f; --woad: #5c9be0; --woad-ink: #0b1220; --gilt: #d9a23a; --good: #5fae86; --water: #5c9be0; color-scheme: dark; } }
 :root[data-theme="dark"] {
-  --sea: #111211; --land: #1a1b19; --panel: #20211f; --rule: #32332f; --ink: #ecece8; --soft: #8e8e88; --cloth: #111211;
+  --sea: #1b2227; --land: #2a2722; --wild: #22201c; --wild2: #1f1d19; --wild3: #1c1a17; --panel: #24221e; --recess: #1c1a17; --rule: #3a362f; --ink: #ece6da; --soft: #9a9182; --cloth: #24221e; --coast: #a89b85;
   --seal: #e0574f; --woad: #5c9be0; --woad-ink: #0b1220; --gilt: #d9a23a; --good: #5fae86; --water: #5c9be0; color-scheme: dark; }
 body { background: var(--cloth); color: var(--ink); font: 16px/1.5 var(--body); }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--panel); }
@@ -226,5 +226,33 @@ h1, h2, h3 { font-family: var(--body); font-weight: 600; letter-spacing: -0.01em
 .dock .tabs .ico { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .dock .tabs button[aria-pressed="false"] .ico { opacity: 0.7; }
 .dock .tabs button.alert::after { content: ""; position: absolute; top: 7px; left: calc(50% + 8px); width: 6px; height: 6px; border-radius: 50%; background: var(--seal); }
+
+/* The Braun pass: warm panels, recessed tracks, woad for what is active, 3px corners, 44px targets, hairlines only. */
+button, input { border-radius: 3px; }
+.cockpit.full .strip, .dock { border-radius: 0 !important; }
+.throttle, .seg, .lensseg { background: var(--recess); border: 1px solid var(--rule); border-radius: 3px; overflow: hidden; display: flex; }
+.throttle button, .seg button, .lensseg button { min-height: 44px; border: 0; border-left: 1px solid var(--rule); background: transparent; color: var(--ink); border-radius: 0; font: inherit; font-size: 0.82rem; font-weight: 500; cursor: pointer; }
+.throttle button:first-child, .seg button:first-child, .lensseg button:first-child { border-left: 0; }
+.throttle button[aria-pressed="true"], .seg button[aria-pressed="true"], .lensseg button[aria-pressed="true"] { background: var(--woad); color: #fff; }
+.throttle button { min-width: 44px; }
+.lensseg { pointer-events: auto; width: 100%; } .lensseg button { flex: 1; padding: 0 4px; min-width: 0; }
+#lensbar { position: relative; padding: 8px 12px 0; }
+.tools { position: absolute; right: 12px; top: calc(100% + 8px); display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--rule); border-radius: 3px; overflow: hidden; pointer-events: auto; }
+.tools button { min-width: 44px; min-height: 44px; border: 0; border-top: 1px solid var(--rule); background: transparent; color: var(--ink); font: inherit; font-size: 0.8rem; font-weight: 600; border-radius: 0; cursor: pointer; }
+.tools button:first-child { border-top: 0; } .tools button[aria-pressed="true"] { background: var(--woad); color: #fff; }
+.key { position: absolute; right: 64px; top: calc(100% + 8px); left: 12px; margin: 0; border-radius: 3px; }
+.dock .tabs button { min-height: 52px; }
+.orders button, .step button, .ord, button.go, .mode, .home { min-height: 44px; border-radius: 3px; }
+.step { background: var(--recess); border: 1px solid var(--rule); border-radius: 3px; }
+.sheet, .gpop, .key, .legend-scale, .cockpit.full #sheet { border-radius: 3px; box-shadow: none; }
+#legend { bottom: calc(52px + env(safe-area-inset-bottom, 0px) + 8px); }
+.up { color: var(--good); } .down { color: var(--seal); }
+.map .coast { stroke: var(--coast); stroke-width: 1.5px; stroke-linejoin: round; stroke-linecap: round; }
+.map .regions polygon.wild { fill: var(--wild); } .map .regions polygon.wild2 { fill: var(--wild2); } .map .regions polygon.wild3 { fill: var(--wild3); }
+.map .t-lord { fill: var(--ink); } .map .t-parish { fill: var(--panel); stroke: var(--gilt); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+.map .t-crown { fill: var(--gilt); } .map .t-watchdot { fill: var(--woad); }
+.map .t-alarm { stroke-width: 1.2px; }
+.map .labels text { letter-spacing: 0.09em; }
+.cockpit.full { background-image: radial-gradient(circle, rgba(255, 255, 255, 0.15) 0.9px, transparent 1.3px); }
 </style>
 <div id="app"></div>
