@@ -9,7 +9,7 @@ import { KINDS, NEEDS, P, RECIPES, St } from '../sim/tables.ts';
 import { grown, top } from '../sim/util.ts';
 import { Readers, wayWords } from '../readers/readers.ts';
 import { placeName } from '../readers/names.ts';
-import { edgesWhere, FILTERS, geometry, polyPath, riverEdges } from './map.ts';
+import { edgesWhere, FILTERS, geometry, polyPath } from './map.ts';
 import { route } from '../sim/processes/move.ts';
 import type { Body, Bond, Dials, LawKey, LocalOrder, Mode, OrdKey, Petition, PowerAct, State, WorkKey } from '../sim/types.ts';
 
@@ -524,7 +524,7 @@ const LEGEND: Record<Lens, string> = {
   jurisdiction: 'Each colour is one body of houses, and whoever leads it.',
   ecology: 'Darker red: soil worn out or ground flooded.',
 };
-const GLYPHS = 'Pieces: a dot is a hamlet, a square a lord’s seat, a gold ring a parish; the gold circle is your seat; a small square beside a place is a work, a gold diamond a shrine; a red ring marks trouble (aggrieved houses or an interdict); a blue ring what you watch. Blue edges are rivers, ink edges where lordships meet.';
+const GLYPHS = 'Pieces: a dot is a hamlet, a square a lord’s seat, a gold ring a parish; the gold circle is your seat; a small square beside a place is a work, a gold diamond a shrine; a red ring marks trouble (aggrieved houses or an interdict); a blue ring what you watch. Blue water inland is a lake; ink edges are where lordships meet; each shire has its own pale wash.';
 
 const storeTotal = (): number => (s.court ? s.court.store.reduce((x, y) => x + y, 0) : 0);
 /** Up, down or level against a season ago. */
@@ -579,6 +579,8 @@ function lordAt(at: Map<number, Body[]>, i: number): number {
 }
 /** A heraldic palette for lordships: woad, ochre, sage, terracotta, plum, slate. */
 const HERALDRY = ['#3d5f7a', '#b07d2b', '#7d8f5a', '#b5643c', '#6e4a6b', '#5d6870'];
+/** Pale tabletop washes for shires: soft ochre, sage, warm cream, stone. */
+const WASH = ['#c9a45c', '#93a57a', '#e0c99a', '#a9a293'];
 const herald = (id: number): string => HERALDRY[((id % HERALDRY.length) + HERALDRY.length) % HERALDRY.length]!;
 function mapView(): string {
   const hs = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length), at = new Map<number, Body[]>();
@@ -597,7 +599,14 @@ function mapView(): string {
   const wet = new Set<number>();
   for (let i = 0; i < s.cells.length; i++) if (ring(i) === 0 && !held(i)) wet.add(i);
   for (let i = 0; i < s.cells.length; i++) if (ring(i) === 1 && !held(i) && highs[i]! <= q(0.12) && g.nbrs[i]!.some(j => wet.has(j))) wet.add(i);
+  // Lakes: two or three of the lowest basins inland, where water gathers and finds no way out.
+  const basins = s.cells.map((_x, i) => i).filter(i => ring(i) >= 2 && !held(i) && (lowOf[i] ?? 0) < 0).sort((a, b) => highs[a]! - highs[b]! || a - b);
+  const inland = (basins.length >= 2 ? basins : s.cells.map((_x, i) => i).filter(i => ring(i) >= 2 && !held(i)).sort((a, b) => highs[a]! - highs[b]! || a - b)).slice(0, 3);
+  for (const i of inland) wet.add(i);
   const water = (i: number): boolean => wet.has(i);
+  // Shires: each place belongs to the nearest settled place within two steps; that place's lordship, if it has one.
+  const shire = s.cells.map((_x, i) => { if (water(i)) return -2; let best = -1, bd = 9; for (const k of at.keys()) { const [kx, ky] = xy(k), [ix, iy] = xy(i), d = Math.max(Math.abs(kx - ix), Math.abs(ky - iy)); if (d <= 2 && (d < bd || (d === bd && k < best))) { bd = d; best = k; } } return best; });
+  const washOf = (i: number): string => { const k = shire[i]!; if (k < 0) return ''; const L = lordAt(at, k); return WASH[(L >= 0 ? L : k) % WASH.length]!; };
   // Each place belongs to the lordship of the nearest settled place within two steps.
   const land = s.cells.map((_x, i) => { if (water(i)) return -2; let best = -1, bd = 9; for (const k of at.keys()) { const [kx, ky] = xy(k), [ix, iy] = xy(i), d = Math.max(Math.abs(kx - ix), Math.abs(ky - iy)); if (d <= 2 && (d < bd || (d === bd && k < best))) { bd = d; best = k; } } return best < 0 ? -1 : lordAt(at, best); });
   const sore = (i: number): boolean => !!c && (at.get(i) ?? []).some(b => (c.grief[b.id] ?? 0) >= P.aggrieved);
@@ -614,16 +623,18 @@ function mapView(): string {
   const regions = g.polys.map((poly, i) => {
     if (water(i)) return `<polygon data-cell="${i}" class="water${i === picked ? ' on' : ''}" points="${polyPath(poly)}"><title>${esc(cellWords(i))}</title></polygon>`;
     const step = highs[i]! >= q(0.67) ? 3 : highs[i]! >= q(0.33) ? 2 : 1, [v, col] = lensOf(i);
-    return `<polygon data-cell="${i}" class="${i === picked ? 'on' : ''}" points="${polyPath(poly)}" style="fill:color-mix(in srgb, ${col} ${Math.round(v * 60)}%, var(--elev${step}))"><title>${esc(cellWords(i))}</title></polygon>`;
+    const w = washOf(i), base = w ? `color-mix(in srgb, ${w} 13%, var(--elev${step}))` : `var(--elev${step})`;
+    return `<polygon data-cell="${i}" class="${i === picked ? 'on' : ''}" points="${polyPath(poly)}" style="fill:color-mix(in srgb, ${col} ${Math.round(v * 60)}%, ${base})"><title>${esc(cellWords(i))}</title></polygon>`;
   }).join('');
-  const flows = s.cells.map(x => x.flow).filter(v => v > 0).sort((a, b) => a - b), riverAt = flows.length ? flows[Math.floor(flows.length * 0.75)]! : Infinity;
-  const rivers = riverEdges(g, lowOf, s.cells.map(x => x.flow), riverAt, water);
   const borders = edgesWhere(g, (i, j) => { const a = land[i]!, b = land[j]!; return a !== b && a >= 0 && b >= 0; });
   // Tokens: plain board pieces at each place's centre.
   const tokens: string[] = [], labels: string[] = [];
-  g.pts.forEach(([x, y], i) => {
+  g.pts.forEach(([x, y0], i) => {
+    let y = y0;
     if (water(i)) return;
-    const n = at.get(i)?.length ?? 0, rk = ranked.get(i), cell = s.cells[i]!, X = x.toFixed(3), Y = y.toFixed(3);
+    const n = at.get(i)?.length ?? 0, rk = ranked.get(i), cell = s.cells[i]!, ly = y + 0.21;
+    y -= 0.06;
+    const X = x.toFixed(3), Y = y.toFixed(3);
     if (sore(i) || cell.interdict > 0) tokens.push(`<circle class="t-alarm" cx="${X}" cy="${Y}" r="0.24"/>`);
     if (i === seat) tokens.push(`<circle class="t-seat" cx="${X}" cy="${Y}" r="0.18"/>`);
     if (watched.has(`c:${i}`) || (at.get(i) ?? []).some(b => watched.has(`b:${b.id}`))) tokens.push(`<circle class="t-watch" cx="${X}" cy="${Y}" r="0.3"/>`);
@@ -632,13 +643,13 @@ function mapView(): string {
     else if (n) tokens.push(`<circle class="t-hamlet" cx="${X}" cy="${Y}" r="0.085"/>`);
     if (cell.works && Object.values(cell.works).some(Boolean)) tokens.push(`<rect class="t-work" x="${(x + 0.13).toFixed(3)}" y="${(y - 0.2).toFixed(3)}" width="0.07" height="0.07"/>`);
     if (cell.shrine) tokens.push(`<rect class="t-shrine" x="${(x - 0.2).toFixed(3)}" y="${(y - 0.2).toFixed(3)}" width="0.07" height="0.07" transform="rotate(45 ${(x - 0.165).toFixed(3)} ${(y - 0.165).toFixed(3)})"/>`);
-    if (rk || i === seat) labels.push(`<text x="${X}" y="${(y + 0.28).toFixed(3)}">${esc(cellWords(i))}</text>`);
+    if (rk || i === seat) labels.push(`<text x="${X}" y="${ly.toFixed(3)}">${esc(cellWords(i))}</text>`);
   });
   return `<div class="map-viewport"><div class="map" style="transform:translate(${panX}px,${panY}px) scale(${zoom})"><svg viewBox="0 0 ${N} ${N}" preserveAspectRatio="xMidYMid meet">
     <defs>${FILTERS}</defs>
     <rect class="sea" x="-2" y="-2" width="${N + 4}" height="${N + 4}"/>
     <g class="land-shadow" filter="url(#board-drop)"><g class="regions">${regions}</g></g>
-    <g class="rivers"><path d="${rivers}"/></g><g class="borders"><path d="${borders}"/></g>
+    <g class="borders"><path d="${borders}"/></g>
     <g class="tokens" filter="url(#token-drop)">${tokens.join('')}</g>
     <g class="labels">${labels.join('')}</g></svg></div></div>`;
 }

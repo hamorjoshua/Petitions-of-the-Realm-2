@@ -7,18 +7,18 @@
   --cloth: #ece4d1; --panel: #f4efe2; --ink: #231f1a; --soft: #6b6152; --rule: #cfc3a8;
   --woad: #2f5d78; --woad-ink: #ffffff; --seal: #8f2a1e; --gilt: #9a6b1f; --good: #3d6b3a;
   --land: #efe6cf; --hill: #8a7a58; --water: #4f7d96; --sea: #9fb1b8; --sea-deep: #8aa0a9; --bank: #e9eef0;
-  --elev1: #f2ead6; --elev2: #e7dcc2; --elev3: #dcd0b2;
+  --elev1: #f2ead6; --elev2: #e7dcc2; --elev3: #dcd0b2; --seam: #c7bca2;
   --display: "IM Fell English", "Iowan Old Style", Georgia, serif;
   --body: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --cloth: #111a18; --panel: #18231f; --ink: #dfe6dc; --soft: #9aa9a1; --rule: #2e3d37;
   --woad: #7fb3d6; --woad-ink: #0c1620; --seal: #e07a70; --gilt: #d9b659; --good: #7fc394; color-scheme: dark;
-  --land: #2a2a22; --hill: #c9b98f; --water: #6fa3c0; --sea: #1c2a30; --sea-deep: #18242a; --bank: #2c3a40; --elev1: #34312a; --elev2: #2d2a24; --elev3: #26241f } }
+  --land: #2a2a22; --hill: #c9b98f; --water: #6fa3c0; --sea: #1c2a30; --sea-deep: #18242a; --bank: #2c3a40; --elev1: #34312a; --elev2: #2d2a24; --elev3: #26241f; --seam: #4a453b } }
 :root[data-theme="dark"] {
   --cloth: #111a18; --panel: #18231f; --ink: #dfe6dc; --soft: #9aa9a1; --rule: #2e3d37;
   --woad: #7fb3d6; --woad-ink: #0c1620; --seal: #e07a70; --gilt: #d9b659; --good: #7fc394; color-scheme: dark;
-  --land: #2a2a22; --hill: #c9b98f; --water: #6fa3c0; --sea: #1c2a30; --sea-deep: #18242a; --bank: #2c3a40; --elev1: #34312a; --elev2: #2d2a24; --elev3: #26241f }
+  --land: #2a2a22; --hill: #c9b98f; --water: #6fa3c0; --sea: #1c2a30; --sea-deep: #18242a; --bank: #2c3a40; --elev1: #34312a; --elev2: #2d2a24; --elev3: #26241f; --seam: #4a453b }
 body { background: var(--cloth); color: var(--ink); font: 16px/1.5 var(--body); }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--panel); }
 .wrap { max-width: 60rem; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 1rem 3rem; display: flex; flex-direction: column; gap: 1.25rem; }
@@ -161,7 +161,7 @@ button.ord { cursor: pointer; } button.ord:disabled { cursor: default; opacity: 
 .cockpit.full .map { width: min(100vw, 100dvh); aspect-ratio: 1; display: block; }
 .map svg { width: 100%; height: 100%; display: block; overflow: visible; }
 .map .sea { fill: var(--sea); }
-.map .regions polygon { stroke: var(--sea); stroke-width: 0.042; stroke-linejoin: round; cursor: pointer; }
+.map .regions polygon { stroke: var(--seam); stroke-width: 0.018; stroke-linejoin: round; cursor: pointer; }
 .map .regions polygon.water { fill: transparent; stroke: none; }
 .map .regions polygon.on { stroke: var(--woad); stroke-width: 0.07; paint-order: stroke; }
 .map .rivers path { fill: none; stroke: var(--water); stroke-width: 0.065; stroke-linecap: round; pointer-events: none; }
@@ -174,7 +174,7 @@ button.ord { cursor: pointer; } button.ord:disabled { cursor: default; opacity: 
 .map .t-work { fill: var(--ink); } .map .t-shrine { fill: var(--gilt); }
 .map .t-alarm { fill: none; stroke: var(--seal); stroke-width: 0.035; }
 .map .t-watch { fill: none; stroke: var(--woad); stroke-width: 0.03; stroke-dasharray: 0.06 0.04; }
-.map .labels text { font-family: var(--display); font-size: 0.19px; font-variant: small-caps; letter-spacing: 0.03em; text-anchor: middle; dominant-baseline: hanging; fill: var(--ink); opacity: 0.85; }
+.map .labels text { font-family: var(--display); font-size: 0.165px; font-variant: small-caps; letter-spacing: 0.03em; text-anchor: middle; dominant-baseline: hanging; fill: var(--ink); opacity: 0.85; paint-order: stroke; stroke: var(--land); stroke-width: 0.05px; stroke-linejoin: round; }
 .hud-top { position: fixed; top: 0; left: 0; right: 0; z-index: 4; display: flex; flex-direction: column; align-items: stretch; pointer-events: none; }
 .hud-top > * { pointer-events: auto; }
 .cockpit.full .strip { background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-bottom: 1px solid var(--rule); max-width: 44rem; width: 100%; margin: 0 auto; box-sizing: border-box; }
