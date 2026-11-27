@@ -7,7 +7,7 @@ import { askAhead, cover, drive, welfare, welfareLater, zeros } from '../value.t
 import { around, bond, dist, grown, head, hearthIndex, holdsByCell, kinOf, muster, near, rec, struggle, sheltered, tenancies, tie, top, warm, type Tenancy } from '../util.ts';
 import { bear } from './grow.ts';
 import { tBar } from './sky.ts';
-import { chilled, upheld } from '../court/court.ts';
+import { boundByLaw, chilled, clearingBarred, freeByLaw, upheld } from '../court/court.ts';
 import { weekOf, type Body, type Bond, type Person, type State } from '../types.ts';
 
 interface Opt { r: number; cell: number; mine: number; take: boolean; score: number; rent: number }
@@ -109,7 +109,7 @@ function options(s: State, L: Land, b: Body): Opt[] {
     for (const cell of near(s.side, b.home, P.reach)) {
       const c = s.cells[cell]!, far = 1 - P.travel * dist(s.side, b.home, cell);
       // In a forest the Crown has set aside, nothing that holds the soil may be taken.
-      if (c.works?.reserve && r.from.some(([st]) => (St[st]!.holds ?? 0) >= 0.5)) continue;
+      if (r.from.some(([st]) => (St[st]!.holds ?? 0) >= 0.5) && clearingBarred(s, cell, b.home)) continue;
       let score = 0;
       if (r.from.length) {
         const st = r.from[0]![0], x = c.stock[st]!;
@@ -662,7 +662,7 @@ function roam(s: State, L: Land, c: Ctx): void {
   // A tenant tied to the land may not go. One that holds of a lord and could do better elsewhere, in want or reaching
   // for ground of its own, first tells its lord it will leave, and waits a season to see what comes of it.
   const manor = s.bonds.find(x => x.about === 'bond' && x.a === b.id && x.way === 'manor');
-  if (manor && manor.basis === 'bound' && !outcast) return;
+  if (manor && (manor.basis === 'bound' || boundByLaw(s)) && !outcast) return;
   const reaching = !!manor && c.drive > 0.3 && s.t - b.since >= 26;
   if (!outcast && !reaching && (c.pressNeed !== BY_HARM[0] || s.t - b.since < 26)) return;
   const here = prospect(s, L, c, b.home);
@@ -673,7 +673,7 @@ function roam(s: State, L: Land, c: Ctx): void {
     if (p > bestP) { bestP = p; best = cell; }
   }
   if (best < 0) return;
-  if (manor && !outcast) {
+  if (manor && !outcast && !freeByLaw(s)) {
     if (b.threat < 0) { b.threat = s.t; rec(s, 'tell', { a: b.id, b: manor.b, cell: best }); return; }
     if (s.t - b.threat < P.wait) return;
     b.threat = -1;

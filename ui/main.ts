@@ -3,7 +3,7 @@
 
 import { found } from '../sim/found.ts';
 import { advance } from '../sim/step.ts';
-import { ORD_WEEKS, audience, build, timberKind, whyNotBuild, cuts, hear, inscribeLaw, interventionAt, issueOrdinance, judgeOf, localOrder, localPower, openCourt, planesOf, setDial, setLaw, suretyFor, type Plane, type Ruling, type Width } from '../sim/court/court.ts';
+import { ORD_WEEKS, audience, build, clearingBarred, freshLaws, timberKind, whyNotBuild, cuts, hear, inscribeLaw, interventionAt, issueOrdinance, judgeOf, localOrder, localPower, openCourt, planesOf, setDial, setLaw, suretyFor, type Plane, type Ruling, type Width } from '../sim/court/court.ts';
 import { askAhead, cover } from '../sim/value.ts';
 import { KINDS, NEEDS, P, RECIPES } from '../sim/tables.ts';
 import { grown, top } from '../sim/util.ts';
@@ -477,20 +477,16 @@ const RATE = { 0: 0, 1: 1 / 1.5, 5: 3, 20: 20 } as const;
 const capOf = (): number => P.hearings;
 
 const LAW_WORDS: Record<LawKey, [string, [string, string][]]> = {
-  credit: ['Credit & debt', [['strict', 'Strict'], ['ease', 'Ease'], ['forgive', 'Forgive']]],
-  tenure: ['Tenure & labour', [['custom', 'Custom'], ['commute', 'Commute'], ['lord', 'Lord’s hand']]],
-  inherit: ['Inheritance & commons', [['blood', 'Blood & open'], ['shared', 'Shared'], ['possession', 'Possession']]],
-  liability: ['Liability', [['individual', 'Individual'], ['kin', 'Kin'], ['body', 'Whole body']]],
-  jurisdiction: ['Jurisdiction', [['crown', 'Crown'], ['ground', 'Ground'], ['person', 'Person']]],
-  swords: ['The two swords', [['defer', 'Defer'], ['concordat', 'Concordat'], ['supremacy', 'Supremacy']]],
+  forest: ['Forest & clearing', [['free', 'Free clearing'], ['stinted', 'Stinted'], ['kings', 'King’s forest']]],
+  movement: ['Movement & ties', [['free', 'Free movement'], ['bound', 'Bound to the ground']]],
+  credit: ['Credit & debt', [['enforce', 'Enforce'], ['mercy', 'Mercy'], ['custom', 'Local custom']]],
+  swords: ['The two swords', [['immunity', 'Clerical immunity'], ['concordat', 'Concordat'], ['supremacy', 'Royal supremacy']]],
 };
 const LAW_HINT: Record<LawKey, string> = {
-  credit: 'Whether debts are held to, put off, or let go; and what is lifted from a house in want.',
-  tenure: 'Lords’ demands for labour, and tenants who would leave.',
-  inherit: 'Claims by blood, sole rights, and ground one holds and another wants.',
-  liability: 'Who answers: the one who did it, their kin, or the body they belong to.',
-  jurisdiction: 'Whoever judges what no other law reaches: your own assize, the lord of the ground, or the lord of the one accused.',
-  swords: 'The holy: defer to the church, strike a bargain with it, or rule over it.',
+  forest: 'Free: more timber and fields, and faster floods below. Stinted: no place cleared past its stint. King’s forest: no clearing but on a house’s own ground.',
+  movement: 'Free: tenants leave bad lords at once. Bound: they may not leave, lords keep their boon-work, and tenants in want hold it against you.',
+  credit: 'Enforce: debts are held to. Mercy: put off, pardoned, or stood surety for; burdens lifted from houses in want. Local custom: the local lord or body decides.',
+  swords: 'The holy: leave it to the church, strike a bargain with it, or rule over it.',
 };
 const DIALS: { key: keyof Dials; name: string; vals: (number | string)[]; show: (v: any) => string; hint: string }[] = [
   { key: 'share', name: 'Crown’s share', vals: [0, 0.05, 0.1, 0.15], show: v => `${Math.round(v * 100)}%`, hint: 'Of every harvest, to the bailiffs. Fills the store; weighs on every house.' },
@@ -626,7 +622,8 @@ function lawsDeck(): string {
   const pol = s.court!.policy;
   return (Object.keys(LAW_WORDS) as LawKey[]).map(k => {
     const [name, opts] = LAW_WORDS[k], set = pol.lawSetAt[k] >= 0, warm = set && s.t - pol.lawSetAt[k] < 52;
-    return `<div class="law" title="${esc(LAW_HINT[k])}"><div class="lname"><strong>${name}</strong>${pol.inscribed[k] ? ' <span class="gilt" title="On the roll">◉</span>' : ''}${warm ? ' <span class="dot" title="Laid down within the year: changing it now is caprice"></span>' : ''}<span class="small soft">${set ? `${pol.lawHits[k]} settled` : 'not laid down'}</span></div>
+    return `<div class="law"><div class="lname"><strong>${name}</strong>${pol.inscribed[k] ? ' <span class="gilt" title="On the roll">◉</span>' : ''}${warm ? ' <span class="dot" title="Laid down within the year: changing it now is caprice"></span>' : ''}<span class="small soft">${!set ? 'not laid down' : k === 'forest' ? `${s.cells.filter((_x, i) => clearingBarred(s, i, -1)).length} places closed to clearing` : `${pol.lawHits[k]} settled`}</span></div>
+      <div class="small soft">${esc(LAW_HINT[k])}</div>
       <div class="seg">${opts.map(([v, t]) => `<button data-law="${k}:${v}" aria-pressed="${set && pol.laws[k] === v}">${t}</button>`).join('')}</div></div>`;
   }).join('');
 }
@@ -717,7 +714,7 @@ function closeEra(): void {
 const SAVE = 'vicarius-regis-realm';
 function save(): void {
   if (!s || mode === 'regency' || !document.getElementById('view')) return;
-  try { localStorage.setItem(SAVE, JSON.stringify({ v: 1, mode, s, events: R.events.slice(-300), feed: feed.slice(-200), hist, eras, eraFrom, eraStats, watched: [...watched], lens, deck })); } catch { /* full or blocked: the realm simply is not kept */ }
+  try { localStorage.setItem(SAVE, JSON.stringify({ v: 2, mode, s, events: R.events.slice(-300), feed: feed.slice(-200), hist, eras, eraFrom, eraStats, watched: [...watched], lens, deck })); } catch { /* full or blocked: the realm simply is not kept */ }
 }
 function saved(): { mode: Mode; t: number; seed: number; souls: number } | null {
   try { const raw = localStorage.getItem(SAVE); if (!raw) return null; const j = JSON.parse(raw); return { mode: j.mode, t: j.s.t, seed: j.s.seed, souls: j.s.people.filter((p: { alive: boolean }) => p.alive).length }; } catch { return null; }
@@ -725,7 +722,9 @@ function saved(): { mode: Mode; t: number; seed: number; souls: number } | null 
 function resume(): void {
   try {
     const j = JSON.parse(localStorage.getItem(SAVE)!);
-    s = j.s; R = new Readers(); R.events = j.events ?? []; mode = j.mode; feed = j.feed ?? []; hist = j.hist ?? []; eras = j.eras ?? []; eraFrom = j.eraFrom ?? 0; eraStats = j.eraStats ?? eraStats;
+    s = j.s; R = new Readers();
+    // A realm kept under the old laws keeps its works and its history, but its laws begin again.
+    if (s.court && !('forest' in s.court.policy.laws)) Object.assign(s.court.policy, freshLaws()); R.events = j.events ?? []; mode = j.mode; feed = j.feed ?? []; hist = j.hist ?? []; eras = j.eras ?? []; eraFrom = j.eraFrom ?? 0; eraStats = j.eraStats ?? eraStats;
     watched.clear(); for (const w of j.watched ?? []) watched.add(w);
     lens = j.lens ?? 'want'; deck = j.deck ?? 'laws';
     over = ''; speed = 0; picked = -1; view = 'map'; openGauge = ''; zoom = 1; panX = 0; panY = 0;

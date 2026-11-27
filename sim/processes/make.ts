@@ -2,6 +2,7 @@
 // Last week's choices are carried out against what is there now.
 
 import { AIDERS, Kn, NS, P, Rc, St } from '../tables.ts';
+import { clearingBarred } from '../court/court.ts';
 import { around, dist, head, near, sheltered, hearthIndex, holdsByCell, kinOf, payRent, rec, struggle, tenancies, tie } from '../util.ts';
 import { bear } from './grow.ts';
 import type { Body, Bond, State, Work } from '../types.ts';
@@ -72,7 +73,7 @@ export function make(s: State): void {
       else if (sum >= P.held && guard && !over.some(h => h.a === b.id)) m *= struggle(s, kin, b, guard, s.nrec, 'need');
       if (m <= 1e-9) continue;
     }
-    if (c.works?.reserve && r.from.some(([st]) => (St[st]!.holds ?? 0) >= 0.5)) continue;
+    if (r.from.some(([st]) => (St[st]!.holds ?? 0) >= 0.5) && clearingBarred(s, j.w.cell, b.home)) continue;
     for (const [st, q] of r.from) { c.stock[st] = Math.max(0, c.stock[st]! - q * m); if (St[st]!.holds && St[st]!.holds! >= 0.5) { c.cleared += q * m; c.clearedBy = b.id; } }
     for (const [k, q] of r.inp) b.store[k] = Math.max(0, b.store[k]! - q * m);
     for (const [k, q] of r.out) b.store[k] = b.store[k]! + q * m;
