@@ -130,6 +130,17 @@ export function found(seed: number, t0 = 0, side = P.side, souls = P.souls): Sta
       bond(s, { about: 'bond', a: tenant, b: lord.id, on: bd.id, share: P.manorShare, boon: P.boon, due: 1e9, used: t0, basis: 'birth', way: 'manor' });
     }
   });
+  // Each lord also holds one or two pieces of ground far from his seat, among other men's tenants, so that whose
+  // ground it is and who lives around it do not agree.
+  for (const lord of s.bodies.filter(b => b.rank === 'lord')) {
+    const far = s.bonds.filter(bd => bd.about === 'land' && !s.bodies[bd.a]!.rank && dist(side, bd.cell, lord.home) >= 4)
+      .map(bd => ({ bd, v: u() })).sort((x, y) => x.v - y.v).slice(0, u() < 0.5 ? 1 : 2);
+    for (const { bd } of far) {
+      const tenant = bd.a;
+      bd.a = lord.id;
+      bond(s, { about: 'bond', a: tenant, b: lord.id, on: bd.id, share: P.manorShare, boon: P.boon, due: 1e9, used: t0, basis: 'birth', way: 'manor' });
+    }
+  }
   const pick = (ok: (b: (typeof s.bodies)[number]) => boolean): (typeof s.bodies)[number] | undefined => s.bodies.find(b => !taken.has(b.id) && !b.rank && b.members.some(i => s.people[i]!.sex === 0 && s.people[i]!.spouse >= 0) && ok(b));
   seats.forEach(([site], n) => {
     if (n % P.lordEvery !== 1) return;

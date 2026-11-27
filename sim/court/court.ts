@@ -179,7 +179,12 @@ export function localPowers(s: State, p: Petition): number[] {
     const m = s.bonds.find(x => x.about === 'bond' && x.a === X.id && x.way === 'manor');
     if (m && s.bodies[m.b]!.alive) out.push(m.b);
   }
-  return [...new Set(out)].filter(id => id !== p.by && id !== p.against || s.bodies[id]!.rank === 'lord').slice(0, 2);
+  // And whoever holds the ground where the matter lies, though neither party may answer to them.
+  const bd = p.bond >= 0 ? s.bonds.find(x => x.id === p.bond) : undefined;
+  let cell = p.cell ?? (bd?.about === 'land' ? bd.cell : -1);
+  if (cell < 0 && bd?.about === 'bond') { const root = s.bonds.find(x => x.id === bd.on); if (root?.about === 'land') cell = root.cell; }
+  if (cell >= 0) { const owner = s.bonds.find(x => x.about === 'land' && x.cell === cell && s.bodies[x.a]?.alive && s.bodies[x.a]!.rank === 'lord'); if (owner) out.push(owner.a); }
+  return [...new Set(out)].filter(id => id !== p.by && id !== p.against || s.bodies[id]!.rank === 'lord').slice(0, 3);
 }
 
 /** Who decides for a local power: a lord himself, or the head of a body of bodies. */
@@ -274,7 +279,17 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
   const by = s.bodies[p.by]!;
   // Left to one named power of two: that one decides.
   let via = -1;
-  if (cut.startsWith('remit:')) { via = Number(cut.slice(6)); cut = 'remit'; }
+  if (cut.startsWith('remit:')) {
+    via = Number(cut.slice(6)); cut = 'remit';
+    // The powers passed over resent it, and the one chosen over them.
+    for (const other of localPowers(s, p)) {
+      if (other === via) continue;
+      const who = judgeOf(s, other), chosen = judgeOf(s, via);
+      if (who < 0) continue;
+      grieve(c, who, P.harmPaid);
+      if (chosen >= 0) warm(s, who, chosen, -0.2);
+    }
+  }
   const powerFor = (): number => (via >= 0 ? via : localPower(s, p));
   if (p.reason === 'challenge') {
     const i = c.rules.findIndex(r => r.id === p.bond);
