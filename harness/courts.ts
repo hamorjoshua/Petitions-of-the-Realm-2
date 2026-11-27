@@ -3,7 +3,7 @@
 
 import { inherit } from '../sim/found.ts';
 import { advance } from '../sim/step.ts';
-import { SIDES, audience, cuts, hear, openCourt, planesOf, type Ruling, type Width } from '../sim/court/court.ts';
+import { FAVOUR, SIDES, audience, cuts, hear, openCourt, planesOf, type Ruling, type Width } from '../sim/court/court.ts';
 import { askAhead, cover } from '../sim/value.ts';
 import { NEEDS, P } from '../sim/tables.ts';
 import type { Petition, State } from '../sim/types.ts';
@@ -28,7 +28,30 @@ function judge(s: State, p: Petition): string {
 /** What favours whoever asks. */
 const grant = (s: State, p: Petition): string => (p.side === 'asks' ? (p.body !== undefined ? 'install' : 'charter') : p.side === 'fears' ? 'forbid' : p.burdens.length ? 'give' : p.reason === 'challenge' ? 'strike' : p.bond < 0 ? 'give' : cuts(s, p).includes('turn') ? 'turn' : p.side === 'owed' ? 'enforce' : 'strike');
 
+/** A steward: takes the middle way where there is one, keeps to its own precedent, gives from the store only while it is
+ * well filled, and makes a rule only of a kind of matter it has already ruled on the same way. */
+const MIDDLE = ['inquire', 'commute', 'abjure', 'penance'];
+function steward(): Script {
+  const ruled = new Map<string, { fav: number; n: number }>();
+  const asked = new Set<number>();
+  return (s, seated) => seated.slice(0, P.hearings).map(p => {
+    const c = cuts(s, p), court = s.court!, fav = (x: string) => FAVOUR[p.side]?.[x.split(':')[0]!] ?? 0.5;
+    const full = court.store.reduce((x, y) => x + y, 0) > 0.6 * court.store0;
+    const allowed = c.filter(x => x !== 'give' || full);
+    let cut = MIDDLE.find(m => allowed.includes(m) && !(m === 'inquire' && asked.has(p.id)));
+    if (cut === 'inquire') asked.add(p.id);
+    const prior = court.precedent[p.shape];
+    if (!cut && prior && s.t - prior.t <= 52) cut = allowed.slice().sort((a, b) => Math.abs(fav(a) - prior.fav) - Math.abs(fav(b) - prior.fav))[0];
+    if (!cut) { const j = judge(s, p); cut = allowed.includes(j) ? j : allowed[0]!; }
+    const r = ruled.get(p.shape), same = r && Math.abs(r.fav - fav(cut)) < 0.5;
+    ruled.set(p.shape, { fav: fav(cut), n: same ? r!.n + 1 : 1 });
+    const width: Width = cut === 'inquire' || !same ? 'case' : r!.n >= 3 ? 'realm' : 'body';
+    return { petition: p.id, cut, width };
+  });
+}
+
 const COURTS: Record<string, () => Script> = {
+  steward,
   'hears nobody': () => () => [],
   'grants everything': () => (s, seated) => seated.slice(0, P.hearings).map(p => ({ petition: p.id, cut: grant(s, p), width: 'case' as Width })),
   'rules at random': () => (s, seated) => seated.slice(0, P.hearings).map(p => { const c = cuts(s, p); return { petition: p.id, cut: c[(p.id * 7 + s.t) % c.length]!, width: (['case', 'body', 'realm'] as Width[])[(p.id + s.t) % 3]! }; }),
@@ -77,6 +100,7 @@ for (const seed of seeds) {
     row.declined += c.declined;
     row.chilled += c.chilled;
     (row as any).caprice = ((row as any).caprice ?? 0) + c.caprice;
+    (row as any).leg = ((row as any).leg ?? 0) + c.legitimacy; (row as any).reach = ((row as any).reach ?? 0) + c.reach;
     row.store += c.store.reduce((x, y) => x + y, 0) / Math.max(1, store0);
     row.wordKept += c.wordsKept; row.wordBroke += c.wordsBroken;
     const hs = s.bodies.filter(b => b.alive && !b.parts.length && b.plea.length);
@@ -91,6 +115,7 @@ console.log('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 for (const [name, r] of Object.entries(rows)) console.log(`| ${name} | ${r.kept} of ${n} | ${(r.standing / n).toFixed(1)} | ${Math.round(r.arose / n)} | ${Math.round(r.heard / n)} | ${Math.round(r.below / n)} | ${(r.rules / n).toFixed(1)} | ${r.heard ? Math.round((100 * r.repeats) / r.heard) + '%' : '-'} | ${r.heard ? Math.round((100 * r.top5) / r.heard) + '%' : '-'} | ${(r.shapes / n).toFixed(1)} | ${Math.round((100 * r.souls) / n)}% |`);
 
 console.log('\nWho came, and what houses had come to expect of the court by the end (how likely it is to find for the one who asks):\n');
+console.log('\nThe Crown at the end, legitimacy / reach:', Object.entries(rows).map(([k, r]) => `${k} ${(((r as any).leg ?? 0) / n).toFixed(1)} / ${(((r as any).reach ?? 0) / n).toFixed(1)}`).join('; '));
 console.log(`| Court | Caprice at end | Crown's store left | The regent's word kept / broken | Dealings the law stood in the way of | Kept their own counsel | ${SIDES.map(x => ({ owed: 'Owed on a bond', owes: 'Bound by a bond', outside: 'Shut out by a bond', bare: 'In bare want' })[x]).join(' | ')} |`);
 console.log('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |');
 for (const [name, r] of Object.entries(rows)) console.log(`| ${name} | ${(((r as any).caprice ?? 0) / n).toFixed(1)} | ${Math.round((100 * r.store) / n)}% | ${(r.wordKept / n).toFixed(1)} / ${(r.wordBroke / n).toFixed(1)} | ${Math.round(r.chilled / n)} | ${Math.round(r.declined / n)} | ${r.plea.map(v => (v / n).toFixed(2)).join(' | ')} |`);

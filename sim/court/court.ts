@@ -56,7 +56,7 @@ export function formOf(byId: Map<number, Bond>, b: Bond | undefined, depth = 0):
 
 export const SIDES = ['owed', 'owes', 'outside', 'bare'] as const;
 /** How far a cut finds for the one who asked, by how they stood. */
-const FAVOUR: Record<string, Record<string, number>> = {
+export const FAVOUR: Record<string, Record<string, number>> = {
   owed: { pardon: 0, enforce: 1, redeem: 1, answer: 0.9, expel: 0.7, bar: 0.6, surety: 0.6, remit: 0.5, part: 0.5, stay: 0.2, strike: 0 },
   owes: { strike: 1, redeem: 1, give: 1, rival: 0.9, stay: 0.7, ease: 0.7, surety: 0.6, part: 0.5, remit: 0.5, enforce: 0, dismiss: 0 },
   outside: { turn: 1, strike: 0.9, rival: 0.9, part: 0.6, remit: 0.5, enforce: 0 },
