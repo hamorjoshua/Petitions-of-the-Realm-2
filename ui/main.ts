@@ -5,11 +5,11 @@ import { found } from '../sim/found.ts';
 import { advance } from '../sim/step.ts';
 import { levies, ORD_WEEKS, actOn, freshDials, moveSeat, whyNotSeat, powersOf, underPower, whyNotAct, audience, build, clearingBarred, freshLaws, timberKind, whyNotBuild, cuts, hear, inscribeLaw, interventionAt, issueOrdinance, judgeOf, localOrder, localPower, openCourt, planesOf, setDial, setLaw, suretyFor, type Plane, type Ruling, type Width } from '../sim/court/court.ts';
 import { askAhead, cover } from '../sim/value.ts';
-import { KINDS, NEEDS, P, RECIPES } from '../sim/tables.ts';
+import { KINDS, NEEDS, P, RECIPES, St } from '../sim/tables.ts';
 import { grown, top } from '../sim/util.ts';
 import { Readers, wayWords } from '../readers/readers.ts';
 import { placeName } from '../readers/names.ts';
-import { borders, geometry, polyPath, rivers } from './map.ts';
+import { edgesWhere, geometry, hills, polyPath, rand, ripples, rivers, SYMBOLS, trees } from './map.ts';
 import { route } from '../sim/processes/move.ts';
 import type { Body, Bond, Dials, LawKey, LocalOrder, Mode, OrdKey, Petition, PowerAct, State, WorkKey } from '../sim/types.ts';
 
@@ -524,7 +524,7 @@ const LEGEND: Record<Lens, string> = {
   jurisdiction: 'Each colour is one body of houses, and whoever leads it.',
   ecology: 'Darker red: soil worn out or ground flooded.',
 };
-const GLYPHS = 'Works: ▣ granary · ═ dike · ♣ forest reserve · ⚑ bailiff’s post · ✝ chapel. Marks: ♛ the Crown’s seat · ✦ shrine · ✕ interdict · ≈ flood · ϟ feud · ◉ watched · blue edge: river · pulsing: aggrieved';
+const GLYPHS = 'Keeps are lords’ seats, steeples parishes, huts hamlets; the crown marks your seat; a star is a shrine, a cross an interdict, waves a flood, crossed blades a feud, a ring what you watch. Small marks beside a place are your works. Dotted ways are tracks, dashed lines lordships, ink trees standing woods; red outlines pulse where houses are aggrieved.';
 
 const storeTotal = (): number => (s.court ? s.court.store.reduce((x, y) => x + y, 0) : 0);
 /** Up, down or level against a season ago. */
@@ -577,57 +577,93 @@ function lordAt(at: Map<number, Body[]>, i: number): number {
   const tops = l.map(b => top(s, b)).map(t => (t.rank === 'lord' || t.rank === 'priest' || t.parts.length ? t.id : -1));
   return tops.sort((x, y) => tops.filter(t => t === y).length - tops.filter(t => t === x).length || x - y)[0]!;
 }
+/** A heraldic palette for lordships: woad, ochre, sage, terracotta, plum, slate. */
+const HERALDRY = ['#3d5f7a', '#b07d2b', '#7d8f5a', '#b5643c', '#6e4a6b', '#5d6870'];
+const herald = (id: number): string => HERALDRY[((id % HERALDRY.length) + HERALDRY.length) % HERALDRY.length]!;
 function mapView(): string {
   const hs = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length), at = new Map<number, Body[]>();
   for (const b of hs) { const l = at.get(b.home); if (l) l.push(b); else at.set(b.home, [b]); }
-  const c = s.court, g = geometry(s.side, s.seed);
+  const ranked = new Map<number, Body>();
+  for (const b of s.bodies) if (b.alive && b.rank && !ranked.has(b.home)) ranked.set(b.home, b);
+  const c = s.court, g = geometry(s.side, s.seed), N = s.side;
   if (lowFor !== `${s.seed}:${s.side}`) { lowOf = route(s, () => 1).low; lowFor = `${s.seed}:${s.side}`; }
+  const xy = (i: number): [number, number] => [i % N, Math.floor(i / N)];
+  const highs = s.cells.map(x => x.high), hsort = highs.slice().sort((a, b) => a - b), lo = hsort[0]!, hi = hsort[hsort.length - 1]!;
+  const q = (p: number): number => hsort[Math.floor(p * (hsort.length - 1))]!;
+  // The coast: the outermost ring is water, and low places just inside it that touch it; wherever nobody lives.
+  const seat0 = c?.seat ?? -1;
+  const settled = (i: number): boolean => (at.get(i)?.length ?? 0) > 0 || ranked.has(i) || i === seat0 || !!s.cells[i]!.works || !!s.cells[i]!.shrine;
+  const ring = (i: number): number => { const [x, y] = xy(i); return Math.min(x, y, N - 1 - x, N - 1 - y); };
+  const wet = new Set<number>();
+  for (let i = 0; i < s.cells.length; i++) if (ring(i) === 0 && !settled(i)) wet.add(i);
+  for (let i = 0; i < s.cells.length; i++) if (ring(i) === 1 && !settled(i) && highs[i]! <= q(0.12) && g.nbrs[i]!.some(j => wet.has(j))) wet.add(i);
+  const water = (i: number): boolean => wet.has(i);
   const val = (i: number): [number, string] => {
     const cell = s.cells[i]!, l = at.get(i) ?? [];
     if (lens === 'ecology') { const worn = Math.max(0, 1 - cell.soil / Math.max(0.01, cell.soil0)); return [Math.min(1, worn * 2.5 + Math.min(0.5, cell.flood * 2) + Math.min(0.3, cell.cleared / 200)), 'var(--seal)']; }
     if (lens === 'sacred') return [Math.min(1, cell.sanctity + (cell.shrine ? 0.4 : 0) + (cell.interdict > 0 ? 0.6 : 0)), cell.interdict > 0 ? 'var(--seal)' : 'var(--gilt)'];
+    if (lens === 'jurisdiction') { const L = land[i]!; return L < 0 ? [0, 'var(--soft)'] : [l.length ? 0.5 : 0.22, herald(L)]; }
     if (!l.length) return [0, 'var(--soft)'];
     if (lens === 'want') return [l.filter(b => cover(b.store, askAhead(s, b)).some((x, k) => NEEDS[k]!.harm >= 0.5 && x < P.short)).length / l.length, 'var(--seal)'];
-    if (lens === 'factions') return [c ? l.filter(b => (c.grief[b.id] ?? 0) >= P.aggrieved).length / l.length : 0, 'var(--seal)'];
-    { const L = lordAt(at, i); return L < 0 ? [0.15, 'var(--soft)'] : [0.55, `hsl(${(L * 67) % 360} 40% 50%)`]; }
+    return [c ? l.filter(b => (c.grief[b.id] ?? 0) >= P.aggrieved).length / l.length : 0, 'var(--seal)'];
   };
-  const valLand = (i: number): [number, string] => {
-    if (lens !== 'jurisdiction' || (at.get(i)?.length ?? 0) > 0) return val(i);
-    const L = land[i]!; return L < 0 ? [0, 'var(--soft)'] : [0.25, `hsl(${(L * 67) % 360} 40% 50%)`];
-  };
-  const highs = s.cells.map(x => x.high), lo = Math.min(...highs), hi = Math.max(...highs);
-  const flows = s.cells.map(x => x.flow).filter(f => f > 0).sort((a, b) => a - b), riverAt = flows.length ? flows[Math.floor(flows.length * 0.8)]! : Infinity;
-  // Each place belongs to the lordship of the nearest settled place within two steps: the lands the ink lines bound.
-  const land = s.cells.map((_x, i) => { let best = -1, bd = 9; for (const k of at.keys()) { const d = Math.max(Math.abs((k % s.side) - (i % s.side)), Math.abs(Math.floor(k / s.side) - Math.floor(i / s.side))); if (d <= 2 && (d < bd || (d === bd && k < best))) { bd = d; best = k; } } return best < 0 ? -1 : lordAt(at, best); });
+  // Each place belongs to the lordship of the nearest settled place within two steps.
+  const land = s.cells.map((_x, i) => { if (water(i)) return -2; let best = -1, bd = 9; for (const k of at.keys()) { const [kx, ky] = xy(k), [ix, iy] = xy(i), d = Math.max(Math.abs(kx - ix), Math.abs(ky - iy)); if (d <= 2 && (d < bd || (d === bd && k < best))) { bd = d; best = k; } } return best < 0 ? -1 : lordAt(at, best); });
+  const flows = s.cells.map(x => x.flow).filter(v => v > 0).sort((a, b) => a - b), riverAt = flows.length ? flows[Math.floor(flows.length * 0.78)]! : Infinity;
   const seat = c?.seat ?? s.bodies.find(b => b.alive && b.rank === 'bailiff')?.home ?? Math.floor(s.cells.length / 2);
   const feud = new Set<number>();
-  for (const a of hs) for (const b of hs) if (a.id < b.id && Math.abs((a.home % s.side) - (b.home % s.side)) <= 1 && Math.abs(Math.floor(a.home / s.side) - Math.floor(b.home / s.side)) <= 1 && (s.ties[a.id]?.[b.id] ?? 0) <= -0.6) { feud.add(a.home); feud.add(b.home); }
+  for (const a of hs) for (const b of hs) if (a.id < b.id && Math.abs((a.home % N) - (b.home % N)) <= 1 && Math.abs(Math.floor(a.home / N) - Math.floor(b.home / N)) <= 1 && (s.ties[a.id]?.[b.id] ?? 0) <= -0.6) { feud.add(a.home); feud.add(b.home); }
   const watchHere = (i: number): boolean => watched.has(`c:${i}`) || (at.get(i) ?? []).some(b => watched.has(`b:${b.id}`));
+  const woodsMax = Math.max(1e-6, ...s.cells.map(x => x.stock.reduce((a, v, st) => a + ((St[st]!.holds ?? 0) >= 0.5 ? v : 0), 0)));
   const polys = g.polys.map((poly, i) => {
-    const [v, col] = valLand(i), h = Math.round(((s.cells[i]!.high - lo) / Math.max(1e-6, hi - lo)) * 30);
+    if (water(i)) return `<polygon data-cell="${i}" class="water${i === picked ? ' on' : ''}" points="${polyPath(poly)}"><title>${esc(cellWords(i))}</title></polygon>`;
+    const [v, col] = val(i), h = Math.round(((highs[i]! - lo) / Math.max(1e-6, hi - lo)) * 26);
     const sore = c && (at.get(i) ?? []).some(b => (c.grief[b.id] ?? 0) >= P.aggrieved);
-    return `<polygon data-cell="${i}" class="${i === picked ? 'on' : ''}${sore ? ' sore' : ''}" points="${polyPath(poly)}" style="fill:color-mix(in srgb, ${col} ${Math.round(v * 100)}%, color-mix(in srgb, var(--hill) ${h}%, var(--land)))"><title>${esc(cellWords(i))}</title></polygon>`;
+    return `<polygon data-cell="${i}" class="${i === picked ? 'on' : ''}${sore ? ' sore' : ''}" points="${polyPath(poly)}" style="fill:color-mix(in srgb, ${col} ${Math.round(v * 70)}%, color-mix(in srgb, var(--hill) ${h}%, var(--land)))"><title>${esc(cellWords(i))}</title></polygon>`;
   }).join('');
-  const rv = rivers(g, lowOf, s.cells.map(x => x.flow), riverAt).map(r => `<path d="${r.d}" style="stroke-width:${r.w.toFixed(3)}"/>`).join('');
-  const marks = g.pts.map((pt, i) => {
-    const cell = s.cells[i]!, n = at.get(i)?.length ?? 0, out: string[] = [];
-    const [x, y] = pt, T = (cls: string, t: string, dx = 0, dy = 0, size = 0.32): string => `<text class="${cls}" x="${(x + dx).toFixed(2)}" y="${(y + dy).toFixed(2)}" font-size="${size}">${t}</text>`;
-    if (n) out.push(`<circle class="hamlet" cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${(0.07 + 0.025 * Math.min(6, n)).toFixed(3)}"/>`, n > 1 ? T('count', String(n), 0, 0.33, 0.22) : '');
-    if (i === seat) out.push(T('g-seat', '♛', 0, -0.2, 0.38));
-    const works = cell.works ? WORKS.filter(([k]) => cell.works![k]).map(w => w[2]).join('') : '';
-    if (works) out.push(T('g-work', works, 0.28, -0.2, 0.24));
-    const flags = [cell.shrine ? '<tspan class="g-shrine">✦</tspan>' : '', cell.interdict > 0 ? '<tspan class="g-inter">✕</tspan>' : '', cell.flood > 0 ? '<tspan class="g-flood">≈</tspan>' : '', feud.has(i) ? '<tspan class="g-feud">ϟ</tspan>' : ''].join('');
-    if (flags) out.push(`<text class="flags" x="${(x - 0.3).toFixed(2)}" y="${(y - 0.2).toFixed(2)}" font-size="0.24">${flags}</text>`);
-    if (watchHere(i)) out.push(`<circle class="g-watch" cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="0.3"/>`);
+  // Terrain: hills on the highest ground, trees where the woods still stand (they go as they are cleared).
+  const terrain = g.pts.map((pt, i) => {
+    if (water(i)) return '';
+    const r = rand(s.seed * 131 + i), out: string[] = [];
+    if (highs[i]! >= q(0.75)) out.push(hills(pt, highs[i]! >= q(0.9) ? 3 : 2, r));
+    const woods = s.cells[i]!.stock.reduce((a, v, st) => a + ((St[st]!.holds ?? 0) >= 0.5 ? v : 0), 0), nt = Math.round((4 * woods) / woodsMax);
+    if (nt > 0 && !settled(i)) out.push(trees(pt, nt, r)); else if (nt > 1) out.push(trees([pt[0] + 0.1, pt[1] + 0.05], Math.min(2, nt - 1), r));
     return out.join('');
   }).join('');
-  return `<div class="map-viewport"><div class="map" style="transform:translate(${panX}px,${panY}px) scale(${zoom})"><svg viewBox="0 0 ${s.side} ${s.side}" preserveAspectRatio="xMidYMid meet">
-    <rect class="sea" x="-1" y="-1" width="${s.side + 2}" height="${s.side + 2}"/><g class="land">${polys}</g><path class="borders" d="${borders(g, i => land[i]!)}"/><g class="rivers">${rv}</g><g class="marks">${marks}</g></svg></div></div>`;
+  const rv = rivers(g, lowOf, s.cells.map(x => x.flow), riverAt, water);
+  const rivSvg = `<g class="banks">${rv.map(r => `<path d="${r.d}" style="stroke-width:${(r.w + 0.05).toFixed(3)}"/>`).join('')}</g><g class="rivers">${rv.map(r => `<path d="${r.d}" style="stroke-width:${r.w.toFixed(3)}"/>`).join('')}</g>`;
+  // Tracks: dotted ways between neighbouring places where enough people live to wear them.
+  const tracks = g.pts.map((pa, i) => g.nbrs[i]!.filter(j => j > i && (at.get(i)?.length ?? 0) > 0 && (at.get(j)?.length ?? 0) > 0 && (at.get(i)!.length + at.get(j)!.length) >= 3).map(j => { const pb = g.pts[j]!, mx = (pa[0] + pb[0]) / 2 + (pb[1] - pa[1]) * 0.12, my = (pa[1] + pb[1]) / 2 - (pb[0] - pa[0]) * 0.12; return `M${pa[0].toFixed(2)},${pa[1].toFixed(2)}Q${mx.toFixed(2)},${my.toFixed(2)} ${pb[0].toFixed(2)},${pb[1].toFixed(2)}`; }).join('')).join('');
+  const use = (id: string, x: number, y: number, size: number, cls = ''): string => `<use href="#s-${id}" x="${(x - size / 2).toFixed(3)}" y="${(y - size / 2).toFixed(3)}" width="${size}" height="${size}"${cls ? ` class="${cls}"` : ''}/>`;
+  const names: string[] = [];
+  const marks = g.pts.map((pt, i) => {
+    const cell = s.cells[i]!, n = at.get(i)?.length ?? 0, rk = ranked.get(i), out: string[] = [];
+    const [x, y] = pt;
+    if (rk?.rank === 'lord' || rk?.rank === 'bailiff') out.push(use('keep', x, y, 0.3, 'ink'));
+    else if (rk?.rank === 'priest') out.push(use('steeple', x, y, 0.32, 'ink'));
+    else if (n) for (let k = 0; k < Math.min(3, n); k++) out.push(use('hut', x - 0.09 * (Math.min(3, n) - 1) / 2 + 0.09 * k, y + (k % 2) * 0.05, 0.16, 'ink'));
+    if (i === seat) out.push(use('crown', x, y - 0.27, 0.22, 'gold'));
+    const ws = cell.works ? (['granary', 'dike', 'reserve', 'post', 'chapel'] as const).filter(k => cell.works![k]) : [];
+    ws.forEach((k, m) => out.push(use(({ granary: 'granary', dike: 'dike', reserve: 'tree', post: 'flag', chapel: 'cross' } as const)[k], x + 0.24 + m * 0.15, y - 0.22, 0.14, 'ink')));
+    const flags = [cell.shrine ? 'shrine' : '', cell.interdict > 0 ? 'interdict' : '', cell.flood > 0 ? 'flood' : '', feud.has(i) ? 'feud' : ''].filter(Boolean);
+    flags.forEach((k, m) => out.push(use(k, x - 0.26 - m * 0.15, y - 0.22, 0.14, k === 'shrine' ? 'gold' : k === 'flood' ? 'wet' : 'red')));
+    if (watchHere(i)) out.push(`<circle class="g-watch" cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="0.3"/>`);
+    if (rk || i === seat || n >= 3) names.push(`<text class="name${rk || i === seat ? ' major' : ''}" x="${x.toFixed(2)}" y="${(y + 0.36).toFixed(2)}">${esc(cellWords(i))}</text>`);
+    return out.join('');
+  }).join('');
+  const coast = edgesWhere(g, (i, j) => water(i) !== water(j));
+  const borders = edgesWhere(g, (i, j) => { const a = land[i]!, b = land[j]!; return a !== b && (a >= 0 || b >= 0); });
+  return `<div class="map-viewport"><div class="map" style="transform:translate(${panX}px,${panY}px) scale(${zoom})"><svg viewBox="0 0 ${N} ${N}" preserveAspectRatio="xMidYMid meet">
+    <defs>${SYMBOLS}</defs>
+    <rect class="sea" x="-2" y="-2" width="${N + 4}" height="${N + 4}"/><path class="ripples" d="${ripples(g, water)}"/>
+    <g class="land">${polys}</g><path class="coast" d="${coast}"/><g class="terrain">${terrain}</g>${rivSvg}<path class="tracks" d="${tracks}"/><path class="borders" d="${borders}"/>
+    <rect class="grain" x="0" y="0" width="${N}" height="${N}" filter="url(#grain)"/>
+    <g class="marks">${marks}</g><g class="names">${names.join('')}</g></svg></div></div>`;
 }
 /** The lens bar, and the key when asked for. */
 function lensBar(): string {
   const lenses = (['want', 'factions', 'sacred', 'jurisdiction', 'ecology'] as const).map(k => `<button data-lens="${k}" aria-pressed="${lens === k}">${({ want: 'Want', factions: 'Factions', sacred: 'Sacred', jurisdiction: 'Lords', ecology: 'Land' })[k]}</button>`).join('');
-  return `<div class="pills lensbar">${lenses}<button data-key="1" aria-pressed="${keyOpen}" aria-label="Map key">?</button>${zoom > 1.01 ? '<button data-reset="1">Fit</button>' : ''}</div>${keyOpen ? `<p class="key small">${LEGEND[lens]} ${GLYPHS} Ink lines: where lords’ lands meet.</p>` : ''}`;
+  return `<div class="pills lensbar">${lenses}<button data-key="1" aria-pressed="${keyOpen}" aria-label="Map key">?</button>${zoom > 1.01 ? '<button data-reset="1">Fit</button>' : ''}</div>${keyOpen ? `<p class="key small">${LEGEND[lens]} ${GLYPHS}</p>` : ''}`;
 }
 function sheet(): string {
   if (picked < 0 || view !== 'map') return '';
@@ -721,6 +757,15 @@ function shell(): void {
     <footer class="dock"><div class="half" id="deck"></div><nav class="tabs">${tabs.map(d => `<button data-deck="${d}" aria-pressed="${dockOpen && deck === d}">${({ dials: 'Dials', laws: 'Laws', works: 'Works', powers: 'Powers', chronicle: 'Chronicle' })[d]}</button>`).join('')}</nav></footer></div>`;
   zoom = fitZoom(); panX = 0; panY = 0;
   paint(true);
+  centreOn(s.court?.seat ?? Math.floor(s.cells.length / 2));
+}
+/** Pan so a place sits in the middle of the screen. */
+function centreOn(cell: number): void {
+  const pt = geometry(s.side, s.seed).pts[cell];
+  if (!pt) return;
+  const { m } = mapBox();
+  panX = -(pt[0] / s.side - 0.5) * m * zoom; panY = -(pt[1] / s.side - 0.5) * m * zoom;
+  clampPan(); applyZoom();
 }
 const swap = (id: string, html: string): void => { const el = document.getElementById(id); if (el && el.dataset.h !== html) { const top = el.scrollTop; el.innerHTML = html; el.dataset.h = html; el.scrollTop = top; } };
 function paint(force = false): void {
