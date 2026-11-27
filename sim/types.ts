@@ -184,6 +184,10 @@ export interface Dials { share: 0 | 0.05 | 0.1 | 0.15; relief: 'off' | 'starving
 export type OrdKey = 'stay' | 'granaries' | 'eyre' | 'penance';
 export type LocalOrder = 'relief' | 'circuit' | 'charter' | 'intervene';
 export type Mode = 'cockpit' | 'chronicle' | 'regency';
+export type PowerAct = 'warden' | 'revoke' | 'charter' | 'uncharter' | 'church' | 'hostage';
+/** What the Crown has done with a named power: a warden and how far his ambition has grown, whether he defies the Crown;
+ *  a charter of exemption, until when; a hostage held, until when; and when each act was last done. */
+export interface PowerState { warden?: number; ambition?: number; defiant?: boolean; charter?: number; hostage?: number; last?: Record<string, number> }
 export interface Policy {
   laws: Laws;
   /** When each law was last laid down (-1: never; a law never laid down settles nothing), whether it is on the roll, and what it has settled. */
@@ -194,6 +198,8 @@ export interface Policy {
   mode: Mode;
   /** The Crown has lost its hold: laws go unheeded and bailiffs send nothing up until it recovers. */
   weak: boolean;
+  /** Named powers the Crown has dealt with, by body id. */
+  powers?: Record<number, PowerState>;
 }
 export interface Court {
   policy: Policy;

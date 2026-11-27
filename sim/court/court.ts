@@ -10,7 +10,7 @@ import { BY_HARM, KINDS, Kn, NEEDS, NK, NN, P, Rc, St, TOIL } from '../tables.ts
 import { askAhead, cover, drive } from '../value.ts';
 import { around, bond, dist, setTie, fellows, grown, head, hearthIndex, kinOf, leaves, living, might, near, rec, top, warm } from '../util.ts';
 import { body, handOver, shift } from '../processes/gather.ts';
-import type { Body, Bond, Court, Dials, LawKey, Laws, LocalOrder, Mode, OrdKey, Petition, Policy, Rule, State, WorkKey } from '../types.ts';
+import type { Body, Bond, Court, Dials, LawKey, Laws, LocalOrder, Mode, OrdKey, Petition, Policy, PowerAct, Rule, State, WorkKey } from '../types.ts';
 
 export type Width = 'case' | 'body' | 'realm';
 export interface Ruling { petition: number; cut: string; width: Width }
@@ -1010,6 +1010,109 @@ function worksWeek(s: State, c: Court): void {
 /** Houses near a bailiff's post do not join a faction against the Crown. */
 const guarded = (s: State, b: Body): boolean => s.cells.some((cl, i) => cl.works?.post && dist(s.side, i, b.home) <= P.postReach);
 
+/** The powers of the realm: lords, parishes, and bodies of houses. */
+export function powersOf(s: State): Body[] {
+  return s.bodies.filter(b => b.alive && (b.rank === 'lord' || b.rank === 'priest' || (b.parts.length > 0 && b.of < 0)));
+}
+/** The hearths a power answers for: its own body's, or, for a lord or priest, those about its seat. */
+export function underPower(s: State, P0: Body): Body[] {
+  const hs = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length);
+  if (P0.parts.length) return hs.filter(h => top(s, h).id === P0.id);
+  return hs.filter(h => h.id !== P0.id && dist(s.side, h.home, P0.home) <= P.postReach);
+}
+/** The lord nearest a place, if any lies within reach. */
+const lordNear = (s: State, cell: number, not = -1): Body | undefined => s.bodies.filter(b => b.alive && b.rank === 'lord' && b.id !== not && dist(s.side, b.home, cell) <= P.far).sort((a, b) => dist(s.side, a.home, cell) - dist(s.side, b.home, cell) || a.id - b.id)[0];
+const shrineFor = (s: State, lord: Body): number => s.cells.findIndex((cl, i) => cl.shrine && cl.shrine.to !== lord.id && dist(s.side, i, lord.home) <= P.postReach);
+/** Why an act cannot be done with a power now, or '' if it can. */
+export function whyNotAct(s: State, id: number, act: PowerAct): string {
+  const c = s.court, B = s.bodies[id];
+  if (!c || c.policy.mode !== 'cockpit' || !B?.alive) return 'Gone';
+  const ps = c.policy.powers?.[id] ?? {}, last = ps.last?.[act] ?? -999;
+  if (s.t - last < 26) return `${26 - (s.t - last)}w left`;
+  if (act === 'warden') return B.rank !== 'lord' ? 'Lords only' : ps.warden !== undefined ? 'Already' : '';
+  if (act === 'revoke') return ps.warden === undefined ? 'Not a warden' : '';
+  if (act === 'charter') return (ps.charter ?? -1) > s.t ? 'Chartered' : '';
+  if (act === 'uncharter') return (ps.charter ?? -1) > s.t ? '' : 'No charter';
+  if (act === 'church') return B.rank === 'priest' ? (lordNear(s, B.home) ? '' : 'No lord near') : B.rank === 'lord' ? (shrineFor(s, B) >= 0 ? '' : 'No shrine near') : 'Lords & parishes';
+  return (ps.hostage ?? -1) > s.t ? 'Held' : '';
+}
+/** Deal with a named power. */
+export function actOn(s: State, id: number, act: PowerAct): boolean {
+  const c = s.court;
+  if (!c || whyNotAct(s, id, act)) return false;
+  const B = s.bodies[id]!, ps = ((c.policy.powers ??= {})[id] ??= {}), under = underPower(s, B);
+  (ps.last ??= {})[act] = s.t;
+  const crownBonds = (hs: Body[]) => s.bonds.filter(bd => bd.about === 'yield' && bd.way === 'crown' && hs.some(h => h.id === bd.a || h.id === id));
+  if (act === 'warden') {
+    // A warden keeps the king's peace in his country: obedience now, and a following of his own in time.
+    ps.warden = s.t; ps.ambition = 0; ps.defiant = false;
+    gauge(s, c, 'reach', 0.5, `a warden appointed`);
+    c.grief[id] = 0;
+  } else if (act === 'revoke') {
+    // Taking the office back from a man who has built a following costs what he has built.
+    const amb = ps.ambition ?? 0;
+    if (amb > 0.5 || ps.defiant) { gauge(s, c, 'reach', -1, 'a warden unseated'); for (const h of under) grieve(c, h.id, P.harmPaid); }
+    grieve(c, id, P.harmPaid * 3);
+    delete ps.warden; delete ps.ambition; delete ps.defiant;
+  } else if (act === 'charter') {
+    // Ten years free of the Crown's share for the power and those under it. Its neighbours see who is favoured.
+    ps.charter = s.t + 520;
+    for (const bd of crownBonds(under)) bd.easedTo = ps.charter;
+    for (const h of [B, ...under]) c.grief[h.id] = 0;
+    for (const x of around(hearthIndex(s), s.side, B.home, P.postReach + 1)) if (x.id !== id && !under.includes(x)) grieve(c, x.id, P.harmPaid / 2);
+  } else if (act === 'uncharter') {
+    ps.charter = s.t;
+    for (const bd of crownBonds(under)) bd.easedTo = s.t;
+    grieve(c, id, P.harmPaid * 2);
+    for (const x of around(hearthIndex(s), s.side, B.home, P.postReach + 1)) if (x.id !== id && !under.includes(x) && c.grief[x.id]) c.grief[x.id] = c.grief[x.id]! * 0.5;
+  } else if (act === 'church') {
+    if (B.rank === 'priest') {
+      // The Crown backs the parish against the lord who presses on it.
+      const L = lordNear(s, B.home)!;
+      gauge(s, c, 'legitimacy', 0.15, 'the parish backed against its lord');
+      grieve(c, L.id, P.harmPaid * 2); c.grief[id] = 0; warm(s, L.id, id, -0.2);
+      const lp = c.policy.powers?.[L.id]; if (lp?.ambition) lp.ambition = Math.max(0, lp.ambition - 0.2);
+      rec(s, 'judge', { a: id, b: L.id, way: 'power church' });
+    } else {
+      // The lord may take a share of a rich shrine's offerings: he is pleased; the pious are not.
+      const i = shrineFor(s, B), sh = s.cells[i]!.shrine!;
+      sh.to = id; c.grief[id] = 0;
+      grieve(c, sh.of, P.harmPaid * 2);
+      for (const x of around(hearthIndex(s), s.side, i, P.reach)) if ((head(s, x)?.credulous ?? 0) > 0.55) grieve(c, x.id, P.harmPaid / 2);
+      rec(s, 'judge', { a: id, cell: i, way: 'power shrine' });
+    }
+  } else {
+    // A hostage for a year: the power keeps the peace, and its ambition is checked; it does not forgive the Crown.
+    ps.hostage = s.t + 52;
+    if (ps.ambition !== undefined) { ps.ambition = Math.min(ps.ambition, 0.3); ps.defiant = false; }
+    for (const x of around(hearthIndex(s), s.side, B.home, 1)) if ((s.ties[id]?.[x.id] ?? 0) < -0.3) { setTie(s, id, x.id, -0.3); setTie(s, x.id, id, -0.3); }
+    grieve(c, id, P.harmPaid * 2);
+  }
+  rec(s, 'judge', { a: -1, b: id, way: `power ${act}` });
+  return true;
+}
+/** The powers' week: wardens keep their country quiet and grow in ambition; one grown too great defies the Crown. */
+function powersWeek(s: State, c: Court): void {
+  const all = c.policy.powers;
+  if (!all) return;
+  for (const [k, ps] of Object.entries(all)) {
+    const id = Number(k), B = s.bodies[id];
+    if (!B?.alive) { delete all[id]; continue; }
+    if (ps.warden === undefined) continue;
+    const under = underPower(s, B);
+    for (const h of under) if (c.grief[h.id]) c.grief[h.id] = c.grief[h.id]! * 0.97;
+    if (s.t % 13 === 0 && !ps.defiant && !c.policy.weak) gauge(s, c, 'reach', 0.05, 'wardens keeping the peace');
+    // Ambition grows with the country he keeps, unless a hostage of his is held.
+    if ((ps.hostage ?? -1) <= s.t) ps.ambition = (ps.ambition ?? 0) + P.wardenAmbition * (1 + under.length / 8);
+    if (!ps.defiant && (ps.ambition ?? 0) >= 1) { ps.defiant = true; rec(s, 'defy', { a: id, way: 'warden' }); }
+    if (ps.defiant) {
+      // A defiant warden keeps the Crown's share of his country for himself.
+      for (const bd of s.bonds) if (bd.about === 'yield' && bd.way === 'crown' && under.some(h => h.id === bd.a)) bd.easedTo = Math.max(bd.easedTo, s.t + 1);
+      gauge(s, c, 'reach', -0.02, `a defiant warden at #${B.home}`);
+    }
+  }
+}
+
 /** What intervening locally would do at a place, if anything. */
 export function interventionAt(s: State, cell: number): string {
   const cl = s.cells[cell]!;
@@ -1027,6 +1130,7 @@ function policyWeek(s: State, c: Court): void {
   const pol = c.policy;
   if (pol.mode === 'regency') return;
   worksWeek(s, c);
+  powersWeek(s, c);
   const idx = hearthIndex(s);
   // Relief from the Crown's store for houses below the floor; the granaries open wider while ordered.
   let st1 = storeOf(c);

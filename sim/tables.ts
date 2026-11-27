@@ -229,6 +229,8 @@ export const P = {
   workCost: { granary: 40, dike: 30, reserve: 15, post: 25, chapel: 30 } as Record<string, number>,
   /** Under a stinted forest law, how much clearing a place may carry before no more is allowed there. */
   stint: 60,
+  /** How fast a warden's ambition grows each week, before the size of his country is reckoned in: at 1 he defies the Crown. */
+  wardenAmbition: 0.004,
   dikeBank: 1.8, granaryKeep: 0.25, workReach: 1, postReach: 2, granaryFull: 10, granaryShare: 0.15,
   /** The fewest aggrieved houses, bound together, that make a faction, however small the realm. */
   factionMin: 3,

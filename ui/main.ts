@@ -3,13 +3,13 @@
 
 import { found } from '../sim/found.ts';
 import { advance } from '../sim/step.ts';
-import { ORD_WEEKS, audience, build, clearingBarred, freshLaws, timberKind, whyNotBuild, cuts, hear, inscribeLaw, interventionAt, issueOrdinance, judgeOf, localOrder, localPower, openCourt, planesOf, setDial, setLaw, suretyFor, type Plane, type Ruling, type Width } from '../sim/court/court.ts';
+import { ORD_WEEKS, actOn, powersOf, underPower, whyNotAct, audience, build, clearingBarred, freshLaws, timberKind, whyNotBuild, cuts, hear, inscribeLaw, interventionAt, issueOrdinance, judgeOf, localOrder, localPower, openCourt, planesOf, setDial, setLaw, suretyFor, type Plane, type Ruling, type Width } from '../sim/court/court.ts';
 import { askAhead, cover } from '../sim/value.ts';
 import { KINDS, NEEDS, P, RECIPES } from '../sim/tables.ts';
 import { grown, top } from '../sim/util.ts';
 import { Readers, wayWords } from '../readers/readers.ts';
 import { placeName } from '../readers/names.ts';
-import type { Bond, Dials, LawKey, LocalOrder, Mode, OrdKey, Petition, State, WorkKey } from '../sim/types.ts';
+import type { Bond, Dials, LawKey, LocalOrder, Mode, OrdKey, Petition, PowerAct, State, WorkKey } from '../sim/types.ts';
 
 const app = document.getElementById('app')!;
 const esc = (x: string): string => x.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -458,7 +458,8 @@ function passWeek(): void {
 let mode: Mode = 'cockpit';
 let speed: 0 | 1 | 5 | 20 = 0, acc = 0, lastFrame = 0, lastPaint = 0, dirty = false;
 type Lens = 'want' | 'factions' | 'sacred' | 'jurisdiction' | 'ecology';
-let view: 'map' | 'chronicle' = 'map', deck: 'laws' | 'treasury' | 'decrees' | 'works' = 'laws', lens: Lens = 'want';
+let view: 'map' | 'chronicle' = 'map', deck: 'laws' | 'treasury' | 'decrees' | 'works' | 'powers' = 'laws', lens: Lens = 'want';
+let focusPower = -1;
 let picked = -1, majorOnly = false;
 /** The gauges a season back, for the arrows; which gauge's breakdown is open; which gauges are flashing, until when. */
 let hist: { t: number; legitimacy: number; reach: number; store: number }[] = [];
@@ -604,7 +605,7 @@ function sheet(): string {
   const star = (key: string): string => `<button class="star" data-watch="${key}" aria-pressed="${watched.has(key)}" aria-label="${watched.has(key) ? 'Stop watching' : 'Watch'}">${watched.has(key) ? '★' : '☆'}</button>`;
   return `<div class="sheet"><div class="bar"><h3>${star(`c:${i}`)} ${esc(cellWords(i))}</h3><button data-cell="-1" aria-label="Close">✕</button></div>
     ${holy ? `<p class="small">${esc(Cap(holy))}.</p>` : ''}
-    ${l.length ? `<ul class="list small">${l.map(b => `<li>${star(`b:${b.id}`)} ${esc(Cap(house(b.id)))} <span class="soft">· ${b.members.filter(m => s.people[m]!.alive).length} souls${c && (c.grief[b.id] ?? 0) >= P.aggrieved ? ' · <span class="bad">aggrieved</span>' : ''}</span></li>`).join('')}</ul>` : '<p class="soft small">Nobody lives here.</p>'}
+    ${l.length ? `<ul class="list small">${l.map(b => `<li>${star(`b:${b.id}`)} ${esc(Cap(house(b.id)))}${c && mode === 'cockpit' && (b.rank === 'lord' || b.rank === 'priest' || top(s, b).id !== b.id) ? ` <button class="link" data-power="${b.rank ? b.id : top(s, b).id}">${b.rank ? 'deal with' : 'its body'}</button>` : ''} <span class="soft">· ${b.members.filter(m => s.people[m]!.alive).length} souls${c && (c.grief[b.id] ?? 0) >= P.aggrieved ? ' · <span class="bad">aggrieved</span>' : ''}</span></li>`).join('')}</ul>` : '<p class="soft small">Nobody lives here.</p>'}
     ${c && mode === 'cockpit' ? `<div class="label">Build here</div><div class="orders works">${WORKS.map(([k, name, g]) => { const why = whyNotBuild(s, i, k); return `<button data-build="${k}" ${why ? 'disabled' : ''}>${g} ${name}<span class="why">${why || `${P.workCost[k]} timber`}</span></button>`; }).join('')}</div>${cell.works?.granary ? `<p class="small soft">The granary holds ${Math.round(cell.works.granary.reduce((a, q) => a + q, 0))} grain.</p>` : ''}<div class="label">Orders</div>` : ''}
     ${c && mode === 'cockpit' ? `<div class="orders">${order('relief', 'Send relief', !l.length ? 'Nobody here' : inWant ? '' : 'No want')}${order('circuit', 'Send the bailiffs')}${order('charter', 'Remit the Crown’s share', !dues.length ? 'No dues' : dues.every(bd => bd.easedTo > s.t) ? 'Remitted' : '')}${order('intervene', ivWords ?? 'Intervene', iv ? '' : 'Nothing amiss')}</div>` : ''}</div>`;
 }
@@ -646,13 +647,36 @@ function worksDeck(): string {
     + `<div class="label">Built</div>${built.length ? `<ul class="list small">${built.map(([cl, i]) => `<li><button class="link" data-goto="${i}">${esc(cellWords(i))}</button>: ${WORKS.filter(([k]) => cl.works![k]).map(w => `${w[2]} ${w[1]}`).join(', ')}${cl.works!.granary ? ` <span class="soft">(${Math.round(cl.works!.granary.reduce((a, q) => a + q, 0))} grain)</span>` : ''}</li>`).join('')}</ul>` : '<p class="small soft">Nothing yet.</p>'}`;
 }
 
+/** A power, as the realm would name it. */
+function powerName(id: number): string {
+  const B = s.bodies[id]!;
+  if (B.rank) return Cap(house(id));
+  const n = underPower(s, B).length;
+  return `A body of ${n} houses${B.head >= 0 ? `, led by ${house(B.head)}` : ''}`;
+}
+function powersDeck(): string {
+  const c = s.court!, ps = c.policy.powers ?? {};
+  const list = powersOf(s).map(B => [B, underPower(s, B)] as const).sort((a, b) => (b[0].id === focusPower ? 1 : 0) - (a[0].id === focusPower ? 1 : 0) || b[1].length - a[1].length || a[0].id - b[0].id);
+  const act = (id: number, a: PowerAct, t: string): string => { const why = whyNotAct(s, id, a); return `<button data-act="${id}:${a}" ${why ? 'disabled' : ''}>${t}${why ? `<span class="why">${why}</span>` : ''}</button>`; };
+  return `<p class="small soft">Lords, parishes and bodies of houses. What you grant them buys loyalty, and what you give a lord he may turn against you.</p>` + list.map(([B, under]) => {
+    const p = ps[B.id] ?? {}, sore = under.filter(h => (c.grief[h.id] ?? 0) >= P.aggrieved).length + ((c.grief[B.id] ?? 0) >= P.aggrieved ? 1 : 0);
+    const kind = B.rank === 'lord' ? 'lord' : B.rank === 'priest' ? 'parish' : 'body of houses';
+    const flags = [p.warden !== undefined ? `<span class="${p.defiant ? 'bad' : 'gilt'}">${p.defiant ? 'Defiant warden' : 'Warden'}</span>` : '', (p.charter ?? -1) > s.t ? `<span class="gilt">Chartered, ${Math.ceil((p.charter! - s.t) / 52)}y left</span>` : '', (p.hostage ?? -1) > s.t ? `<span>Hostage held, ${p.hostage! - s.t}w</span>` : '', sore ? `<span class="bad">${sore} aggrieved</span>` : ''].filter(Boolean).join(' · ');
+    const church = B.rank === 'priest' ? 'Back the parish against its lord' : B.rank === 'lord' ? 'Let him tax a shrine' : '';
+    return `<div class="power${B.id === focusPower ? ' focus' : ''}"><div class="lname"><strong><button class="link" data-goto="${B.home}">${esc(powerName(B.id))}</button></strong><span class="small soft">${kind}, ${under.length === 1 ? 'one house' : `${under.length} houses`}</span></div>
+      ${flags ? `<div class="small">${flags}</div>` : ''}
+      ${p.warden !== undefined ? `<div class="small soft">Ambition</div><progress class="amb${p.defiant ? ' over' : ''}" max="1" value="${Math.min(1, p.ambition ?? 0)}"></progress>` : ''}
+      <div class="orders">${B.rank === 'lord' ? (p.warden === undefined ? act(B.id, 'warden', 'Appoint warden') : act(B.id, 'revoke', 'Revoke the wardenship')) : ''}${(p.charter ?? -1) > s.t ? act(B.id, 'uncharter', 'Revoke the charter') : act(B.id, 'charter', 'Grant a charter')}${church ? act(B.id, 'church', church) : ''}${act(B.id, 'hostage', 'Demand a hostage')}</div></div>`;
+  }).join('');
+}
+
 function shell(): void {
   const live = mode === 'cockpit';
   document.body.classList.add('cockpit-on');
   app.innerHTML = `<div class="cockpit"><div id="strip"></div>
     <nav class="tabs vt">${(['map', 'chronicle'] as const).map(v => `<button data-view="${v}" aria-pressed="${view === v}">${v === 'map' ? 'Map' : 'Chronicle'}</button>`).join('')}</nav>
     <div class="viewwrap"><main class="view" id="view"></main><div id="sheet"></div></div>
-    ${live ? `<footer class="deck"><nav class="tabs">${(['laws', 'treasury', 'decrees', 'works'] as const).map(d => `<button data-deck="${d}" aria-pressed="${deck === d}">${({ laws: 'Laws', treasury: 'Treasury', decrees: 'Decrees', works: 'Works' })[d]}</button>`).join('')}</nav><div class="deckin" id="deck"></div></footer>` : ''}</div>`;
+    ${live ? `<footer class="deck"><nav class="tabs">${(['laws', 'treasury', 'decrees', 'works', 'powers'] as const).map(d => `<button data-deck="${d}" aria-pressed="${deck === d}">${({ laws: 'Laws', treasury: 'Treasury', decrees: 'Decrees', works: 'Works', powers: 'Powers' })[d]}</button>`).join('')}</nav><div class="deckin" id="deck"></div></footer>` : ''}</div>`;
   paint(true);
 }
 const swap = (id: string, html: string): void => { const el = document.getElementById(id); if (el && el.dataset.h !== html) { const top = el.scrollTop; el.innerHTML = html; el.dataset.h = html; el.scrollTop = top; } };
@@ -663,7 +687,7 @@ function paint(force = false): void {
   swap('strip', strip());
   if (!gesturing) swap('view', view === 'map' ? mapView() : chronicleView());
   swap('sheet', sheet());
-  if (s.court && mode === 'cockpit') swap('deck', deck === 'laws' ? lawsDeck() : deck === 'treasury' ? treasuryDeck() : deck === 'decrees' ? decreesDeck() : worksDeck());
+  if (s.court && mode === 'cockpit') swap('deck', deck === 'laws' ? lawsDeck() : deck === 'treasury' ? treasuryDeck() : deck === 'decrees' ? decreesDeck() : deck === 'works' ? worksDeck() : powersDeck());
 }
 
 /** One week of the living realm: the court's reckoning, the realm lives, and the next week's matters are settled below by the laws. */
@@ -802,6 +826,16 @@ function cockpitClick(b: HTMLButtonElement): boolean {
   if (b.dataset.lens) { lens = b.dataset.lens as Lens; paint(); return true; }
   if (b.dataset.reset) { zoom = 1; panX = 0; panY = 0; paint(); return true; }
   if (b.dataset.cell !== undefined) { picked = Number(b.dataset.cell); paint(); return true; }
+  if (b.dataset.power !== undefined) { focusPower = Number(b.dataset.power); deck = 'powers'; paint(); document.getElementById('deck')?.scrollTo(0, 0); return true; }
+  if (b.dataset.act) {
+    const [id, a] = b.dataset.act.split(':') as [string, PowerAct];
+    const leg0 = c?.legitimacy ?? 0, reach0 = c?.reach ?? 0;
+    if (actOn(s, Number(id), a)) {
+      doFlash({ ...(c!.legitimacy > leg0 ? { legitimacy: 'good' as const } : c!.legitimacy < leg0 ? { legitimacy: 'bad' as const } : {}), ...(c!.reach > reach0 ? { reach: 'good' as const } : c!.reach < reach0 ? { reach: 'bad' as const } : {}) });
+      feed.push({ t: s.t, text: `You dealt with ${esc(powerName(Number(id)))}: <strong>${esc(b.textContent?.replace(/\d+w left.*/, '') ?? a)}</strong>.`, major: true });
+    }
+    paint(); return true;
+  }
   if (b.dataset.goto !== undefined) { picked = Number(b.dataset.goto); view = 'map'; paint(); return true; }
   if (b.dataset.major !== undefined) { majorOnly = b.dataset.major === '1'; paint(); return true; }
   if (!c) return false;
