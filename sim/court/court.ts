@@ -66,6 +66,11 @@ const FAVOUR: Record<string, Record<string, number>> = {
   suspects: { assess: 1, inquire: 0.7, dismiss: 0 },
   unaided: { compel: 1, remit: 0.5, dismiss: 0, dispense: 0 },
   exceeds: { custom: 1, commute: 0.7, remit: 0.5, uphold: 0 },
+  mortmain: { break: 1, commute: 0.7, uphold: 0 },
+  sanctuary: { extract: 1, abjure: 0.7, respect: 0 },
+  shrine: { suppress: 1, inquire: 0.6, sanction: 0 },
+  unclean: { depose: 1, penance: 0.6, compel: 0 },
+  heresy: { silence: 1, remit: 0.6, tolerate: 0 },
   heir: { restore: 1, divide: 0.6, remit: 0.5, uphold: 0 },
   appeal: { speak: 1, divide: 0.7, uphold: 0 },
   harmed: { compensate: 1, restrain: 0.8, remit: 0.5, dismiss: 0 },
@@ -112,7 +117,7 @@ export function chilled(s: State, id: number): void {
 }
 
 /** The five planes a matter can set against one another. */
-export type Plane = 'material' | 'positional' | 'relational' | 'normative' | 'epistemic';
+export type Plane = 'material' | 'positional' | 'relational' | 'normative' | 'epistemic' | 'sacred';
 
 /** The plane a burden on a house belongs to. */
 function planeOfBond(s: State, bd: Bond, by: number): Plane {
@@ -136,6 +141,11 @@ export function planesOf(s: State, p: Petition): [Plane, Plane] {
   if (p.side === 'suspects') return pair('epistemic', 'positional');
   if (p.side === 'unaided') return pair('normative', 'relational');
   if (p.side === 'heir') return pair('positional', 'relational');
+  if (p.side === 'mortmain') return pair('sacred', 'positional');
+  if (p.side === 'sanctuary') return pair('sacred', 'material');
+  if (p.side === 'shrine') return pair('sacred', 'epistemic');
+  if (p.side === 'unclean') return pair('sacred', 'relational');
+  if (p.side === 'heresy') return pair('sacred', 'normative');
   if (p.side === 'appeal') return pair('normative', 'relational');
   if (p.side === 'harmed') return pair('normative', 'material');
   if (p.side === 'exceeds') return pair('normative', 'positional');
@@ -203,6 +213,15 @@ function leaveTo(s: State, c: Court, p: Petition, judge: number, cut: string, pa
 
 const fellowsOf = (s: State, b: Body): Body[] => fellows(s, b).map(i => s.bodies[i]!);
 
+/** Sacrilege: the court itself has broken what is holy. Its legitimacy suffers, the place falls under interdict, and
+ *  all who heed such things nearby hold it against the court. */
+function sacrilege(s: State, c: Court, cell: number): void {
+  c.legitimacy -= P.sacrilegeCost;
+  s.cells[cell]!.interdict = 13;
+  for (const x of around(hearthIndex(s), s.side, cell, P.dealReach)) if ((head(s, x)?.credulous ?? 0) >= P.heed) grieve(c, x.id, P.harmPaid);
+  rec(s, 'sacrilege', { cell });
+}
+
 /** The words a constraint is held in, for its shape. */
 export function constraintWords(sign: string): string {
   if (sign.startsWith('cell:')) return 'work on ground where harm was done';
@@ -247,6 +266,12 @@ export function cuts(s: State, p: Petition): string[] {
   if (p.side === 'unaided') return ['compel', 'dispense', ...remit, 'dismiss'];
   // A lord taking more labour than custom: hold him to custom, back him, or turn the labour into a share of the yield.
   if (p.side === 'exceeds') { const m = s.bonds.find(x => x.id === p.bond); return ['custom', 'uphold', ...(m && m.boon > 0 && m.share <= 0.45 ? ['commute'] : []), ...remit]; }
+  // The sacred: each matter can be upheld on its own terms, overridden by force, or translated into the other layer.
+  if (p.side === 'mortmain') return ['uphold', 'break', 'commute'];
+  if (p.side === 'sanctuary') return ['respect', 'extract', 'abjure'];
+  if (p.side === 'shrine') return ['suppress', 'sanction', 'inquire'];
+  if (p.side === 'unclean') return ['compel', 'depose', 'penance'];
+  if (p.side === 'heresy') return ['silence', 'tolerate', `remit:${p.by}`];
   // An heir's claim by blood to ground another now holds: restore it, uphold the holder, divide it, or leave it below.
   if (p.side === 'heir') return ['restore', 'uphold', 'divide', ...remit];
   // One of a house appeals against its head: let them speak for the house, keep the head, or let them go with their share.
@@ -284,7 +309,7 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
   if (cut.startsWith('remit:')) {
     via = Number(cut.slice(6)); cut = 'remit';
     // The powers passed over resent it, and the one chosen over them.
-    for (const other of localPowers(s, p)) {
+    for (const other of p.side === 'heresy' ? [] : localPowers(s, p)) {
       if (other === via) continue;
       const who = judgeOf(s, other), chosen = judgeOf(s, via);
       if (who < 0) continue;
@@ -307,6 +332,87 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
     if (p.side === 'exit') by.threat = -1;
     grieve(c, other(eb, p.by), P.harmUnheard * 2);
     rec(s, 'judge', { a: p.by, b: other(eb, p.by), need: p.need, cause: eb.rec, way: `ease ${formOf(new Map(s.bonds.map(b => [b.id, b])), eb)}` });
+    return true;
+  }
+  if (p.side === 'mortmain') {
+    const held = s.bonds.find(b => b.id === p.bond), holy = p.against;
+    if (!held || held.about !== 'land') return false;
+    if (cut === 'uphold') grieve(c, p.by, P.harmPaid);
+    else {
+      held.a = p.by; held.basis = 'grant';
+      // Broken outright, it is sacrilege. Commuted, the house has its ground and owes the holy body a tenth for ever.
+      if (cut === 'break') sacrilege(s, c, held.cell);
+      else { bond(s, { about: 'yield', a: p.by, b: holy, share: 0.1, due: s.t, basis: 'vow', way: 'vow' }); grieve(c, holy, P.harmUnheard); }
+    }
+    rec(s, 'judge', { a: p.by, b: holy, cell: held.cell, way: `${cut} ${p.shape}` });
+    return true;
+  }
+  if (p.side === 'sanctuary') {
+    const T = s.bodies[p.against]!, bd = s.bonds.find(b => b.id === p.bond);
+    if (cut === 'respect') { grieve(c, p.by, P.harmPaid); c.reach -= 0.15; }
+    else if (cut === 'extract') {
+      // Taken from holy ground by the court's own hand: sacrilege.
+      if (bd && bd.about === 'act' && bd.kind >= 0) { const pay = Math.min(bd.q, T.store[bd.kind]!); T.store[bd.kind] = T.store[bd.kind]! - pay; by.store[bd.kind] = by.store[bd.kind]! + pay; bd.q -= pay; }
+      sacrilege(s, c, T.home);
+    } else {
+      // Abjuration: the sanctuary holds, but the one sheltering gives up half of what it has and leaves the place.
+      for (let k = 0; k < NK; k++) if (!Kn[k]!.fixed) { const q = T.store[k]! * 0.5; T.store[k] = T.store[k]! - q; by.store[k] = by.store[k]! + q; }
+      if (bd) bd.q = 0;
+      const away = near(s.side, T.home, P.scout).find(x => x !== T.home && s.cells[x]!.sanctity < P.sanctuary && !s.cells[x]!.water);
+      if (away !== undefined) T.goto = away;
+    }
+    T.sheltered = null;
+    rec(s, 'judge', { a: p.by, b: T.id, cell: T.home, way: `${cut} ${p.shape}` });
+    return true;
+  }
+  if (p.side === 'shrine') {
+    const cell = s.cells[p.cell ?? -1], sh = cell?.shrine;
+    if (!cell || !sh) return false;
+    let how = cut, clean = false;
+    // An inquest tests the sign: a keeper of little scruple made it up, and it is put down; otherwise it is sanctioned. No one can quarrel with that.
+    if (cut === 'inquire') { how = (head(s, s.bodies[sh.of]!)?.scruple ?? 1) < 0.4 ? 'suppress' : 'sanction'; clean = true; }
+    if (how === 'suppress') {
+      cell.shrine = null; cell.sanctity *= 0.5;
+      if (!clean) { grieve(c, sh.of, P.harmLost); for (const x of around(hearthIndex(s), s.side, p.cell!, P.reach)) if ((head(s, x)?.credulous ?? 0) >= P.heed) grieve(c, x.id, P.harmUnheard); }
+    } else {
+      sh.sanctioned = true; sh.to = p.by;
+      if (!clean) for (const x of s.bodies) if (x.alive && x.authority === 'symbolic' && x.id !== p.by && x.creed.rigour > 0.6 && dist(s.side, x.home, p.cell!) <= P.far) grieve(c, x.id, P.harmPaid);
+    }
+    rec(s, 'judge', { a: p.by, b: sh.of, cell: p.cell, way: `${cut} ${p.shape}` });
+    return true;
+  }
+  if (p.side === 'unclean') {
+    const S = s.bodies[p.against]!, sp = head(s, S), idx = hearthIndex(s);
+    const purists = around(idx, s.side, S.home, P.dealReach).filter(x => x.authority !== 'symbolic' && x.creed.purity > 0.6);
+    if (cut === 'compel') for (const x of purists) grieve(c, x.id, P.harmPaid);
+    else if (cut === 'depose') {
+      // The court sets another of that holy body in the stained man's place: a breach of the other sovereignty.
+      const next = grown(s, S).filter(m => m !== sp).sort((x, y) => x.stained - y.stained)[0];
+      if (next) S.speaker = next.id; else if (sp) sp.stained *= 0.3;
+      c.legitimacy -= 0.5;
+      for (const x of s.bodies) if (x.alive && x.authority === 'symbolic' && x !== S && x.creed.purity <= 0.6) grieve(c, x.id, P.harmPaid);
+    } else {
+      // Penance: the office stands; a seventh of what the holy body holds goes to those in want nearby, and the stain is halved.
+      const needy = around(idx, s.side, S.home, P.dealReach).filter(x => x !== S && cover(x.store, askAhead(s, x))[BY_HARM[0]!]! < P.short);
+      for (let k = 0; k < NK; k++) { if (Kn[k]!.fixed || !needy.length) continue; const q = S.store[k]! * 0.15; S.store[k] = S.store[k]! - q; for (const x of needy) x.store[k] = x.store[k]! + q / needy.length; }
+      if (sp) sp.stained /= 2;
+    }
+    rec(s, 'judge', { a: p.by, b: S.id, way: `${cut} ${p.shape}` });
+    return true;
+  }
+  if (p.side === 'heresy') {
+    const H = s.bodies[p.against]!, hp = head(s, H), S = by;
+    if (cut === 'silence') {
+      if (hp) hp.ban = 26;
+      grieve(c, H.id, P.harmLost);
+      for (const k of [...(kinOf(s).get(H.id) ?? []), ...fellows(s, H)]) grieve(c, k, P.harmUnheard);
+    } else if (cut === 'tolerate') { H.tolerated = s.t; grieve(c, S.id, P.harmPaid); }
+    else {
+      // Left to the holy body: the Crown keeps out of it, and a strict body shuns the one apart.
+      if (S.creed.rigour > 0.6 && hp) hp.ban = 13;
+      grieve(c, H.id, P.harmPaid);
+    }
+    rec(s, 'judge', { a: S.id, b: H.id, way: `${cut} ${p.shape}` });
     return true;
   }
   if (p.side === 'heir') {
@@ -736,7 +842,7 @@ export function audience(s: State): Petition[] {
   const shapeFor = (by: number, against: number, bd: Bond | undefined, side: Petition['side'], need: number, extra = ''): string => {
     const A = s.bodies[by]!, B = against >= 0 ? s.bodies[against]! : undefined;
     const near = !B ? 'nobody' : kin.get(by)?.has(against) ? 'kin' : A.of >= 0 && top(s, A).id === top(s, B).id ? 'of one body' : dist(s.side, A.home, B.home) <= P.reach ? 'a neighbour' : 'a stranger';
-    return `${side === 'owed' ? 'owed on' : side === 'owes' ? 'bound by' : side === 'outside' ? 'shut out by' : side === 'asks' ? 'asks leave for' : side === 'fears' ? 'will not abide' : side === 'exit' ? 'will leave' : side === 'suspects' ? 'suspects' : side === 'unaided' ? 'was left unaided against' : side === 'heir' ? 'claims by blood' : side === 'appeal' ? 'appeals against' : side === 'harmed' ? 'was harmed by' : side === 'exceeds' ? 'is worked beyond custom under' : 'in want'} ${bd ? formOf(byId, bd) : extra}; for ${need >= 0 ? NEEDS[need]!.id : 'nothing pressing'}; against ${near}`;
+    return `${side === 'owed' ? 'owed on' : side === 'owes' ? 'bound by' : side === 'outside' ? 'shut out by' : side === 'asks' ? 'asks leave for' : side === 'fears' ? 'will not abide' : side === 'exit' ? 'will leave' : side === 'suspects' ? 'suspects' : side === 'unaided' ? 'was left unaided against' : side === 'heir' ? 'claims by blood' : side === 'mortmain' ? 'claims back from the holy' : side === 'sanctuary' ? 'is kept from by sanctuary' : side === 'shrine' ? 'objects to' : side === 'unclean' ? 'will not accept' : side === 'heresy' ? 'accuses' : side === 'appeal' ? 'appeals against' : side === 'harmed' ? 'was harmed by' : side === 'exceeds' ? 'is worked beyond custom under' : 'in want'} ${bd ? formOf(byId, bd) : extra}; for ${need >= 0 ? NEEDS[need]!.id : 'nothing pressing'}; against ${near}`;
   };
   const add = (by: number, against: number, bd: Bond | undefined, side: Petition['side'], need: number, recId: number, extra = '', keyed = ''): void => {
     const key = keyed || (bd ? `${side}${bd.id}` : `w${by}:${need}`);
@@ -907,6 +1013,42 @@ export function audience(s: State): Petition[] {
     if (!T.alive || T.overworked < 6) continue;
     const m = s.bonds.find(x => x.about === 'bond' && x.a === T.id && x.way === 'manor');
     if (m && s.bodies[m.b]?.alive) add(T.id, m.b, m, 'exceeds', lack.get(T.id) ?? -1, m.rec, '', `e${T.id}`);
+  }
+  // The sacred. Ground left to a holy body that the blood still claims; one kept from what it is owed by sanctuary;
+  // a shrine a holy body of strict creed will not have; a stained holy office the pure will not accept; a creed apart.
+  for (const bd of s.bonds) {
+    if (bd.about !== 'land' || bd.basis !== 'vow' || s.t - bd.since > 52 || !s.bodies[bd.a]?.alive) continue;
+    const K = s.bodies.find(x => x.alive && !x.parts.length && x.id !== bd.a && grown(s, x).some(m => m.lore[`claim:${bd.cell}`] !== undefined));
+    if (K) add(K.id, bd.a, bd, 'mortmain', lack.get(K.id) ?? -1, bd.rec, '', `mm${bd.id}`);
+  }
+  for (const T of s.bodies) {
+    const sh = T.sheltered;
+    if (!T.alive || !sh || s.t - sh.t > 8 || s.cells[T.home]!.sanctity < P.sanctuary || !s.bodies[sh.from]?.alive) continue;
+    const bd = s.bonds.find(x => x.id === sh.bond);
+    if (!bd || bd.q <= 0.05) continue;
+    add(sh.from, T.id, bd, 'sanctuary', lack.get(sh.from) ?? -1, bd.rec, '', `sa${T.id}`);
+  }
+  const holyBodies = s.bodies.filter(x => x.alive && x.authority === 'symbolic');
+  for (let i = 0; i < s.cells.length; i++) {
+    const sh = s.cells[i]!.shrine;
+    if (!sh || sh.sanctioned || !s.bodies[sh.of]?.alive) continue;
+    const S = holyBodies.find(x => x.creed.folk < 0.4 && dist(s.side, x.home, i) <= P.far);
+    if (!S) continue;
+    const before = fresh.length;
+    add(S.id, sh.of, undefined, 'shrine', -1, -1, 'a shrine it never sanctioned', `sh${i}`);
+    if (fresh.length > before) fresh[fresh.length - 1]!.cell = i;
+  }
+  for (const S of holyBodies) {
+    if ((head(s, S)?.stained ?? 0) < P.stainMark) continue;
+    const purists = around(idx, s.side, S.home, P.dealReach).filter(x => x.authority !== 'symbolic' && x.creed.purity > 0.6 && x.members.length);
+    if (purists.length >= 2) add(purists[0]!.id, S.id, undefined, 'unclean', -1, -1, 'a stained holy office', `uc${S.id}`);
+  }
+  for (const H of s.bodies) {
+    if (!H.alive || H.parts.length || H.authority === 'symbolic' || !H.members.length) continue;
+    const hp = head(s, H);
+    if (!hp || hp.devotion < 0.7 || hp.ban > 0 || s.t - H.tolerated <= 52) continue;
+    const S = holyBodies.find(x => dist(s.side, x.home, H.home) <= P.far && Math.max(...(['rigour', 'folk', 'purity'] as const).map(k => Math.abs(H.creed[k] - x.creed[k]))) >= P.schism);
+    if (S) add(S.id, H.id, undefined, 'heresy', -1, -1, 'a creed apart', `he${H.id}`);
   }
   // Inside a house: an heir's claim by blood to ground another holds; one of the house appealing against its head's
   // breach of custom. From outside: harm from ground cleared upstream.

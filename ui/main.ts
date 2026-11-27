@@ -18,19 +18,22 @@ const esc = (x: string): string => x.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<
 const TRADE: Record<string, string> = { netting: 'fishing', felling: 'felling timber', digging: 'digging ore', panning: 'salt-making', forging: 'smithing', wrighting: 'making ploughshares', weaving: 'weaving', salting: 'salting meat', smoking: 'smoking fish', brewing: 'brewing', raising: 'building', culling: 'keeping beasts', reaping: 'reaping', sowing: 'sowing' };
 const trade = (work: number | undefined): string => (work === undefined || work < 0 ? 'work' : TRADE[RECIPES[work]!.id] ?? RECIPES[work]!.id);
 /** The planes, as a matter's tag names them, and each ruling's plane with the verb the screen gives it. */
-const PLANE: Record<Plane, string> = { material: 'Goods', positional: 'Place and right', relational: 'Kin and fellows', normative: 'Custom', epistemic: 'Truth' };
-const VERB: Record<Plane, string> = { material: 'Reallocate', positional: 'Grant or bound', relational: 'Bind or sever', normative: 'Uphold or dispense', epistemic: 'Inquire' };
+const PLANE: Record<Plane, string> = { sacred: 'The holy', material: 'Goods', positional: 'Place and right', relational: 'Kin and fellows', normative: 'Custom', epistemic: 'Truth' };
+const VERB: Record<Plane, string> = { sacred: 'Hallow or profane', material: 'Reallocate', positional: 'Grant or bound', relational: 'Bind or sever', normative: 'Uphold or dispense', epistemic: 'Inquire' };
 const CUT_PLANE: Record<string, Plane> = {
   enforce: 'material', strike: 'material', stay: 'material', give: 'material', ease: 'material', dismiss: 'material', assess: 'material', redeem: 'material',
   charter: 'positional', sell: 'positional', refuse: 'positional', rival: 'positional', turn: 'positional', install: 'positional', confirm: 'positional', free: 'positional', remit: 'positional', bar: 'positional',
+  break: 'sacred', respect: 'sacred', extract: 'sacred', abjure: 'relational', suppress: 'sacred', sanction: 'sacred', depose: 'sacred', penance: 'material', silence: 'sacred', tolerate: 'sacred',
   restore: 'positional', divide: 'relational', speak: 'relational', compensate: 'material', restrain: 'positional', pardon: 'normative', inscribe: 'epistemic',
   forbid: 'normative', override: 'normative', uphold: 'normative', compel: 'normative', dispense: 'normative', custom: 'normative', commute: 'material',
   surety: 'relational', expel: 'relational', answer: 'relational', release: 'relational', tie: 'relational', vouch: 'relational',
   inquire: 'epistemic',
 };
+/** The plane and verb tags are for whoever is building the realm; they show only with ?debug=1 in the address. */
+const DEBUG = typeof location !== 'undefined' && /[?&]debug=1/.test(location.search);
 const planeOfCut = (p: Petition, cut: string): Plane => (p.reason === 'challenge' ? 'normative' : CUT_PLANE[cut.split(':')[0]!] ?? 'material');
 /** A ruling as the rolls name it. */
-const CUT: Record<string, string> = { restore: 'Restore to the blood', divide: 'Divide', speak: 'Let them speak for the house', compensate: 'Make them pay for the loss', restrain: 'Stop the work', pardon: 'Pardon', inscribe: 'Write it on the roll', compel: 'Order the aid', dispense: 'Release from the duty', custom: 'Hold the lord to custom', commute: 'Turn labour into a share', answer: 'Their body answers for it', free: 'Free their ground to them', release: 'Let them go', tie: 'Tie them to the land', assess: 'Assess on the bailiff’s word', expel: 'Cast out of the body', bar: 'Bar them', override: 'Override the custom', install: 'Install the challenger', confirm: 'Keep the head', enforce: 'Hold to it', strike: 'Let it go', stay: 'Put it off a year', turn: 'Turn the ground over', give: 'Give relief', dismiss: 'Send away', vouch: 'Vouch for them', inquire: 'Hold an inquest', surety: 'Kin stand surety', remit: 'Leave it to the local lord or body', charter: 'Grant the right', sell: 'Sell the right', refuse: 'Refuse', rival: 'Grant a rival right', forbid: 'Forbid work there', bless: 'Have it blessed', uphold: 'Uphold' };
+const CUT: Record<string, string> = { break: 'Break the vow', respect: 'Respect sanctuary', extract: 'Take it from holy ground', abjure: 'Abjuration', suppress: 'Put down the shrine', sanction: 'Sanction the shrine', depose: 'Depose the stained', penance: 'Penance', silence: 'Silence them', tolerate: 'Let them be', restore: 'Restore to the blood', divide: 'Divide', speak: 'Let them speak for the house', compensate: 'Make them pay for the loss', restrain: 'Stop the work', pardon: 'Pardon', inscribe: 'Write it on the roll', compel: 'Order the aid', dispense: 'Release from the duty', custom: 'Hold the lord to custom', commute: 'Turn labour into a share', answer: 'Their body answers for it', free: 'Free their ground to them', release: 'Let them go', tie: 'Tie them to the land', assess: 'Assess on the bailiff’s word', expel: 'Cast out of the body', bar: 'Bar them', override: 'Override the custom', install: 'Install the challenger', confirm: 'Keep the head', enforce: 'Hold to it', strike: 'Let it go', stay: 'Put it off a year', turn: 'Turn the ground over', give: 'Give relief', dismiss: 'Send away', vouch: 'Vouch for them', inquire: 'Hold an inquest', surety: 'Kin stand surety', remit: 'Leave it to the local lord or body', charter: 'Grant the right', sell: 'Sell the right', refuse: 'Refuse', rival: 'Grant a rival right', forbid: 'Forbid work there', bless: 'Have it blessed', uphold: 'Uphold' };
 const plain = (x: string): string => x.replace(/\(([A-Z]+>[A-Z]+)\)/g, (_m, w: string) => `(${wayWords(w)})`).replace(/sole right to (\w+)/g, (_m, w: string) => `sole right to ${TRADE[w] ?? w}`);
 const cap = (x: string): string => x.charAt(0).toUpperCase() + x.slice(1);
 const SEASONS = ['Winter', 'Spring', 'Summer', 'Autumn'];
@@ -101,6 +104,11 @@ function matterWords(p: Petition): string {
   }
   if (p.reason === 'challenge') { const r = s.court!.rules.find(x => x.id === p.bond); return `${A} has been hurt by a rule of yours and asks that it be struck. The rule: ${r ? esc(plain(r.cut + ' when ' + r.shape)) : 'one now gone'}.`; }
   const bd = s.bonds.find(b => b.id === p.bond);
+  if (p.side === 'mortmain') { const hb = s.bonds.find(x => x.id === p.bond); return `${A} says the ground at ${hb ? cellWords(hb.cell) : 'that place'} is theirs by blood. The last of the house that held it died devout and left it to ${B} for ever, and a vow cannot be undone.`; }
+  if (p.side === 'sanctuary') { const bd2 = s.bonds.find(x => x.id === p.bond); return `${A} is owed ${bd2 ? owedWords(bd2) : 'what it is owed'} by ${B}, which has taken refuge on holy ground at ${cellWords(s.bodies[p.against]!.home)}. No one who fears God will lay hands on it there.`; }
+  if (p.side === 'shrine') return `${A} says the shrine ${B} keeps at ${cellWords(p.cell ?? 0)} was never sanctioned. The people bring offerings there all the same, and call the place holy.`;
+  if (p.side === 'unclean') return `${A} and others of pure creed will not take the rites of ${B}, whose head is stained, nor pay it the tithe. The office says its rites are good whoever performs them.`;
+  if (p.side === 'heresy') return `${A} says ${B} holds a creed apart from its own and leads others into it. ${Cap(B)} is devout, and neither poor nor in want.`;
   if (p.side === 'heir') { const m = s.people[p.person ?? -1], hb = s.bonds.find(x => x.id === p.bond); return `${m ? `${nameOf(m.id)}, ${ageOf(m.id)}, of ${house(p.by)},` : A} says the ground at ${hb ? cellWords(hb.cell) : 'that place'} was theirs by blood: their house held it once and lost it. ${Cap(B)} holds it now.`; }
   if (p.side === 'appeal') { const m = s.people[p.person ?? -1]; return `${m ? `${nameOf(m.id)}, ${ageOf(m.id)},` : 'One'} of ${house(p.by)} appeals against the head of their own house, who broke the house’s custom (${esc(constraintPlain(p.sign ?? ''))}). They ask to speak for the house in its place, or to leave it.`; }
   if (p.side === 'harmed') return `${A} lost ${Math.round(s.bodies[p.by]!.harmedBy?.loss ?? 0)} of what it had to flood water. Upstream, ${B} cleared the cover from the ground at ${cellWords(p.cell ?? 0)}, and the water came down faster. ${Cap(B)} broke no law.`;
@@ -151,6 +159,11 @@ function pleas(p: Petition): [string, string] {
   const pressed = (id: number): boolean => { const c = cover(s.bodies[id]!.store, askAhead(s, s.bodies[id]!)); return c.some((x, n) => NEEDS[n]!.harm >= 0.5 && x < P.short); };
   const mouths = (id: number): number => s.bodies[id]!.members.filter(i => s.people[i]!.alive).length;
   const pb = s.bonds.find(b => b.id === p.bond);
+  if (p.side === 'mortmain') return ['“A dead man’s piety has left his kin with nothing.”', '“It was given to God. What is given to God is not taken back.”'];
+  if (p.side === 'sanctuary') return ['“They owe us, and they hide behind the altar.”', '“We are on holy ground. Touch us here and answer for it.”'];
+  if (p.side === 'shrine') return ['“It is idolatry, and it takes the offerings that are owed to us.”', '“The water stopped at that stone. Everyone saw it.”'];
+  if (p.side === 'unclean') return ['“A man in sin cannot make bread holy. We will not have it from his hand.”', '“The office is holy, not the man. The rites stand.”'];
+  if (p.side === 'heresy') return ['“They lead people from the true way.”', '“We keep the faith more strictly than they do.”'];
   if (p.side === 'heir') return ['“My grandfather ploughed that ground. It was ours before it was theirs.”', '“It came to us fairly. What was lost is lost.”'];
   if (p.side === 'appeal') return ['“The custom is older than any of us. He had no right to break it for the house.”', ''];
   if (p.side === 'harmed') return ['“Before they stripped the hill, the water never came this high.”', '“It was our own ground, and wood is wanted. We did nothing wrong.”'];
@@ -191,6 +204,30 @@ function cutWordsOf(p: Petition, cut: string): [string, string] | undefined {
   const bd = s.bonds.find(b => b.id === p.bond), B = house(p.against), A = house(p.by);
   const storeOf = (k: number): number => Math.round(s.court!.store[k] ?? 0);
   if (p.reason === 'challenge') return cut === 'uphold' ? ['Uphold the rule', 'It stands, and cannot be challenged again.'] : ['Strike the rule', 'Like cases will come to you again.'];
+  if (p.side === 'mortmain') return ({
+    uphold: ['Uphold the vow', 'The ground stays with the holy body for ever.'],
+    break: ['Break the vow', 'The ground goes back to the blood. It is sacrilege: the place falls under interdict and your legitimacy suffers.'],
+    commute: ['Return it for a perpetual due', `The ground goes back; ${A} owes the holy body a tenth of all it gathers, for ever.`],
+  } as Record<string, [string, string]>)[cut];
+  if (p.side === 'sanctuary') return ({
+    respect: ['Respect sanctuary', 'They stay safe, and the debt waits. Your reach suffers.'],
+    extract: ['Take it from holy ground', 'The debt is paid by force. It is sacrilege: interdict, and your legitimacy suffers.'],
+    abjure: ['Abjuration', 'Sanctuary holds, but they give up half of what they have and leave the place.'],
+  } as Record<string, [string, string]>)[cut];
+  if (p.side === 'shrine') return ({
+    suppress: ['Put down the shrine', 'Its keeper and the credulous nearby will hold it against you.'],
+    sanction: ['Sanction the shrine', 'The holy body takes a quarter of its offerings. Strict holy bodies will hold it against you.'],
+    inquire: ['Hold an inquest', 'Find out whether the sign was made up. Whatever you then do, no one can quarrel with it.'],
+  } as Record<string, [string, string]>)[cut];
+  if (p.side === 'unclean') return ({
+    compel: ['Compel obedience', 'The office stands and its rites are good. The pure will hold it against you.'],
+    depose: ['Depose the stained man', 'Another of that holy body takes his place. You have meddled in the other sovereignty; your legitimacy suffers.'],
+    penance: ['Penance', 'He keeps the office, gives a seventh of the holy body’s goods to those in want nearby, and the stain is halved.'],
+  } as Record<string, [string, string]>)[cut];
+  if (p.side === 'heresy') return ({
+    silence: [`Silence ${B}`, 'Shunned for half a year. Its kin and fellows will hold it against you.'],
+    tolerate: [`Let ${B} be`, 'Its creed will spread to its neighbours. The holy body will hold it against you.'],
+  } as Record<string, [string, string]>)[cut] ?? ['Leave it to the holy body', 'The Crown keeps out of it. A strict holy body will shun them.'];
   if (p.side === 'heir' && !cut.startsWith('remit')) return ({
     restore: ['Restore it to the blood', `The ground goes back to ${A}. ${Cap(B)} loses it.`],
     uphold: [`Uphold ${B}`, 'What was lost stays lost. The claim is settled for this generation.'],
@@ -326,12 +363,12 @@ function matterCard(p: Petition): string {
   return `<article class="matter${pick ? ' chosen' : ''}">
     <header><h3>${esc(cap(house(p.by)))}${p.reason === 'challenge' ? ' against a rule' : p.burdens.length ? ', in want' : p.side === 'asks' ? (p.body !== undefined ? ' asks to lead' : ' asks leave') : p.against >= 0 ? ' against ' + esc(house(p.against)) : ''}</h3>
       <span class="small soft">${p.speaksFor > 1 ? `one of a body of ${p.speaksFor} houses · ` : ''}${p.waited ? `waited ${p.waited} week${p.waited > 1 ? 's' : ''}` : 'new this week'}${p.reason === 'clash' ? ' · two bodies’ rules disagree' : ''}</span></header>
-    <p class="planes">${(() => { const [x, y] = planesOf(s, p); return x === y ? esc(PLANE[x]) : `${esc(PLANE[x])} against ${esc(PLANE[y])}`; })()}</p>
+    ${DEBUG ? `<p class="planes">${(() => { const [x, y] = planesOf(s, p); return x === y ? esc(PLANE[x]) : `${esc(PLANE[x])} against ${esc(PLANE[y])}`; })()}</p>` : ''}
     <p>${matterWords(p)}</p>
     <p class="small soft">${esc(who(p.by))}${!p.burdens.length && p.against >= 0 && !s.bodies[p.against]!.rank ? ' — against ' + esc(who(p.against)) : ''}</p>
     ${(() => { const [a, b] = pleas(p); if (!p.burdens.length) return `<p>${esc(Cap(house(p.by)))}: ${a}</p>${b ? `<p>${esc(Cap(house(p.against)))}: ${b}</p>` : ''}`; return `<p>${esc(Cap(house(p.by)))}: ${a}</p>` + p.burdens.map(id => s.bonds.find(x => x.id === id)).filter((x): x is Bond => !!x).map(x => `<p>${esc(Cap(house(x.a === p.by ? x.b : x.a)))}: ${holderSays(x)}</p>`).join(''); })()}
     ${chain.length ? `<div><span class="label">How it came about</span><ol class="chain">${chain.map(c => `<li>${esc(c)}</li>`).join('')}</ol></div>` : ''}
-    <div class="cuts">${cuts(s, p).map(c => { const [t, d] = cutWords(p, c); return `<button data-cut="${p.id}:${c}" aria-pressed="${pick?.cut === c}"><em class="layer">${VERB[planeOfCut(p, c)]}</em>${esc(t)}<span>${esc(d)}</span></button>`; }).join('')}</div>
+    <div class="cuts">${cuts(s, p).map(c => { const [t, d] = cutWords(p, c); return `<button data-cut="${p.id}:${c}" aria-pressed="${pick?.cut === c}">${DEBUG ? `<em class="layer">${VERB[planeOfCut(p, c)]}</em>` : ''}${esc(t)}<span>${esc(d)}</span></button>`; }).join('')}</div>
     ${pick && pick.cut !== 'inquire' && !(p.burdens.length && !pick.cut.startsWith('ease:')) && widths.length > 1 ? `<div><span class="label">How far it reaches</span><div class="widths">${widths.map(([w, t]) => `<button data-width="${p.id}:${w}" aria-pressed="${pick.width === w}">${t}</button>`).join('')}</div></div>` : ''}
     ${p.reason === 'challenge' || p.burdens.length ? '' : `<p class="shape">A rule here would cover: ${esc(plain(p.shape))}</p>`}
   </article>`;
