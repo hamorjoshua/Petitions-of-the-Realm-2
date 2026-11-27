@@ -48,6 +48,15 @@ function relieve(s: State, c: Court, to: Body, need: number): number {
   return q;
 }
 
+/** Move a gauge, and note why. */
+const gauge = (s: State, c: Court, g: 'legitimacy' | 'reach', d: number, why: string): void => { c[g] += d; note(s, c, g, d, why); };
+const note = (s: State, c: Court, g: 'legitimacy' | 'reach' | 'store', d: number, why: string): void => {
+  if (Math.abs(d) < 1e-6) return;
+  const l = (c.ledger ??= []), last = l[l.length - 1];
+  if (last && last.t === s.t && last.g === g && last.why === why) last.d += d; else l.push({ t: s.t, g, d, why });
+  if (l.length > 600) l.splice(0, l.length - 500);
+};
+const storeOf = (c: Court): number => c.store.reduce((x, y) => x + y, 0);
 const grieve = (c: Court, id: number, by: number): void => { if (id >= 0) c.grief[id] = Math.max(0, (c.grief[id] ?? 0) + by); };
 const scopeOf = (s: State, id: number): number => { const t = top(s, s.bodies[id]!); return t.id === id ? -2 : t.id; };
 
@@ -224,7 +233,7 @@ const fellowsOf = (s: State, b: Body): Body[] => fellows(s, b).map(i => s.bodies
 /** Sacrilege: the court itself has broken what is holy. Its legitimacy suffers, the place falls under interdict, and
  *  all who heed such things nearby hold it against the court. */
 function sacrilege(s: State, c: Court, cell: number): void {
-  c.legitimacy -= P.sacrilegeCost;
+  gauge(s, c, 'legitimacy', -P.sacrilegeCost, 'sacrilege');
   s.cells[cell]!.interdict = 13;
   for (const x of around(hearthIndex(s), s.side, cell, P.dealReach)) if ((head(s, x)?.credulous ?? 0) >= P.heed) grieve(c, x.id, P.harmPaid);
   rec(s, 'sacrilege', { cell });
@@ -362,7 +371,7 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
   }
   if (p.side === 'sanctuary') {
     const T = s.bodies[p.against]!, bd = s.bonds.find(b => b.id === p.bond);
-    if (cut === 'respect') { grieve(c, p.by, P.harmPaid); c.reach -= 0.15; }
+    if (cut === 'respect') { grieve(c, p.by, P.harmPaid); gauge(s, c, 'reach', -0.15, 'sanctuary respected'); }
     else if (cut === 'extract') {
       // Taken from holy ground by the court's own hand: sacrilege.
       if (bd && bd.about === 'act' && bd.kind >= 0) { const pay = Math.min(bd.q, T.store[bd.kind]!); T.store[bd.kind] = T.store[bd.kind]! - pay; by.store[bd.kind] = by.store[bd.kind]! + pay; bd.q -= pay; }
@@ -402,7 +411,7 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
       // The court sets another of that holy body in the stained man's place: a breach of the other sovereignty.
       const next = grown(s, S).filter(m => m !== sp).sort((x, y) => x.stained - y.stained)[0];
       if (next) S.speaker = next.id; else if (sp) sp.stained *= 0.3;
-      c.legitimacy -= 0.5;
+      gauge(s, c, 'legitimacy', -0.5, 'a priest deposed');
       for (const x of s.bodies) if (x.alive && x.authority === 'symbolic' && x !== S && x.creed.purity <= 0.6) grieve(c, x.id, P.harmPaid);
     } else {
       // Penance: the office stands; a seventh of what the holy body holds goes to those in want nearby, and the stain is halved.
@@ -540,7 +549,7 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
       grieve(c, lord, P.harmLost);
     } else if (cut === 'release') {
       // It may go, and the ground goes back to the lord.
-      m.due = s.t; m.share = 0; by.threat = s.t - P.wait; c.reach -= 0.1;
+      m.due = s.t; m.share = 0; by.threat = s.t - P.wait; gauge(s, c, 'reach', -0.1, 'a tenant let go');
       grieve(c, lord, P.harmPaid);
     } else {
       // Tied to the land: it may not leave.
@@ -822,7 +831,7 @@ export function setLaw<K extends LawKey>(s: State, key: K, val: Laws[K]): void {
   const was = pol.lawSetAt[key];
   if (was >= 0 && pol.laws[key] === val) return;
   if (pol.inscribed[key] || (was >= 0 && s.t - was < 52)) {
-    c.caprice += pol.inscribed[key] ? 3 : 1; c.legitimacy = Math.max(0, c.legitimacy - (pol.inscribed[key] ? 0.5 : 0.15));
+    c.caprice += pol.inscribed[key] ? 3 : 1; gauge(s, c, 'legitimacy', -(pol.inscribed[key] ? 0.5 : 0.15), pol.inscribed[key] ? 'a law on the roll undone' : 'a law changed within the year');
     rec(s, 'caprice', { a: -1, b: -1, way: `law ${key}` });
   }
   pol.inscribed[key] = false;
@@ -847,7 +856,7 @@ export function issueOrdinance(s: State, key: OrdKey): boolean {
 export function inscribeLaw(s: State, key: LawKey): boolean {
   const c = s.court, pol = c?.policy;
   if (!c || !pol || pol.inscribed[key] || pol.lawSetAt[key] < 0) return false;
-  pol.inscribed[key] = true; c.legitimacy = Math.min(5, c.legitimacy + 0.35);
+  pol.inscribed[key] = true; gauge(s, c, 'legitimacy', 0.35, 'a law written on the roll');
   rec(s, 'rule', { a: -1, kind2: 0, q2: -5, way: `inscribe ${key}` });
   return true;
 }
@@ -921,7 +930,7 @@ function byLaw(s: State, c: Court, p: Petition): boolean {
   const by = cut.startsWith('remit') && pol(c).lawSetAt[key] < 0 ? 'jurisdiction' : key;
   c.policy.lawHits[by]++;
   // The Crown's own assize is the Crown's reach at work.
-  if (by === 'jurisdiction' && c.policy.laws.jurisdiction === 'crown' && !cut.startsWith('remit')) c.reach -= 0.01;
+  if (by === 'jurisdiction' && c.policy.laws.jurisdiction === 'crown' && !cut.startsWith('remit')) gauge(s, c, 'reach', -0.01, 'your assize');
   rec(s, 'rule', { a: p.by, b: p.against, kind2: 1, q2: -3, way: p.shape });
   return true;
 }
@@ -935,7 +944,7 @@ export function localOrder(s: State, cell: number, kind: LocalOrder): boolean {
   const key = `local:${kind}:${cell}`;
   if (s.t - (c.seen[key] ?? -999) < 13) return false;
   const idx = hearthIndex(s), here = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length && b.home === cell);
-  const near = around(idx, s.side, cell, 1);
+  const near = around(idx, s.side, cell, 1), stL = storeOf(c);
   let done = false;
   if (kind === 'relief') {
     for (const b of here) {
@@ -948,27 +957,28 @@ export function localOrder(s: State, cell: number, kind: LocalOrder): boolean {
       if (X.hid.reduce((a, q) => a + (q ?? 0), 0) > 0.5) { for (let k = 0; k < X.hid.length; k++) { const pay = Math.min(X.hid[k] ?? 0, X.store[k]!); X.store[k] = X.store[k]! - pay; c.store[k] = c.store[k]! + pay; } X.hid = []; grieve(c, X.id, P.harmPaid); }
       for (const bd of s.bonds) if (bd.about === 'act' && bd.fabricated && bd.denied && bd.q > 0 && bd.b === X.id) { bd.q = 0; X.lore[`house:${X.id}`] = 0; }
     }
-    c.reach += 0.15; done = true;
+    gauge(s, c, 'reach', 0.15, 'bailiffs sent'); done = true;
   } else if (kind === 'charter') {
     // A year's remission of the Crown's share for the place: the store goes without, and the place remembers it.
     for (const bd of s.bonds) if (bd.about === 'yield' && bd.way === 'crown' && here.some(b => b.id === bd.a)) { bd.easedTo = s.t + 52; done = true; }
     for (const b of here) grieve(c, b.id, -P.harmPaid * 2);
-    if (done) c.legitimacy += 0.1;
+    if (done) gauge(s, c, 'legitimacy', 0.1, 'the Crown’s share remitted');
   } else {
     const cl = s.cells[cell]!;
-    if (cl.interdict > 0) { cl.interdict = 0; c.legitimacy += 0.1; done = true; }
-    else if (cl.shrine && !cl.shrine.sanctioned) { cl.shrine.sanctioned = true; c.legitimacy += 0.05; done = true; }
+    if (cl.interdict > 0) { cl.interdict = 0; gauge(s, c, 'legitimacy', 0.1, 'an interdict lifted'); done = true; }
+    else if (cl.shrine && !cl.shrine.sanctioned) { cl.shrine.sanctioned = true; gauge(s, c, 'legitimacy', 0.05, 'a shrine sanctioned'); done = true; }
     else {
       const priest = here.find(b => b.rank === 'priest' && (head(s, b)?.stained ?? 0) >= P.stainMark);
       if (priest) { const h = head(s, priest)!; h.stained /= 2; done = true; }
       else {
         // A feud: two houses here or beside it that will not deal with one another. The Crown imposes its peace.
         for (const a of near) for (const b of near) if (a.id < b.id && (s.ties[a.id]?.[b.id] ?? 0) <= -0.6) { setTie(s, a.id, b.id, -0.2); setTie(s, b.id, a.id, -0.2); done = true; }
-        if (done) c.reach -= 0.1;
+        if (done) gauge(s, c, 'reach', -0.1, 'the king’s peace imposed');
       }
     }
   }
   if (!done) return false;
+  note(s, c, 'store', storeOf(c) - stL, kind === 'relief' ? 'relief sent' : kind === 'circuit' ? 'bailiffs sent' : 'an order');
   c.seen[key] = s.t;
   rec(s, 'judge', { a: -1, cell, way: `local ${kind}` });
   return true;
@@ -991,6 +1001,7 @@ function policyWeek(s: State, c: Court): void {
   if (pol.mode === 'regency') return;
   const idx = hearthIndex(s);
   // Relief from the Crown's store for houses below the floor; the granaries open wider while ordered.
+  let st1 = storeOf(c);
   const floor = pol.dials.relief === 'want' ? P.short : pol.dials.relief === 'starving' || pol.ord.granaries > 0 ? P.dire : -1;
   if (floor > 0 && !pol.weak) {
     let n = pol.ord.granaries > 0 ? 6 : 3;
@@ -1003,10 +1014,11 @@ function policyWeek(s: State, c: Court): void {
     want.sort((x, y) => x[2] - y[2] || x[0].id - y[0].id);
     for (const [b, need] of want) { if (n <= 0) break; const q = relieve(s, c, b, need); if (q > 0) { n--; rec(s, 'judge', { a: b.id, q, need, way: 'relief by the floor' }); } }
   }
+  note(s, c, 'store', storeOf(c) - st1, 'the relief floor'); st1 = storeOf(c);
   // A strict posture, or the eyre: false claims are found out, and what was kept back from the Crown is paid.
   const strict = pol.dials.bailiff === 'strict', eyre = pol.ord.eyre > 0;
-  if (strict && !pol.weak) c.reach -= 0.01;
-  if (eyre) { c.reach += 0.04; c.legitimacy += 0.03; }
+  if (strict && !pol.weak) gauge(s, c, 'reach', -0.01, 'strict bailiffs');
+  if (eyre) { gauge(s, c, 'reach', 0.04, 'the royal eyre'); gauge(s, c, 'legitimacy', 0.03, 'the royal eyre'); }
   if ((strict || eyre) && !pol.weak) {
     for (const bd of s.bonds) if (bd.about === 'act' && bd.fabricated && bd.denied && bd.q > 0) {
       bd.q = 0; grieve(c, bd.b, -P.harmPaid);
@@ -1020,6 +1032,7 @@ function policyWeek(s: State, c: Court): void {
       rec(s, 'judge', { b: X.id, q2: 1, way: 'the Crown’s share kept back, found out' });
     }
   }
+  note(s, c, 'store', storeOf(c) - st1, 'shares found hidden'); st1 = storeOf(c);
   // Solemn penance: interdicts lift sooner, stains fade, the fear of strangers and of heresy cools.
   if (pol.ord.penance > 0) {
     for (const cl of s.cells) if (cl.interdict > 0) cl.interdict = Math.max(0, cl.interdict - 2);
@@ -1031,9 +1044,10 @@ function policyWeek(s: State, c: Court): void {
     const total = c.store.reduce((x, y) => x + y, 0);
     if (total > 1) {
       for (let k = 0; k < NK; k++) c.store[k] = c.store[k]! * 0.95;
-      if (pol.dials.patronage === 'church') c.legitimacy += 0.25; else c.reach += 0.25;
+      if (pol.dials.patronage === 'church') gauge(s, c, 'legitimacy', 0.25, 'patronage of the church'); else gauge(s, c, 'reach', 0.25, 'patronage of the lords');
     }
   }
+  note(s, c, 'store', storeOf(c) - st1, 'patronage');
   for (const k of Object.keys(pol.ord) as OrdKey[]) if (pol.ord[k] > 0) pol.ord[k]--;
   // The Crown that has lost its hold is not ended; it is ignored, until it is trusted and obeyed again.
   if (!pol.weak && (c.legitimacy <= 0 || c.reach <= 0)) { pol.weak = true; rec(s, 'withdraw', { q: -1, q2: 0 }); }
@@ -1077,6 +1091,7 @@ function below(s: State, c: Court, p: Petition, r: Rule): void {
 export function audience(s: State): Petition[] {
   const c = s.court;
   if (!c) return [];
+  const stA = storeOf(c);
   const byId = new Map<number, Bond>();
   for (const b of s.bonds) byId.set(b.id, b);
   const kin = kinOf(s), idx = hearthIndex(s);
@@ -1381,6 +1396,7 @@ export function audience(s: State): Petition[] {
       else grieve(c, p.by, P.harmUnheard);
     }
     c.docket = [];
+    note(s, c, 'store', storeOf(c) - stA, 'settlements below');
     return [];
   }
   // Those who waited too long, or whose matter is gone, leave; the rest are ranked.
@@ -1392,7 +1408,7 @@ export function audience(s: State): Petition[] {
       // Outside the Regency the realm does not wait on the court: what has a local lord or body is settled by them.
       const lower = live(c) && p.reason === 'none' ? cuts(s, p).find(x => x === 'remit' || x.startsWith('remit:')) : undefined;
       if (lower && carry(s, c, p, lower)) { rec(s, 'rule', { a: p.by, b: p.against, kind2: 1, q2: -6, way: p.shape }); return false; }
-      grieve(c, p.by, P.harmUnheard * p.waited); c.legitimacy -= live(c) ? 0.005 : 0.02; teach(s, idx, p.by, p.side, 0, P.pleaOwn / 2); return false;
+      grieve(c, p.by, P.harmUnheard * p.waited); gauge(s, c, 'legitimacy', live(c) ? -0.005 : -0.02, 'matters left unheard'); teach(s, idx, p.by, p.side, 0, P.pleaOwn / 2); return false;
     }
     return true;
   });
@@ -1408,6 +1424,7 @@ export function audience(s: State): Petition[] {
   for (const p of c.docket) { if (seated.length >= P.seats) break; if (shapes.has(p.shape)) continue; shapes.add(p.shape); seated.push(p); }
   // Seats left over go to the most urgent of the rest, so the bench is never half empty while a crowd waits.
   for (const p of c.docket) { if (seated.length >= P.seats) break; if (!seated.includes(p)) seated.push(p); }
+  note(s, c, 'store', storeOf(c) - stA, 'settlements below');
   return seated;
 }
 
@@ -1416,8 +1433,8 @@ export function hear(s: State, rulings: Ruling[]): void {
   const c = s.court;
   if (!c) return;
   const cap = P.hearings;
-  const heard = rulings.slice(0, cap + 1);
-  if (heard.length > cap) c.legitimacy -= 0.5;
+  const heard = rulings.slice(0, cap + 1), stH = storeOf(c);
+  if (heard.length > cap) gauge(s, c, 'legitimacy', -0.5, 'a fourth hearing');
   for (const r of heard) {
     const p = c.docket.find(x => x.id === r.petition);
     if (!p || !cuts(s, p).includes(r.cut)) continue;
@@ -1430,7 +1447,7 @@ export function hear(s: State, rulings: Ruling[]): void {
     // feels the law changed under them; and nobody trusts a ruling in their favour to stick.
     const prior = c.precedent[p.shape];
     if (done && p.reason === 'none' && prior && s.t - prior.t <= 52 && Math.abs(prior.fav - favour) >= 0.5) {
-      c.caprice += 1; c.legitimacy -= 0.1;
+      c.caprice += 1; gauge(s, c, 'legitimacy', -0.1, 'rulings that contradict');
       grieve(c, favour >= 0.5 ? p.against : p.by, P.harmReversed);
       rec(s, 'caprice', { a: p.by, b: p.against, way: p.shape });
     }
@@ -1466,8 +1483,11 @@ export function hear(s: State, rulings: Ruling[]): void {
       if (scope === -1) grieve(c, r.cut === 'enforce' ? (q.side === 'owed' ? q.against : q.by) : q.side === 'owed' ? q.by : q.against, P.harmReversed);
     }
   }
+  note(s, c, 'store', storeOf(c) - stH, 'your rulings');
   // What the Crown has laid by spoils like anything else. The regent's word falls due: kept out of the store, or broken before everyone.
+  let st0 = storeOf(c);
   for (let k = 0; k < NK; k++) c.store[k] = c.store[k]! * (1 - Kn[k]!.keep);
+  note(s, c, 'store', storeOf(c) - st0, 'spoilage');
   c.caprice *= 0.99;
   const idx = hearthIndex(s);
   c.words = c.words.filter(w => {
@@ -1475,7 +1495,7 @@ export function hear(s: State, rulings: Ruling[]): void {
     const to = s.bodies[w.to]!;
     if (!to.alive) return false;
     if (relieve(s, c, to, w.need) > 0) { c.wordsKept++; rec(s, 'keep', { b: w.to, need: w.need, q2: 9 }); teach(s, idx, w.to, 'bare', 1, P.pleaOwn); return false; }
-    c.wordsBroken++; c.legitimacy -= 0.5;
+    c.wordsBroken++; gauge(s, c, 'legitimacy', -0.5, 'your word broken');
     rec(s, 'break', { b: w.to, need: w.need, q2: 9 });
     grieve(c, w.to, P.harmWord);
     for (const b of around(idx, s.side, to.home, P.reach)) if (b.id !== w.to) grieve(c, b.id, P.harmWord / 5);
@@ -1484,6 +1504,7 @@ export function hear(s: State, rulings: Ruling[]): void {
   });
   // The king's bailiffs send up what they took in for the Crown. When the store runs low they take for the king
   // from those with most, and pay nothing: a taking like any other, and the court's own.
+  st0 = storeOf(c);
   const live2 = c.policy.mode !== 'regency', round = live2 ? ({ light: 26, regular: 13, strict: 6 } as const)[c.policy.dials.bailiff] : 1;
   const low = c.store.reduce((x, y) => x + y, 0) < 0.5 * c.store0 && s.t % (live2 ? round : 13) === 0 && !(live2 && c.policy.dials.bailiff === 'light');
   for (const b of s.bodies) {
@@ -1504,6 +1525,7 @@ export function hear(s: State, rulings: Ruling[]): void {
       grieve(c, v.id, P.harmPaid);
     }
   }
+  note(s, c, 'store', storeOf(c) - st0, 'the bailiffs');
   // Those still waiting in real want hold it against the court. (Urgency is no test of that: it also counts whom they speak for.)
   for (const p of c.docket) { p.waited++; if ((p.press ?? 0) > 0.5) grieve(c, p.by, P.harmUnheard); }
   // Enough houses with enough grievance withdraw their confidence.
@@ -1513,7 +1535,7 @@ export function hear(s: State, rulings: Ruling[]): void {
   const aggrieved: Body[] = [];
   for (const b of s.bodies) if (b.alive && !b.parts.length && b.members.length) { hearths++; if ((c.grief[b.id] ?? 0) >= P.aggrieved) aggrieved.push(b); }
   const kinMap = kinOf(s), seenF = new Set<number>();
-  let sore = 0;
+  let sore = 0, factionAt = -1;
   for (const start of aggrieved) {
     if (seenF.has(start.id)) continue;
     let size = 0;
@@ -1527,6 +1549,7 @@ export function hear(s: State, rulings: Ruling[]): void {
         if (kinMap.get(x.id)?.has(y.id) || dist(s.side, x.home, y.home) <= 1 || (x.of >= 0 && top(s, x).id === top(s, y).id)) { seenF.add(y.id); stack.push(y); }
       }
     }
+    if (size > sore) factionAt = start.home;
     sore = Math.max(sore, size);
   }
   for (const k in c.grief) { const v = c.grief[k]! * P.griefFade; if (v < 0.5 || !s.bodies[Number(k)]!.alive) delete c.grief[k]; else c.grief[k] = v; }
@@ -1534,13 +1557,13 @@ export function hear(s: State, rulings: Ruling[]): void {
   c.quiet++;
   if (hearths > 0 && sore >= Math.max(P.factionMin, P.faction * hearths) && c.quiet > 8 && c.reach > 0) {
     // A faction that withdraws its confidence no longer does the Crown's bidding: its reach shrinks.
-    c.reach -= 1; c.quiet = 0;
+    gauge(s, c, 'reach', -1, `a faction${factionAt >= 0 ? ' at #' + factionAt : ''}`); c.quiet = 0;
     for (const k in c.grief) c.grief[k] = c.grief[k]! * 0.5;
     rec(s, 'withdraw', { q: sore, q2: hearths });
   } else if (c.quiet % 13 === 0) {
     // A quiet season restores legitimacy if the court has kept to its word; reach comes back where the bailiffs collect.
-    if (c.caprice < 1) c.legitimacy += 0.25;
-    if (c.collected > 0 || c.policy.weak) c.reach += 0.25;
+    if (c.caprice < 1) gauge(s, c, 'legitimacy', 0.25, 'a quiet season');
+    if (c.collected > 0 || c.policy.weak) gauge(s, c, 'reach', 0.25, 'a quiet season');
     c.collected = 0;
   }
   policyWeek(s, c);

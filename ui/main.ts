@@ -460,6 +460,15 @@ let speed: 0 | 1 | 5 | 20 = 0, acc = 0, lastFrame = 0, lastPaint = 0, dirty = fa
 type Lens = 'want' | 'factions' | 'sacred' | 'jurisdiction' | 'ecology';
 let view: 'map' | 'chronicle' = 'map', deck: 'laws' | 'treasury' | 'decrees' = 'laws', lens: Lens = 'want';
 let picked = -1, majorOnly = false;
+/** The gauges a season back, for the arrows; which gauge's breakdown is open; which gauges are flashing, until when. */
+let hist: { t: number; legitimacy: number; reach: number; store: number }[] = [];
+let openGauge: '' | 'legitimacy' | 'reach' | 'store' = '';
+let flash: Partial<Record<'legitimacy' | 'reach' | 'store', 'good' | 'bad' | 'warn'>> = {}, flashTimer = 0;
+/** Houses ("b:12") and places ("c:40") the regent is following. */
+const watched = new Set<string>();
+/** Decades: where the present one began, what it has seen so far, and the stamps of those past. */
+let eraFrom = 0, eraStats = { pop: 0, hunger: 0, withdrawals: 0, shrines: 0, floods: 0, defied: 0 };
+let eras: { t: number; html: string }[] = [];
 /** The map's zoom and pan, and the pointers on it. */
 let zoom = 1, panX = 0, panY = 0, gesturing = false;
 /** What the cockpit has to say that the chroniclers do not: laws laid down, decrees, orders, what was settled below, the Crown's hold. */
@@ -502,23 +511,49 @@ const LEGEND: Record<Lens, string> = {
   jurisdiction: 'Each colour is one body of houses, and whoever leads it.',
   ecology: 'Darker red: soil worn out or ground flooded.',
 };
+const GLYPHS = '♛ the Crown’s seat · ✦ shrine · ✕ interdict · ≈ flood · ϟ feud · ◉ watched · blue edge: river · pulsing: aggrieved';
 
-function seals(v: number, label: string): string {
-  return `<span class="inst"><span class="label">${label}</span><span class="seals" title="${v.toFixed(1)} of 5">${[0, 1, 2, 3, 4].map(i => `<span class="seal${v >= i + 1 ? '' : v >= i + 0.5 ? ' half' : ' gone'}"></span>`).join('')}</span></span>`;
+const storeTotal = (): number => (s.court ? s.court.store.reduce((x, y) => x + y, 0) : 0);
+/** Up, down or level against a season ago. */
+function trend(g: 'legitimacy' | 'reach' | 'store'): string {
+  const c = s.court!, then = hist.find(h => h.t >= s.t - 13) ?? hist[0];
+  if (!then || then.t >= s.t) return '';
+  const now = g === 'store' ? storeTotal() : c[g], was = then[g], eps = g === 'store' ? Math.max(2, was * 0.03) : 0.05;
+  return now > was + eps ? '<b class="up">▲</b>' : now < was - eps ? '<b class="down">▼</b>' : '';
+}
+function seals(g: 'legitimacy' | 'reach', label: string): string {
+  const v = s.court![g];
+  return `<button class="inst gauge${flash[g] ? ' flash-' + flash[g] : ''}" data-gauge="${g}" aria-expanded="${openGauge === g}"><span class="label">${label} ${trend(g)}</span><span class="seals" title="${v.toFixed(1)} of 5">${[0, 1, 2, 3, 4].map(i => `<span class="seal${v >= i + 1 ? '' : v >= i + 0.5 ? ' half' : ' gone'}"></span>`).join('')}</span></button>`;
+}
+/** What moved a gauge over the last season, largest first. */
+function breakdown(g: 'legitimacy' | 'reach' | 'store'): string {
+  const c = s.court!, by = new Map<string, number>();
+  for (const e of c.ledger ?? []) if (e.g === g && e.t > s.t - 13) by.set(e.why, (by.get(e.why) ?? 0) + e.d);
+  const then = hist.find(h => h.t >= s.t - 13) ?? hist[0], now = g === 'store' ? storeTotal() : c[g];
+  const fmt = (d: number): string => (g === 'store' ? `${d > 0 ? '+' : '−'}${Math.round(Math.abs(d))}` : `${d > 0 ? '+' : '−'}${Math.abs(d).toFixed(2)}`);
+  const lines = [...by].filter(([, d]) => Math.abs(d) >= (g === 'store' ? 0.5 : 0.005)).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 4)
+    .map(([why, d]) => `<li><b class="${d > 0 ? 'up' : 'down'}">${fmt(d)}</b> ${esc(why.replace(/#(\d+)/g, (_m, n: string) => cellWords(Number(n))))}</li>`);
+  const name = ({ legitimacy: 'Legitimacy', reach: 'Reach', store: 'The store' })[g];
+  return `<div class="gpop"><div class="bar"><strong>${name}, the last season${then && then.t < s.t ? `: ${fmt(now - then[g])} in all` : ''}</strong><button data-gauge="" aria-label="Close">✕</button></div><ul class="list small">${lines.join('') || '<li class="soft">Nothing moved it.</li>'}</ul>${g !== 'store' ? '<p class="small soft">Each gauge runs from 0 to 5; what would carry it past either end is lost.</p>' : ''}</div>`;
+}
+function doFlash(f: typeof flash): void {
+  flash = { ...flash, ...f };
+  clearTimeout(flashTimer);
+  flashTimer = window.setTimeout(() => { flash = {}; paint(); }, 900);
 }
 const factionNeed = (hearths: number): number => Math.max(P.factionMin, Math.ceil(P.faction * hearths));
 function strip(): string {
   const c = s.court, hs = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length);
   const when = `Y${Math.floor(s.t / 52) + 1}·W${(s.t % 52) + 1} · ${seasonOf(s.t)}`;
   const throttle = `<div class="throttle">${([0, 1, 5, 20] as const).map(v => `<button data-speed="${v}" aria-pressed="${speed === v}" aria-label="${v ? v + ' times' : 'Pause'}">${v ? v + '×' : '❙❙'}</button>`).join('')}</div>`;
-  if (!c) return `<header class="strip"><div class="row"><span class="inst"><span class="label">Souls</span><span>${s.people.filter(p => p.alive).length}</span></span><span class="inst"><span class="label">Houses</span><span>${hs.length}</span></span></div><div class="row"><span class="when">${when}</span>${throttle}</div></header>`;
+  if (!c) return `<header class="strip"><div class="row"><span class="inst"><span class="label">Souls</span><span>${s.people.filter(p => p.alive).length}</span></span><span class="inst"><span class="label">Houses</span><span>${hs.length}</span></span></div><div class="row"><span class="when"><button class="home" data-home="1" aria-label="Save and leave">⌂</button> ${when}</span>${throttle}</div></header>`;
   const sore = Object.values(c.grief).filter(g => g >= P.aggrieved).length, need = factionNeed(hs.length);
   const kindOf = (id: string): number => KINDS.findIndex(k => k.id === id);
   const store = ['grain', 'timber'].map(id => { const k = kindOf(id); return k >= 0 ? `${Math.round(c.store[k] ?? 0)} ${id}` : ''; }).filter(Boolean).join(' · ');
-  return `<header class="strip"><div class="row inst4">${seals(c.legitimacy, 'Legitimacy')}${seals(c.reach, 'Reach')}
-    <span class="inst"><span class="label">Store</span><span class="gilt">${store}</span></span>
+  return `<header class="strip"><div class="row inst4">${seals('legitimacy', 'Legitimacy')}${seals('reach', 'Reach')}
+    <button class="inst gauge${flash.store ? ' flash-' + flash.store : ''}" data-gauge="store" aria-expanded="${openGauge === 'store'}"><span class="label">Store ${trend('store')}</span><span class="gilt">${store}</span></button>
     <span class="inst ${sore >= need ? 'bad' : sore >= 0.7 * need ? 'warn' : ''}"><span class="label">Aggrieved</span><span>${sore} / ${need}</span></span></div>
-    <div class="row"><span class="when">${when}${c.policy.weak ? '<br><span class="bad small">The Crown is weak</span>' : ''}</span>${throttle}</div></header>`;
+    <div class="row"><span class="when"><button class="home" data-home="1" aria-label="Save and leave">⌂</button> ${when}${c.policy.weak ? '<br><span class="bad small">The Crown is weak</span>' : ''}</span>${throttle}</div>${openGauge ? breakdown(openGauge) : ''}</header>`;
 }
 
 function mapView(): string {
@@ -535,9 +570,21 @@ function mapView(): string {
     const tops = l.map(b => top(s, b).id), lord = tops.sort((a, b) => tops.filter(x => x === b).length - tops.filter(x => x === a).length)[0]!;
     return [0.75, `hsl(${(lord * 67) % 360} 45% 50%)`];
   };
-  const cells = s.cells.map((cell, i) => { const [v, col] = val(i), l = at.get(i)?.length ?? 0; return `<button class="cell${i === picked ? ' on' : ''}${cell.shrine ? ' shrine' : ''}" data-cell="${i}" style="--v:${Math.round(v * 100)}%;--c:${col}" aria-label="${esc(cellWords(i))}">${l ? `<i>${l}</i>` : ''}</button>`; }).join('');
+  // The lie of the land: higher ground darker, rivers where the water runs strongest; the Crown's seat; and live marks.
+  const highs = s.cells.map(x => x.high), lo = Math.min(...highs), hi = Math.max(...highs);
+  const flows = s.cells.map(x => x.flow).filter(f => f > 0).sort((a, b) => a - b), riverAt = flows.length ? flows[Math.floor(flows.length * 0.7)]! : Infinity;
+  const seat = s.bodies.find(b => b.alive && b.rank === 'bailiff')?.home ?? Math.floor(s.cells.length / 2);
+  const feud = new Set<number>();
+  for (const a of hs) for (const b of hs) if (a.id < b.id && Math.abs((a.home % s.side) - (b.home % s.side)) <= 1 && Math.abs(Math.floor(a.home / s.side) - Math.floor(b.home / s.side)) <= 1 && (s.ties[a.id]?.[b.id] ?? 0) <= -0.6) { feud.add(a.home); feud.add(b.home); }
+  const watchHere = (i: number): boolean => watched.has(`c:${i}`) || (at.get(i) ?? []).some(b => watched.has(`b:${b.id}`));
+  const cells = s.cells.map((cell, i) => {
+    const [v, col] = val(i), l = at.get(i) ?? [];
+    const g = [i === seat ? '<em class="g-seat" title="The Crown’s seat">♛</em>' : '', cell.shrine ? '<em class="g-shrine">✦</em>' : '', cell.interdict > 0 ? '<em class="g-inter">✕</em>' : '', cell.flood > 0 ? '<em class="g-flood">≈</em>' : '', feud.has(i) ? '<em class="g-feud">ϟ</em>' : '', watchHere(i) ? '<em class="g-watch">◉</em>' : ''].join('');
+    const sore = c && l.some(b => (c.grief[b.id] ?? 0) >= P.aggrieved);
+    return `<button class="cell${i === picked ? ' on' : ''}${cell.flow >= riverAt ? ' river' : ''}${sore ? ' sore' : ''}" data-cell="${i}" style="--v:${Math.round(v * 100)}%;--c:${col};--h:${Math.round(((cell.high - lo) / Math.max(1e-6, hi - lo)) * 22)}%" aria-label="${esc(cellWords(i))}">${l.length ? `<i>${l.length}</i>` : ''}${g ? `<span class="glyphs">${g}</span>` : ''}</button>`;
+  }).join('');
   const lenses = (['want', 'factions', 'sacred', 'jurisdiction', 'ecology'] as const).map(k => `<button data-lens="${k}" aria-pressed="${lens === k}">${({ want: 'Want', factions: 'Factions', sacred: 'Sacred', jurisdiction: 'Jurisdiction', ecology: 'Ecology' })[k]}</button>`).join('');
-  return `<div class="pills">${lenses}</div><p class="legend small soft">${LEGEND[lens]}</p>
+  return `<div class="pills">${lenses}</div><details class="legend small soft"><summary>${LEGEND[lens]} <span class="keylink">Key</span></summary>${GLYPHS}</details>
     <div class="map-viewport">${zoom > 1 ? '<button class="reset" data-reset="1">Reset zoom</button>' : ''}<div class="map" style="grid-template-columns:repeat(${s.side},1fr);transform:translate(${panX}px,${panY}px) scale(${zoom})">${cells}</div></div>
     ${picked < 0 ? '<p class="soft small">Pinch to zoom. Tap a place to see who is there and give orders.</p>' : ''}`;
 }
@@ -547,17 +594,24 @@ function sheet(): string {
   const holy = [cell.sanctity >= P.sanctuary ? 'holy ground' : '', cell.shrine ? `a shrine kept by ${house(cell.shrine.of)}${cell.shrine.sanctioned ? ', sanctioned' : ''}` : '', cell.interdict > 0 ? `under interdict ${cell.interdict} more weeks` : ''].filter(Boolean).join('; ');
   const iv = interventionAt(s, i), ivWords = ({ interdict: 'Lift the interdict', shrine: 'Sanction the shrine', stained: 'Put the stained priest to penance', feud: 'Impose the king’s peace on a feud' } as Record<string, string>)[iv];
   const wait = (k: string): number => (c ? Math.max(0, 13 - (s.t - (c.seen[`local:${k}:${i}`] ?? -999))) : 0);
-  const order = (k: LocalOrder, t: string, ok = true): string => { const w = wait(k); return `<button data-local="${k}" ${!ok || w > 0 ? 'disabled' : ''}>${t}${w > 0 ? ` <span class="small">(${w}w)</span>` : ''}</button>`; };
-  return `<div class="sheet"><div class="bar"><h3>${esc(cellWords(i))}</h3><button data-cell="-1" aria-label="Close">✕</button></div>
+  /** An order, or why it cannot be given here now. */
+  const order = (k: LocalOrder, t: string, why = ''): string => { const w = wait(k), state = w > 0 ? `${w}w left` : why; return `<button data-local="${k}" ${state ? 'disabled' : ''}>${t}${state ? `<span class="why">${state}</span>` : ''}</button>`; };
+  const inWant = l.some(b => cover(b.store, askAhead(s, b)).some((x, k) => NEEDS[k]!.harm >= 0.5 && x < P.short));
+  const dues = s.bonds.filter(bd => bd.about === 'yield' && bd.way === 'crown' && l.some(b => b.id === bd.a));
+  const star = (key: string): string => `<button class="star" data-watch="${key}" aria-pressed="${watched.has(key)}" aria-label="${watched.has(key) ? 'Stop watching' : 'Watch'}">${watched.has(key) ? '★' : '☆'}</button>`;
+  return `<div class="sheet"><div class="bar"><h3>${star(`c:${i}`)} ${esc(cellWords(i))}</h3><button data-cell="-1" aria-label="Close">✕</button></div>
     ${holy ? `<p class="small">${esc(Cap(holy))}.</p>` : ''}
-    ${l.length ? `<ul class="list small">${l.map(b => `<li>${esc(Cap(house(b.id)))} <span class="soft">· ${b.members.filter(m => s.people[m]!.alive).length} souls${c && (c.grief[b.id] ?? 0) >= P.aggrieved ? ' · <span class="bad">aggrieved</span>' : ''}</span></li>`).join('')}</ul>` : '<p class="soft small">Nobody lives here.</p>'}
-    ${c && mode === 'cockpit' ? `<div class="orders">${order('relief', 'Send relief', l.some(b => cover(b.store, askAhead(s, b)).some((x, k) => NEEDS[k]!.harm >= 0.5 && x < P.short)))}${order('circuit', 'Send the bailiffs')}${order('charter', 'Remit the Crown’s share', s.bonds.some(bd => bd.about === 'yield' && bd.way === 'crown' && bd.easedTo <= s.t && l.some(b => b.id === bd.a)))}${order('intervene', ivWords ?? 'Nothing to intervene in', !!iv)}</div>` : ''}</div>`;
+    ${l.length ? `<ul class="list small">${l.map(b => `<li>${star(`b:${b.id}`)} ${esc(Cap(house(b.id)))} <span class="soft">· ${b.members.filter(m => s.people[m]!.alive).length} souls${c && (c.grief[b.id] ?? 0) >= P.aggrieved ? ' · <span class="bad">aggrieved</span>' : ''}</span></li>`).join('')}</ul>` : '<p class="soft small">Nobody lives here.</p>'}
+    ${c && mode === 'cockpit' ? `<div class="orders">${order('relief', 'Send relief', !l.length ? 'Nobody here' : inWant ? '' : 'No want')}${order('circuit', 'Send the bailiffs')}${order('charter', 'Remit the Crown’s share', !dues.length ? 'No dues' : dues.every(bd => bd.easedTo > s.t) ? 'Remitted' : '')}${order('intervene', ivWords ?? 'Intervene', iv ? '' : 'Nothing amiss')}</div>` : ''}</div>`;
 }
 function chronicleView(): string {
-  const ev = R.events.slice(-150).map(e => ({ t: e.t1, text: esc(named(e.text)), major: e.chain.length > 0 || e.size >= 3, why: e.chain[0] }));
-  const all = [...ev, ...feed.map(f => ({ ...f, why: '' as string | undefined }))].filter(x => !majorOnly || x.major).sort((a, b) => b.t - a.t).slice(0, 80);
+  const homes = new Set<number>([...watched].filter(k => k.startsWith('b:')).map(k => s.bodies[Number(k.slice(2))]?.home ?? -1));
+  const mine = (e: { cell: number; who: number[] }): boolean => watched.has(`c:${e.cell}`) || homes.has(e.cell) || e.who.some(w => watched.has(`b:${w}`));
+  const ev = R.events.slice(-150).map(e => ({ t: e.t1, text: esc(named(e.text)), major: e.chain.length > 0 || e.size >= 3 || mine(e), why: e.chain[0], watch: mine(e), era: false }));
+  const all = [...ev, ...feed.map(f => ({ ...f, why: '' as string | undefined, watch: false, era: false })), ...eras.map(e => ({ t: e.t, text: e.html, major: true, why: '' as string | undefined, watch: false, era: true }))]
+    .filter(x => !majorOnly || x.major).sort((a, b) => b.t - a.t || Number(b.era) - Number(a.era)).slice(0, 80);
   return `<div class="pills"><button data-major="0" aria-pressed="${!majorOnly}">All</button><button data-major="1" aria-pressed="${majorOnly}">Major</button></div>
-    <ul class="list">${all.map(x => `<li><span class="label">Y${Math.floor(x.t / 52) + 1}·W${(x.t % 52) + 1}</span> ${x.text}${x.why ? `<div class="small soft">because ${esc(named(x.why))}</div>` : ''}</li>`).join('') || '<li class="soft">Nothing yet. Let time run.</li>'}</ul>`;
+    <ul class="list">${all.map(x => `<li${x.era ? ' class="era"' : x.watch ? ' class="watch"' : ''}><span class="label">Y${Math.floor(x.t / 52) + 1}·W${(x.t % 52) + 1}</span> ${x.text}${x.why ? `<div class="small soft">because ${esc(named(x.why))}</div>` : ''}</li>`).join('') || '<li class="soft">Nothing yet. Let time run.</li>'}</ul>`;
 }
 
 function lawsDeck(): string {
@@ -611,7 +665,18 @@ function tickWeek(): void {
   }
   advance(s, true);
   R.read(s);
+  for (const r of s.log) {
+    if (r.k === 'die' && r.need >= 0) eraStats.hunger++;
+    else if (r.k === 'withdraw' && (r.q ?? 0) > 0) eraStats.withdrawals++;
+    else if (r.k === 'shrine') eraStats.shrines++;
+    else if (r.k === 'decay' && r.q2 === 1 && r.a < 0) eraStats.floods++;
+    else if (r.k === 'defy') eraStats.defied++;
+  }
   s.log = [];
+  if (s.t - eraFrom >= 520) closeEra();
+  if (c) hist.push({ t: s.t, legitimacy: c.legitimacy, reach: c.reach, store: storeTotal() });
+  if (hist.length > 60) hist = hist.slice(-53);
+  if (s.t % 13 === 0) save();
   if (c) {
     audience(s);
     const byLaw = s.log.filter(r => r.k === 'rule' && r.kind2 === 1 && r.q2 === -3).length, byLord = s.log.filter(r => r.k === 'rule' && r.kind2 === 1 && r.q2 === -6).length;
@@ -619,6 +684,41 @@ function tickWeek(): void {
   }
   if (feed.length > 400) feed = feed.slice(-300);
 }
+const ORDINAL = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth'];
+/** Close a decade: what it was, in a line, and a name the chroniclers would give it. */
+function closeEra(): void {
+  const hs = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length), pop = s.people.filter(p => p.alive).length, st = eraStats, was = st.pop || pop;
+  const name = st.hunger > was * 0.1 ? 'the Hungry Years' : pop < was * 0.85 ? 'the Thinning' : st.withdrawals >= 3 ? 'the Years of Faction' : st.shrines >= 2 ? 'the Years of Signs' : st.floods >= 6 ? 'the Wet Years' : st.defied >= 5 ? 'the Years of Broken Taboos' : pop > was * 1.15 ? 'the Fat Years' : 'the Quiet Years';
+  const lords = s.bodies.filter(b => b.alive && b.rank === 'lord').map(b => [b, hs.filter(h => top(s, h).id === top(s, b).id).length] as const).sort((a, b) => b[1] - a[1])[0];
+  const priests = s.bodies.filter(b => b.alive && b.rank === 'priest').map(b => [b, s.bonds.filter(x => x.about === 'yield' && x.way === 'tithe' && x.b === b.id).length] as const).sort((a, b) => b[1] - a[1])[0];
+  const pol = s.court?.policy, roll = pol ? (Object.keys(LAW_WORDS) as LawKey[]).filter(k => pol.inscribed[k]).map(k => LAW_WORDS[k][0]) : [];
+  const bits = [`souls ${was} → ${pop}`, lords ? `the greatest lord ${esc(house(lords[0].id))}` : '', priests && priests[1] ? `the largest parish ${esc(house(priests[0].id))}'s, ${priests[1]} houses` : '', roll.length ? `on the roll: ${roll.join(', ')}` : '', st.hunger ? `${st.hunger} dead of want` : ''].filter(Boolean);
+  eras.push({ t: s.t, html: `<strong>The ${ORDINAL[eras.length] ?? `${eras.length + 1}th`} decade, ${name}.</strong> <span class="small">${bits.join('; ')}.</span>` });
+  eraFrom = s.t; eraStats = { pop, hunger: 0, withdrawals: 0, shrines: 0, floods: 0, defied: 0 };
+}
+
+// --- Keeping a realm between visits ---
+const SAVE = 'vicarius-regis-realm';
+function save(): void {
+  if (!s || mode === 'regency' || !document.getElementById('view')) return;
+  try { localStorage.setItem(SAVE, JSON.stringify({ v: 1, mode, s, events: R.events.slice(-300), feed: feed.slice(-200), hist, eras, eraFrom, eraStats, watched: [...watched], lens, deck })); } catch { /* full or blocked: the realm simply is not kept */ }
+}
+function saved(): { mode: Mode; t: number; seed: number; souls: number } | null {
+  try { const raw = localStorage.getItem(SAVE); if (!raw) return null; const j = JSON.parse(raw); return { mode: j.mode, t: j.s.t, seed: j.s.seed, souls: j.s.people.filter((p: { alive: boolean }) => p.alive).length }; } catch { return null; }
+}
+function resume(): void {
+  try {
+    const j = JSON.parse(localStorage.getItem(SAVE)!);
+    s = j.s; R = new Readers(); R.events = j.events ?? []; mode = j.mode; feed = j.feed ?? []; hist = j.hist ?? []; eras = j.eras ?? []; eraFrom = j.eraFrom ?? 0; eraStats = j.eraStats ?? eraStats;
+    watched.clear(); for (const w of j.watched ?? []) watched.add(w);
+    lens = j.lens ?? 'want'; deck = j.deck ?? 'laws';
+    over = ''; speed = 0; picked = -1; view = 'map'; openGauge = ''; zoom = 1; panX = 0; panY = 0;
+    shell();
+  } catch { welcome(); }
+}
+window.addEventListener('pagehide', save);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') save(); });
+
 function frame(now: number): void {
   if (s && mode !== 'regency' && document.getElementById('view')) {
     const dt = Math.min(0.25, (now - (lastFrame || now)) / 1000);
@@ -679,6 +779,9 @@ app.addEventListener('click', e => {
 function cockpitClick(b: HTMLButtonElement): boolean {
   const c = s?.court;
   if (b.dataset.speed !== undefined) { speed = Number(b.dataset.speed) as typeof speed; paint(); return true; }
+  if (b.dataset.gauge !== undefined) { openGauge = openGauge === b.dataset.gauge ? '' : (b.dataset.gauge as typeof openGauge); paint(); return true; }
+  if (b.dataset.home) { save(); speed = 0; welcome(); return true; }
+  if (b.dataset.watch) { const k = b.dataset.watch; if (watched.has(k)) watched.delete(k); else watched.add(k); paint(); return true; }
   if (b.dataset.view) { view = b.dataset.view as typeof view; paint(); return true; }
   if (b.dataset.deck) { deck = b.dataset.deck as typeof deck; paint(); return true; }
   if (b.dataset.lens) { lens = b.dataset.lens as Lens; paint(); return true; }
@@ -686,13 +789,16 @@ function cockpitClick(b: HTMLButtonElement): boolean {
   if (b.dataset.cell !== undefined) { picked = Number(b.dataset.cell); paint(); return true; }
   if (b.dataset.major !== undefined) { majorOnly = b.dataset.major === '1'; paint(); return true; }
   if (!c) return false;
-  if (b.dataset.law) { const [k, v] = b.dataset.law.split(':') as [LawKey, string]; setLaw(s, k, v as never); feed.push({ t: s.t, text: `You laid down the law: <strong>${LAW_WORDS[k][0]}: ${LAW_WORDS[k][1].find(x => x[0] === v)![1]}</strong>.`, major: true }); paint(); return true; }
-  if (b.dataset.dial) { const [k, d] = b.dataset.dial.split(':') as [keyof Dials, string]; const x = DIALS.find(y => y.key === k)!, i = x.vals.indexOf((c.policy.dials as any)[k]) + Number(d); if (i >= 0 && i < x.vals.length) setDial(s, k, x.vals[i] as never); paint(); return true; }
-  if (b.dataset.ord) { const k = b.dataset.ord as OrdKey; if (issueOrdinance(s, k)) feed.push({ t: s.t, text: `You decreed: <strong>${ORDS.find(o => o[0] === k)![1]}</strong>.`, major: true }); paint(); return true; }
-  if (b.dataset.inscribe) { const k = b.dataset.inscribe as LawKey; if (inscribeLaw(s, k)) feed.push({ t: s.t, text: `You wrote the law on the roll: <strong>${LAW_WORDS[k][0]}</strong>.`, major: true }); paint(); return true; }
+  if (b.dataset.law) { const [k, v] = b.dataset.law.split(':') as [LawKey, string]; const leg0 = c.legitimacy; setLaw(s, k, v as never); if (c.legitimacy < leg0) doFlash({ legitimacy: 'bad' }); feed.push({ t: s.t, text: `You laid down the law: <strong>${LAW_WORDS[k][0]}: ${LAW_WORDS[k][1].find(x => x[0] === v)![1]}</strong>.`, major: true }); paint(); return true; }
+  if (b.dataset.dial) { const [k, d] = b.dataset.dial.split(':') as [keyof Dials, string]; const x = DIALS.find(y => y.key === k)!, i = x.vals.indexOf((c.policy.dials as any)[k]) + Number(d); if (i >= 0 && i < x.vals.length) { setDial(s, k, x.vals[i] as never); doFlash(k === 'patronage' ? { store: 'warn', ...(x.vals[i] === 'church' ? { legitimacy: 'good' } : x.vals[i] === 'lords' ? { reach: 'good' } : {}) } : k === 'share' ? { store: Number(d) > 0 ? 'good' : 'warn' } : k === 'relief' ? { store: 'warn' } : k === 'bailiff' ? (x.vals[i] === 'strict' ? { store: 'good', reach: 'bad' } : {}) : {}); } paint(); return true; }
+  if (b.dataset.ord) { const k = b.dataset.ord as OrdKey; if (issueOrdinance(s, k)) doFlash(({ stay: { legitimacy: 'good' }, granaries: { store: 'warn' }, eyre: { store: 'warn', legitimacy: 'good', reach: 'good' }, penance: { legitimacy: 'good' } } as Record<OrdKey, typeof flash>)[k]);
+    if (c.policy.ord[k] === ORD_WEEKS[k]) feed.push({ t: s.t, text: `You decreed: <strong>${ORDS.find(o => o[0] === k)![1]}</strong>.`, major: true }); paint(); return true; }
+  if (b.dataset.inscribe) { const k = b.dataset.inscribe as LawKey; if (inscribeLaw(s, k)) { doFlash({ legitimacy: 'good' }); } if (c.policy.inscribed[k] && c.policy.lawSetAt[k] >= 0) feed.push({ t: s.t, text: `You wrote the law on the roll: <strong>${LAW_WORDS[k][0]}</strong>.`, major: true }); paint(); return true; }
   if (b.dataset.local && picked >= 0) {
     const k = b.dataset.local as LocalOrder, what = b.textContent?.replace(/\s*\(\d+w\)/, '') ?? k;
-    feed.push({ t: s.t, text: localOrder(s, picked, k) ? `You ordered at ${esc(cellWords(picked))}: <strong>${esc(what)}</strong>.` : `<span class="soft">Your order at ${esc(cellWords(picked))} came to nothing.</span>`, major: true });
+    const ok = localOrder(s, picked, k);
+    if (ok) doFlash(({ relief: { store: 'warn' }, circuit: { reach: 'good', store: 'good' }, charter: { store: 'warn', legitimacy: 'good' }, intervene: { legitimacy: 'good' } } as Record<LocalOrder, typeof flash>)[k]);
+    feed.push({ t: s.t, text: ok ? `You ordered at ${esc(cellWords(picked))}: <strong>${esc(what)}</strong>.` : `<span class="soft">Your order at ${esc(cellWords(picked))} came to nothing.</span>`, major: true });
     paint(); return true;
   }
   return false;
@@ -715,8 +821,9 @@ function start(seed: number, side: number, souls: number, years: number): void {
     }
     if (mode === 'regency') { document.body.classList.remove('cockpit-on'); openCourt(s); openWeek(); render(); return; }
     if (mode === 'cockpit') { openCourt(s, 'cockpit'); audience(s); s.log = []; }
-    speed = 0; feed = []; picked = -1; view = 'map'; deck = 'laws';
-    shell();
+    speed = 0; feed = []; picked = -1; view = 'map'; deck = 'laws'; hist = []; eras = []; eraFrom = s.t; openGauge = ''; watched.clear();
+    eraStats = { pop: s.people.filter(p => p.alive).length, hunger: 0, withdrawals: 0, shrines: 0, floods: 0, defied: 0 };
+    shell(); save();
   };
   tick();
 }
@@ -727,6 +834,7 @@ function welcome(): void {
     <h1>Vicarius Regis</h1>
     <p>The king is away and the realm is yours to keep in his name. Govern it from above with laws, the treasury and decrees; watch it live without you; or sit in his court and hear its quarrels one by one.</p>
     <p class="soft">Nothing in this realm is scripted. Its people farm, deal, quarrel and believe by their own lights, and they will learn what to expect of you.</p>
+    ${(() => { const k = saved(); return k ? `<button class="go" id="resume">Resume your realm: ${k.mode === 'cockpit' ? 'the Cockpit' : 'the Chronicle'}, year ${Math.floor(k.t / 52) + 1}, ${k.souls} souls</button>` : ''; })()}
     <div class="modes">${([['cockpit', 'The Cockpit', 'Time runs on its own. Trim the realm with laws, the treasury and decrees, and give orders place by place. Nobody petitions you.'], ['chronicle', 'The Chronicle', 'Watch the realm live: no court, no Crown, just people, decades of them.'], ['regency', 'The Regency', 'The king is away three years. Week by week, petitioners come before you: hear up to three; lose the realm’s confidence and you fall.']] as const).map(([k, t, d]) => `<button class="mode" data-mode="${k}" aria-pressed="${mode === k}"><strong>${t}</strong><span>${d}</span></button>`).join('')}</div>
     <div><label class="label" for="seed">Seed of the realm</label><br><input id="seed" type="number" min="1" value="${1 + Math.floor(Math.random() * 999)}"></div>
     <div class="choices"><button class="go" id="small">A small realm: about 200 souls, ready in seconds</button><button id="full">The realm: about 900 souls, takes a minute to found</button></div>
@@ -740,6 +848,7 @@ app.addEventListener('click', ev => {
   if (b.id === 'small') return start(seedOf(), P.side, P.souls, 6);
   if (b.id === 'full') return start(seedOf(), P.realmSide, P.realmSouls, 6);
   if (b.id === 'again') return welcome();
+  if (b.id === 'resume') return resume();
   if (b.dataset.mode) { mode = b.dataset.mode as Mode; document.querySelectorAll('[data-mode]').forEach(x => x.setAttribute('aria-pressed', String((x as HTMLElement).dataset.mode === mode))); return; }
   if (mode !== 'regency' && s && document.getElementById('view') && cockpitClick(b as HTMLButtonElement)) return;
   if (b.id === 'pass') { passWeek(); render(); window.scrollTo(0, 0); return; }
