@@ -14,6 +14,8 @@ type Script = (s: State, seated: Petition[]) => Ruling[];
 function judge(s: State, p: Petition): string {
   const c = cuts(s, p);
   if (p.reason === 'challenge') { const r = s.court!.rules.find(x => x.id === p.bond); return r && r.uses > 5 ? 'uphold' : 'strike'; }
+  if (p.side === 'asks') return p.body !== undefined ? 'confirm' : 'sell';
+  if (p.side === 'fears') return c.includes('remit') ? 'remit' : 'dismiss';
   const ease = c.find(x => x.startsWith('ease:'));
   if (ease) return ease;
   if (c.includes('inquire')) return 'inquire';
@@ -24,7 +26,7 @@ function judge(s: State, p: Petition): string {
   return pressed(p.against) ? 'enforce' : 'stay';
 }
 /** What favours whoever asks. */
-const grant = (s: State, p: Petition): string => (p.burdens.length ? 'give' : p.reason === 'challenge' ? 'strike' : p.bond < 0 ? 'give' : cuts(s, p).includes('turn') ? 'turn' : p.side === 'owed' ? 'enforce' : 'strike');
+const grant = (s: State, p: Petition): string => (p.side === 'asks' ? (p.body !== undefined ? 'install' : 'charter') : p.side === 'fears' ? 'forbid' : p.burdens.length ? 'give' : p.reason === 'challenge' ? 'strike' : p.bond < 0 ? 'give' : cuts(s, p).includes('turn') ? 'turn' : p.side === 'owed' ? 'enforce' : 'strike');
 
 const COURTS: Record<string, () => Script> = {
   'hears nobody': () => () => [],

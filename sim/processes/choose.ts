@@ -3,7 +3,7 @@
 
 import { exp } from '../math.ts';
 import { AIDERS, BY_HARM, Kn, NEEDS, NK, NN, NS, P, Rc, St, TOIL } from '../tables.ts';
-import { askAhead, cover, welfare, welfareLater, zeros } from '../value.ts';
+import { askAhead, cover, drive, welfare, welfareLater, zeros } from '../value.ts';
 import { around, bond, dist, grown, head, holdsByCell, kinOf, muster, near, rec, struggle, tenancies, tie, warm, type Tenancy } from '../util.ts';
 import { bear } from './grow.ts';
 import { tBar } from './sky.ts';
@@ -16,6 +16,8 @@ interface Ctx {
   ahead: number[]; cov: number[]; W: number;
   /** What a day of its best work is worth to it. */
   dayWorth: number;
+  /** How hard it reaches for what others cannot also have. */
+  drive: number;
   /** Worth of one more unit of each kind; `extra` is the part that comes from what it can be made into or help make. */
   v: number[]; extra: number[];
   scarce: number; press: number; pressNeed: number;
@@ -27,7 +29,7 @@ interface Ctx {
 }
 
 /** Everything about the land that is worked out once a week. */
-interface Land { landOf: Map<number, Bond[]>; letsOf: Map<number, Tenancy[]>; letOn: Set<number>; pledged: Set<number>; at: Ctx[][]; lets: Tenancy[]; holds: Map<number, Bond[]>; bears: number[][]; left: Map<number, number>; homes: number[] }
+interface Land { bars: Bond[]; landOf: Map<number, Bond[]>; letsOf: Map<number, Tenancy[]>; letOn: Set<number>; pledged: Set<number>; at: Ctx[][]; lets: Tenancy[]; holds: Map<number, Bond[]>; bears: number[][]; left: Map<number, number>; homes: number[] }
 
 /** Where a living thing will stand after T more growing weeks. */
 const ripen = (x: number, K: number, r: number, T: number): number => (x <= 0 || K <= 0 ? 0 : K / (1 + (K / x - 1) * exp(-r * T)));
@@ -196,7 +198,7 @@ function context(s: State, L: Land, b: Body): Ctx | null {
   const rush = St.map((row, st) => row.reap >= 0 && standing[st]! > 0 && standing[st]! / Math.max(1, 0.5 * Rc[row.reap]!.from[0]![1] * days) >= soon[st]! - 1);
   let dayWorth = 0;
   for (const o of opts) if (!o.take) dayWorth = Math.max(dayWorth, outWorth(o) * (Rc[o.r]!.from.length ? o.score : 1));
-  return { b, h, days, rush, dayWorth, grown: nGrown, ahead, cov, W, v, extra, scarce, press, pressNeed, opts, pend };
+  return { b, h, days, rush, dayWorth, drive: drive(s, b), grown: nGrown, ahead, cov, W, v, extra, scarce, press, pressNeed, opts, pend };
 }
 
 /** The good to a body of a change to a store. */
@@ -276,7 +278,7 @@ function arrange(s: State, L: Land, cs: Map<number, Ctx>, A: Ctx, need: number):
   let rulesStood = false;
   for (const B of around(L.at, s.side, a.home, P.dealReach)) {
     if (B === A || dist(s.side, a.home, B.b.home) > P.dealReach || tie(s, a.id, B.b.id) < P.barAt || tie(s, B.b.id, a.id) < P.barAt) continue;
-    if (shuns(s, a, B.b) || shuns(s, B.b, a)) continue;
+    if (shuns(s, a, B.b) || shuns(s, B.b, a) || L.bars.some(x => (x.b === a.id && dist(s.side, x.cell, B.b.home) <= P.reach) || (x.b === B.b.id && dist(s.side, x.cell, a.home) <= P.reach))) continue;
     const tB = trust(B, A);
     for (const want of wants) {
       // What A would get from B, what it is worth to A, and what it costs B.
@@ -543,6 +545,8 @@ function work(s: State, L: Land, c: Ctx): void {
         for (const [k, per] of gathered(st)) after[k] = after[k]! + more * per;
         g += P.later * (welfareLater(proj, after, c.ahead, T) - welfareLater(proj, pend, c.ahead, T));
       }
+      // Ground nobody holds is worth putting something onto for its own sake to a house that reaches for more than it needs.
+      if (r.to.length && o.mine <= 0 && c.drive > 0) g += c.drive * P.claimWorth * d;
       if (g > bestGain) { bestGain = g; best = o; bestM = m; bestAid = aid; }
     }
     if (!best) break;
@@ -584,12 +588,14 @@ function prospect(s: State, L: Land, c: Ctx, home: number): number {
 
 function roam(s: State, L: Land, c: Ctx): void {
   const b = c.b;
-  // Only want of the most harmful thing uproots a body, and not one that has only just settled.
-  if (c.pressNeed !== BY_HARM[0] || s.t - b.since < 26) return;
+  // One barred from where it lives must go. Otherwise only want of the most harmful thing uproots a body, and not one that has only just settled.
+  const barredAt = (cell: number): boolean => L.bars.some(x => x.b === b.id && dist(s.side, x.cell, cell) <= P.reach);
+  const outcast = barredAt(b.home);
+  if (!outcast && (c.pressNeed !== BY_HARM[0] || s.t - b.since < 26)) return;
   const here = prospect(s, L, c, b.home);
-  let best = -1, bestP = here * P.stay;
+  let best = -1, bestP = outcast ? 0 : here * P.stay;
   for (const cell of near(s.side, b.home, P.scout)) {
-    if (cell === b.home) continue;
+    if (cell === b.home || barredAt(cell)) continue;
     const p = prospect(s, L, c, cell) * (1 - 0.05 * dist(s.side, b.home, cell));
     if (p > bestP) { bestP = p; best = cell; }
   }
@@ -599,7 +605,7 @@ function roam(s: State, L: Land, c: Ctx): void {
 }
 
 export function choose(s: State): void {
-  const L: Land = { landOf: new Map(), letsOf: new Map(), letOn: new Set(), pledged: new Set(), at: s.cells.map(() => []), lets: [], holds: holdsByCell(s), bears: s.cells.map(c => St.map((_r, k) => bear(c, k))), left: new Map(), homes: new Array<number>(s.cells.length).fill(0) };
+  const L: Land = { bars: s.bonds.filter(x => x.about === 'right' && x.kind < 0 && x.b >= 0 && x.due > s.t), landOf: new Map(), letsOf: new Map(), letOn: new Set(), pledged: new Set(), at: s.cells.map(() => []), lets: [], holds: holdsByCell(s), bears: s.cells.map(c => St.map((_r, k) => bear(c, k))), left: new Map(), homes: new Array<number>(s.cells.length).fill(0) };
   for (const b of s.bodies) if (b.alive) for (const cell of near(s.side, b.home, P.reach)) L.homes[cell] = L.homes[cell]! + 1;
   survey(s, L);
   const cs = new Map<number, Ctx>();

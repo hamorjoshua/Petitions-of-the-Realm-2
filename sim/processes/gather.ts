@@ -3,11 +3,11 @@
 
 import { Kn, NK, NN, P } from '../tables.ts';
 import { askAhead, heads, welfare } from '../value.ts';
-import { around, bond, dist, head, kinOf, leaves, living, rec, regard } from '../util.ts';
+import { around, bond, dist, grown, head, kinOf, leaves, living, rec, regard } from '../util.ts';
 import type { Body, Person, State } from '../types.ts';
 
 export function body(s: State, home: number): Body {
-  const b: Body = { id: s.bodies.length, home, store: new Array<number>(NK).fill(0), members: [], parts: [], of: -1, alive: true, since: s.t, plan: [], spent: 0, goto: -1, why: new Array<number>(NN).fill(-1), ways: {}, stuck: 0, pressed: false, lore: {}, recent: [], skill: [], aim: null, hope: [], put: [], got: [], plea: [], away: 0, rank: '', owedUp: [] };
+  const b: Body = { id: s.bodies.length, home, store: new Array<number>(NK).fill(0), members: [], parts: [], of: -1, head: -1, alive: true, since: s.t, plan: [], spent: 0, goto: -1, why: new Array<number>(NN).fill(-1), ways: {}, stuck: 0, pressed: false, lore: {}, recent: [], skill: [], aim: null, hope: [], put: [], got: [], plea: [], away: 0, rank: '', owedUp: [] };
   s.bodies.push(b);
   return b;
 }
@@ -48,6 +48,13 @@ function handOver(s: State, from: Body, to: Body, share: number): void {
 const depth = (s: State, b: Body): number => (b.parts.length ? 1 + Math.max(...b.parts.map(p => depth(s, s.bodies[p]!))) : 0);
 
 /** Bodies that hold one another well enough, all round, become one body; one that no longer does, comes apart. */
+/** The hearth that leads a body of bodies: the one with the most hands and the most laid by. */
+function pickHead(s: State, c: Body): number {
+  let best = -1, bv = -1;
+  for (const id of leaves(s, c)) { const b = s.bodies[id]!, v = grown(s, b).length + b.store.reduce((x, q) => x + q, 0) / 500; if (v > bv) { bv = v; best = id; } }
+  return best;
+}
+
 function band(s: State): void {
   // Coming apart: a part that the rest no longer hold well leaves; a body of fewer than two is no body.
   for (const c of s.bodies) {
@@ -62,7 +69,7 @@ function band(s: State): void {
       pb.of = -1;
       rec(s, 'leave', { a: p, b: c.id, kind2: -3, cell: pb.home });
     }
-    if (c.parts.length >= 2) { c.home = s.bodies[c.parts[0]!]!.home; continue; }
+    if (c.parts.length >= 2) { c.home = s.bodies[c.parts[0]!]!.home; if (!leaves(s, c).includes(c.head)) c.head = pickHead(s, c); continue; }
     const last = c.parts[0] !== undefined ? s.bodies[c.parts[0]]! : undefined;
     if (last) { handOver(s, c, last, 1); last.of = -1; }
     c.alive = false; c.parts = [];
@@ -81,6 +88,7 @@ function band(s: State): void {
     if (group.length < P.bandOf) continue;
     const c = body(s, u.home);
     c.parts = group.map(g => g.id);
+    c.head = pickHead(s, c);
     for (const g of group) { g.of = c.id; done.add(g.id); }
     rec(s, 'gather', { a: c.id, cell: u.home, q: leaves(s, c).length, q2: depth(s, c) });
   }

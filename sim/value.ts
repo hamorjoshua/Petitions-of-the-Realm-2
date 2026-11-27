@@ -2,9 +2,9 @@
 // welfare falls off as cover nears a need's horizon, so the scarcest need is the one worth most.
 
 import { exp } from './math.ts';
-import { Kn, NEEDS, NK, NN, P, SERVING } from './tables.ts';
+import { BY_HARM, Kn, NEEDS, NK, NN, P, SERVING } from './tables.ts';
 import { tBar } from './processes/sky.ts';
-import { appetite, living } from './util.ts';
+import { appetite, head, living } from './util.ts';
 import { weekOf, type Body, type State } from './types.ts';
 
 export const chill = (temp: number): number => (temp < P.chillFrom ? P.chillFrom - temp : 0);
@@ -80,3 +80,14 @@ export function welfareLater(store: number[], pend: number[], ahead: number[], T
 }
 
 export const zeros = (): number[] => new Array<number>(NK).fill(0);
+
+/**
+ * How hard a house reaches for what others cannot also have. It is nothing while the house is in want, and grows with
+ * its surplus: the speaker's ambition times how far its store of the first need runs past contentment.
+ */
+export function drive(s: State, b: Body): number {
+  const h = head(s, b);
+  if (!h) return 0;
+  const c = cover(b.store, askAhead(s, b))[BY_HARM[0]!]!;
+  return h.ambition * Math.max(0, Math.min(1, (c - P.content) / P.content));
+}

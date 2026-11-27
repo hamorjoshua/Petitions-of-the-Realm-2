@@ -23,6 +23,8 @@ export interface Person {
   wear: number;
   /** Thresholds, fixed at birth. */
   sound: number; scruple: number; temper: number; spacing: number; credulous: number;
+  /** How much they want what others cannot also have: ground beyond their need, a sole right, the lead of their body. */
+  ambition: number;
   /** How the house stood when this person was born. */
   omen: number;
   bore: number;
@@ -52,6 +54,8 @@ export interface Body {
   /** A body may be made of bodies, and may belong to one. */
   parts: number[];
   of: number;
+  /** For a body of bodies: the hearth that leads it, and judges what is left to the body. */
+  head: number;
   alive: boolean;
   since: number;
   /** What its members will do next week, and where it means to go. */
@@ -92,7 +96,8 @@ export interface Bond {
   /** person: a and b are people. land: a is the body that holds. act: a owes b.
    *  yield: a owes b a share of whatever a gathers from sown ground.
    *  right: a holds the sole right to one kind of work (`kind`, a way of making) on the ground about `cell`; anyone else who
-   *         does it there owes a `share` of what they make. With `kind` -1 it is a ban: nobody may work `cell` until `due`.
+   *         does it there owes a `share` of what they make. With `kind` -1 it is a ban until `due`: with `b` -1 nobody may work `cell`;
+   *         with `b` set, that body may not work or deal within reach of `cell`.
    *  bond: a has a right in the bond `on`: its use for a share (a lease), or the bond itself should the debt `secures` be broken (a pledge). */
   a: number; b: number;
   cell: number;
@@ -133,7 +138,7 @@ export interface Rec {
 export interface Wrong { by: number; to: number; kind: number; q: number; rec: number; doer: number }
 
 /** A matter before the court: who brings it, against whom, about which bond or want, and why it climbed this far. */
-export interface Petition { /** For a house in want: everything that weighs on it, heaviest first, and the shape of each. */ burdens: number[]; shapes: string[]; id: number; t: number; by: number; against: number; bond: number; need: number; rec: number; shape: string; side: 'owed' | 'owes' | 'outside' | 'bare' | 'asks' | 'fears'; work?: number; cell?: number; reason: 'none' | 'clash' | 'challenge'; speaksFor: number; waited: number; urgency: number }
+export interface Petition { /** For a house in want: everything that weighs on it, heaviest first, and the shape of each. */ burdens: number[]; shapes: string[]; id: number; t: number; by: number; against: number; bond: number; need: number; rec: number; shape: string; side: 'owed' | 'owes' | 'outside' | 'bare' | 'asks' | 'fears'; work?: number; cell?: number; sign?: string; body?: number; press?: number; reason: 'none' | 'clash' | 'challenge'; speaksFor: number; waited: number; urgency: number }
 /** A rule: a bond that binds every member of a body, or the whole realm (scope -1). */
 export interface Rule { id: number; scope: number; shape: string; cut: string; since: number; uses: number }
 export interface Court { standing: number; docket: Petition[]; rules: Rule[]; grief: Record<number, number>; seen: Record<string, number>; next: number; quiet: number; declined: number; chilled: number;

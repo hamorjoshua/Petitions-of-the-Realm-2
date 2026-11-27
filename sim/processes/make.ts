@@ -40,10 +40,10 @@ export function make(s: State): void {
     if (!any) delete s.worked[key];
   }
   // Sole rights to a kind of work about a place, and bans on working a place.
-  const rightsOn = new Map<string, Bond[]>(), banned = new Set<number>();
+  const rightsOn = new Map<string, Bond[]>(), banned = new Set<number>(), barred: Bond[] = [];
   for (const bd of s.bonds) {
     if (bd.about !== 'right') continue;
-    if (bd.kind < 0) { if (bd.due > s.t) banned.add(bd.cell); continue; }
+    if (bd.kind < 0) { if (bd.due > s.t) { if (bd.b < 0) banned.add(bd.cell); else barred.push(bd); } continue; }
     for (const cell of near(s.side, bd.cell, 1)) { const key = `${bd.kind}:${cell}`, l = rightsOn.get(key); if (l) l.push(bd); else rightsOn.set(key, [bd]); }
   }
   const dues = new Map<number, Bond[]>();
@@ -54,7 +54,7 @@ export function make(s: State): void {
     for (const [st, q] of r.from) { const key = j.w.cell * NS + st, tot = want.get(key)!, a = avail.get(key)!; if (tot > a) m = Math.min(m, (j.m * a) / tot); void q; }
     for (const [k, q] of r.inp) if (q * m > b.store[k]!) m = b.store[k]! / q;
     for (const [st, q] of r.to) { const room = bear(c, st) - c.stock[st]!; if (q * m > room) m = Math.max(0, room / q); }
-    if (m <= 1e-9 || banned.has(j.w.cell)) continue;
+    if (m <= 1e-9 || banned.has(j.w.cell) || barred.some(x => x.b === b.id && dist(s.side, x.cell, j.w.cell) <= P.reach)) continue;
     // A taking from ground whose holder lives within reach is opposed, as a taking from a store is:
     // the taker carries off only what their might wins, and what is not won stays standing.
     if (r.from.length && r.out.length && !lets.some(x => x.cell === j.w.cell && x.lease.a === b.id)) {
