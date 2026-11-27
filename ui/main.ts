@@ -524,7 +524,7 @@ const LEGEND: Record<Lens, string> = {
   jurisdiction: 'Each colour is one body of houses, and whoever leads it.',
   ecology: 'Darker red: soil worn out or ground flooded.',
 };
-const GLYPHS = 'Marks: a dot is a hamlet, sized by its people; a filled square a lord’s seat, a hollow one a bailiff’s; a gold-edged diamond a parish; a gold dot at the upper right your seat; a small square at the upper left a work, a gold diamond to the right a shrine, a blue dot to the left what you watch; a red ring marks trouble (aggrieved houses or an interdict); the small grey line under a seat’s name is its figure for the lens; Bright land is settled, darker land wild. Water inland is a lake; dark edges bound lordships; light lines are roads. Fills step in four shades of the lens colour.';
+const GLYPHS = 'Each dot is a settlement; the hollow dot is your seat. Names carry the lens’s figure: weeks of food, aggrieved houses of all, holiness, soil left, or souls. Dark lines bound lordships; hairlines are roads. The lens fills places in four steps.';
 
 const storeTotal = (): number => (s.court ? s.court.store.reduce((x, y) => x + y, 0) : 0);
 /** Up, down or level against a season ago. */
@@ -557,16 +557,19 @@ function doFlash(f: typeof flash): void {
 const factionNeed = (hearths: number): number => Math.max(P.factionMin, Math.ceil(P.faction * hearths));
 function strip(): string {
   const c = s.court, hs = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length);
-  const when = `Y${Math.floor(s.t / 52) + 1}·W${(s.t % 52) + 1} · ${seasonOf(s.t)}`;
-  const throttle = `<div class="throttle">${([0, 1, 5, 20] as const).map(v => `<button data-speed="${v}" aria-pressed="${speed === v}" aria-label="${v ? v + ' times' : 'Pause'}">${v ? v + '×' : '❙❙'}</button>`).join('')}</div>`;
-  if (!c) return `<header class="strip"><div class="row"><span class="inst"><span class="label">Souls</span><span>${s.people.filter(p => p.alive).length}</span></span><span class="inst"><span class="label">Houses</span><span>${hs.length}</span></span></div><div class="row"><span class="when"><button class="home" data-home="1" aria-label="Save and leave">⌂</button> ${when}</span>${throttle}</div></header>`;
+  const when = `Y${Math.floor(s.t / 52) + 1} · W${(s.t % 52) + 1} · ${seasonOf(s.t)}`;
+  const speeds = `<div class="speeds">${([0, 1, 5, 20] as const).map(v => `<button data-speed="${v}" aria-pressed="${speed === v}" aria-label="${v ? v + ' times' : 'Pause'}">${v ? v + '×' : '❙❙'}</button>`).join('')}</div>`;
+  const kpi = (label: string, value: string, frac: number, bad: boolean, gauge = ''): string => `<${gauge ? `button data-gauge="${gauge}" aria-expanded="${openGauge === gauge}"` : 'div'} class="kpi${gauge && flash[gauge as 'legitimacy'] ? ' flash-' + flash[gauge as 'legitimacy'] : ''}"><span class="label">${label}${gauge ? ' ' + trend(gauge as 'legitimacy') : ''}</span><span class="val">${value}</span><span class="bar"><i class="${bad ? 'bad' : ''}" style="width:${Math.round(Math.max(0, Math.min(1, frac)) * 100)}%"></i></span></${gauge ? 'button' : 'div'}>`;
+  const tool = `<div class="toolbar"><button class="home" data-home="1" aria-label="Save and leave">⌂</button><span class="when">${when}${c?.policy.weak ? ' · <span class="bad">Crown weak</span>' : ''}</span>${speeds}</div>`;
+  if (!c) return `<header class="strip"><div class="kpis">${kpi('Souls', String(s.people.filter(p => p.alive).length), 1, false)}${kpi('Houses', String(hs.length), 1, false)}</div>${tool}</header>`;
   const sore = Object.values(c.grief).filter(g => g >= P.aggrieved).length, need = factionNeed(hs.length);
-  const kindOf = (id: string): number => KINDS.findIndex(k => k.id === id);
-  const store = ['grain', 'timber'].map(id => { const k = kindOf(id); return k >= 0 ? `<span>${Math.round(c.store[k] ?? 0)} ${id}</span>` : ''; }).filter(Boolean).join('');
-  return `<header class="strip"><div class="row inst4">${seals('legitimacy', 'Legitimacy')}${seals('reach', 'Reach')}
-    <button class="inst gauge${flash.store ? ' flash-' + flash.store : ''}" data-gauge="store" aria-expanded="${openGauge === 'store'}"><span class="label">Store ${trend('store')}</span><span class="gilt">${store}</span></button>
-    <span class="inst ${sore >= need ? 'bad' : sore >= 0.7 * need ? 'warn' : ''}"><span class="label">Aggrieved</span><span>${sore} / ${need}</span></span></div>
-    <div class="row"><span class="when"><button class="home" data-home="1" aria-label="Save and leave">⌂</button> ${when}${c.policy.weak ? '<br><span class="bad small">The Crown is weak</span>' : ''}</span>${throttle}</div>${openGauge ? breakdown(openGauge) : ''}</header>`;
+  const gk = KINDS.findIndex(k => k.id === 'grain'), tk = KINDS.findIndex(k => k.id === 'timber'), grain = c.store[gk] ?? 0, timber = c.store[tk] ?? 0;
+  const fmt = (n: number): string => Math.round(n).toLocaleString('en-GB');
+  return `<header class="strip"><div class="kpis">
+    ${kpi('Legitimacy', c.legitimacy.toFixed(1), c.legitimacy / 5, c.legitimacy <= 1.5, 'legitimacy')}
+    ${kpi('Reach', c.reach.toFixed(1), c.reach / 5, c.reach <= 1.5, 'reach')}
+    ${kpi('Store', `${fmt(grain)} / ${fmt(timber)}`, storeTotal() / Math.max(1, c.store0), storeTotal() < 0.5 * c.store0, 'store')}
+    ${kpi('Factions', `${sore} / ${need}`, sore / need, sore >= need)}</div>${tool}${openGauge ? breakdown(openGauge) : ''}</header>`;
 }
 
 /** The realm's dominant lord or body at each place, for borders and the jurisdiction lens. */
@@ -585,17 +588,18 @@ const herald = (id: number): string => HERALDRY[((id % HERALDRY.length) + HERALD
 /** A quiet figure for a named place, by the active lens. */
 function microData(i: number, at: Map<number, Body[]>): string {
   const l = at.get(i) ?? [], cell = s.cells[i]!, souls = l.reduce((a, b) => a + b.members.filter(m => s.people[m]!.alive).length, 0);
-  if (lens === 'want') { if (!l.length) return ''; const food = NEEDS.findIndex(n => n.harm >= 0.5); const w = Math.min(...l.map(b => cover(b.store, askAhead(s, b))[food] ?? 0)); return `${w < 10 ? w.toFixed(1) : Math.round(w)}w food`; }
-  if (lens === 'factions') { const c = s.court; return c && l.length ? `${l.filter(b => (c.grief[b.id] ?? 0) >= P.aggrieved).length}/${l.length} aggrieved` : ''; }
-  if (lens === 'sacred') return cell.interdict > 0 ? `interdict ${cell.interdict}w` : cell.shrine ? 'shrine' : `holy ${Math.round(cell.sanctity * 100)}%`;
-  if (lens === 'ecology') return `soil ${Math.round((100 * cell.soil) / Math.max(0.01, cell.soil0))}%`;
-  return souls ? `${souls} souls` : '';
+  if (lens === 'want') { if (!l.length) return ''; const food = NEEDS.findIndex(n => n.harm >= 0.5); const w = Math.min(...l.map(b => cover(b.store, askAhead(s, b))[food] ?? 0)); return `${w < 10 ? w.toFixed(1) : Math.round(w)}w`; }
+  if (lens === 'factions') { const c = s.court; return c && l.length ? `${l.filter(b => (c.grief[b.id] ?? 0) >= P.aggrieved).length}/${l.length}` : ''; }
+  if (lens === 'sacred') return cell.interdict > 0 ? `int ${cell.interdict}w` : `${Math.round(cell.sanctity * 100)}%`;
+  if (lens === 'ecology') return `${Math.round((100 * cell.soil) / Math.max(0.01, cell.soil0))}%`;
+  return souls ? String(souls) : '';
 }
+const titleCase = (x: string): string => x.replace(/\b([a-z])/g, m => m.toUpperCase());
 /** The lens's four steps, as a small legend above the dock. */
 function legend(): string {
   if (lens === 'jurisdiction') return `<div class="legend-scale"><span class="label">Lords</span><span class="small soft">each colour a lordship</span></div>`;
   const col = lens === 'sacred' ? 'var(--gilt)' : lens === 'ecology' ? 'var(--good)' : 'var(--seal)', name = ({ want: 'Want', factions: 'Aggrieved', sacred: 'Holiness', ecology: 'Worn land' } as Record<string, string>)[lens]!;
-  return `<div class="legend-scale"><span class="label">${name}</span>${[0, 14, 35, 65].map((p, k) => `<span class="sw"><i style="background:${p ? `color-mix(in srgb, ${col} ${p}%, var(--land))` : 'var(--land)'}"></i>${['None', 'Low', 'High', 'Severe'][k]}</span>`).join('')}</div>`;
+  return `<div class="legend-scale"><span class="label">${name}</span>${[0, 18, 42, 72].map((p, k) => `<span class="sw"><i style="background:${p ? `color-mix(in srgb, ${col} ${p}%, var(--stone))` : 'var(--stone)'}"></i>${['None', 'Low', 'High', 'Severe'][k]}</span>`).join('')}</div>`;
 }
 /** Room around the realm so nothing at its edge is clipped. */
 const PAD = 0.45;
@@ -642,17 +646,15 @@ function mapView(): string {
     if (water(i)) return `<polygon data-cell="${i}" class="water${i === picked ? ' on' : ''}" points="${polyPath(poly)}"><title>${esc(cellWords(i))}</title></polygon>`;
     // Four flat steps of one signal colour, like a chart: none, a little, more, much.
     // Settled places stand forward in bright land; the wild moor lies darker, a shade darker again on high ground.
-    const [v, col] = lensOf(i), pct = v <= 0.05 ? 0 : v < 0.34 ? 14 : v < 0.67 ? 35 : 65;
-    const home = held(i), tier = home ? '' : highs[i]! >= q(0.75) ? 'wild3' : highs[i]! >= q(0.45) ? 'wild2' : 'wild';
-    const base = home ? 'var(--land)' : `var(--${tier})`;
-    return `<polygon data-cell="${i}" class="${tier}${i === picked ? ' on' : ''}" points="${polyPath(poly)}"${pct ? ` style="fill:color-mix(in srgb, ${col} ${pct}%, ${base})"` : ''}><title>${esc(cellWords(i))}</title></polygon>`;
+    const [v, col] = lensOf(i), pct = v <= 0.05 ? 0 : v < 0.34 ? 18 : v < 0.67 ? 42 : 72;
+    return `<polygon data-cell="${i}" class="${i === picked ? 'on' : ''}" points="${polyPath(poly)}"${pct ? ` style="fill:color-mix(in srgb, ${col} ${pct}%, var(--stone))"` : ''}><title>${esc(cellWords(i))}</title></polygon>`;
   }).join('');
   // Jurisdictions: a lordship where there is one, otherwise the shire about a settled place. Their outer edges are inked.
   const realm = s.cells.map((_x, i) => { if (water(i)) return -2; const k = shire[i]!; if (k < 0) return -1; const L = lordAt(at, k); return L >= 0 ? 100000 + L : k; });
   const borders = edgesWhere(g, (i, j) => { const a = land[i]!, b = land[j]!; return a !== b && a !== -2 && b !== -2 && (a >= 0 || b >= 0); });
   void realm;
   const coast = edgesWhere(g, (i, j) => water(i) !== water(j));
-  // Roads: each settlement to its nearest neighbouring settlements, as faint worn lines.
+  // Roads: each settlement to its nearest neighbouring settlements, as hairlines.
   const towns = s.cells.map((_x, i) => i).filter(i => !water(i) && ((at.get(i)?.length ?? 0) > 0 || ranked.has(i)));
   const roadSet = new Set<string>(), roads: string[] = [];
   for (const a of towns) {
@@ -681,17 +683,10 @@ function mapView(): string {
     const n = at.get(i)?.length ?? 0, rk = ranked.get(i), cell = s.cells[i]!, ly = y + 0.32;
     y -= 0.06;
     const X = x.toFixed(3), Y = y.toFixed(3);
-    // One centre mark; everything else is a small badge at a corner, or a single ring well clear of the mark.
-    if (sore(i) || cell.interdict > 0) tokens.push(`<circle class="t-alarm" cx="${X}" cy="${Y}" r="0.25"/>`);
-    const souls = (at.get(i) ?? []).reduce((a, b) => a + b.members.filter(m => s.people[m]!.alive).length, 0);
-    if (rk?.rank === 'lord' || rk?.rank === 'bailiff') tokens.push(`<rect class="t-lord${rk.rank === 'bailiff' ? ' hollow' : ''}" x="${(x - 0.075).toFixed(3)}" y="${(y - 0.075).toFixed(3)}" width="0.15" height="0.15" rx="0.025"/>`);
-    else if (rk?.rank === 'priest') tokens.push(`<path class="t-parish" d="M${X},${(y - 0.095).toFixed(3)}L${(x + 0.095).toFixed(3)},${Y}L${X},${(y + 0.095).toFixed(3)}L${(x - 0.095).toFixed(3)},${Y}Z"/>`);
-    else if (n) tokens.push(`<circle class="t-hamlet" cx="${X}" cy="${Y}" r="${Math.min(0.12, 0.04 + 0.012 * Math.sqrt(souls)).toFixed(3)}"/>`);
-    if (i === seat) tokens.push(`<circle class="t-crown" cx="${(x + 0.25).toFixed(3)}" cy="${(y - 0.25).toFixed(3)}" r="0.045"/>`);
-    if (cell.works && Object.values(cell.works).some(Boolean)) tokens.push(`<rect class="t-work" x="${(x - 0.3).toFixed(3)}" y="${(y - 0.3).toFixed(3)}" width="0.065" height="0.065"/>`);
-    if (cell.shrine) tokens.push(`<rect class="t-shrine" x="${(x + 0.3).toFixed(3)}" y="${(y - 0.03).toFixed(3)}" width="0.06" height="0.06" transform="rotate(45 ${(x + 0.33).toFixed(3)} ${Y})"/>`);
-    if (watched.has(`c:${i}`) || (at.get(i) ?? []).some(b => watched.has(`b:${b.id}`))) tokens.push(`<circle class="t-watchdot" cx="${(x - 0.33).toFixed(3)}" cy="${Y}" r="0.035"/>`);
-    if (rk || i === seat) { labels.push(`<text x="${X}" y="${ly.toFixed(3)}">${esc(cellWords(i))}</text>`); const sub = microData(i, at); if (sub) labels.push(`<text class="sub" x="${X}" y="${(ly + 0.17).toFixed(3)}">${esc(sub)}</text>`); }
+    // Every settlement the same small ink dot; the Crown's seat a hollow one. Trouble is shown by the lenses, not by rings.
+    if (i === seat) tokens.push(`<circle class="t-seat" cx="${X}" cy="${Y}" r="0.07"/>`);
+    else if (n || rk) tokens.push(`<circle class="t-dot" cx="${X}" cy="${Y}" r="0.05"/>`);
+    if (rk || i === seat) { const fig = microData(i, at); labels.push(`<text x="${X}" y="${(y + 0.14).toFixed(3)}">${esc(titleCase(cellWords(i)))}${fig ? `<tspan class="fig"> ${esc(fig)}</tspan>` : ''}</text>`); }
   });
   return `<div class="map-viewport"><div class="map" style="transform:translate(${panX}px,${panY}px) scale(${zoom})"><svg viewBox="${-PAD} ${-PAD} ${N + 2 * PAD} ${N + 2 * PAD}" preserveAspectRatio="xMidYMid meet">
     <rect class="sea" x="-2" y="-2" width="${N + 4}" height="${N + 4}"/>
@@ -703,25 +698,30 @@ function mapView(): string {
 /** The lens bar, and the key when asked for. */
 function lensBar(): string {
   const lenses = (['want', 'factions', 'sacred', 'jurisdiction', 'ecology'] as const).map(k => `<button data-lens="${k}" aria-pressed="${lens === k}">${({ want: 'Want', factions: 'Factions', sacred: 'Sacred', jurisdiction: 'Lords', ecology: 'Land' })[k]}</button>`).join('');
-  return `<div class="lensseg">${lenses}</div><div class="tools"><button data-key="1" aria-pressed="${keyOpen}" aria-label="Map key">?</button><button data-reset="1" aria-label="Fit the realm">Fit</button></div>${keyOpen ? `<p class="key small">${LEGEND[lens]} ${GLYPHS}</p>` : ''}`;
+  return `<nav class="lenstabs">${lenses}<span class="spacer"></span><button class="tlink" data-key="1" aria-pressed="${keyOpen}" aria-label="Map key">?</button><button class="tlink" data-reset="1">Fit</button></nav>${keyOpen ? `<p class="key small">${LEGEND[lens]} ${GLYPHS}</p>` : ''}`;
 }
 function sheet(): string {
   if (picked < 0 || view !== 'map') return '';
   const i = picked, cell = s.cells[i]!, c = s.court, l = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length && b.home === i);
-  const holy = [cell.sanctity >= P.sanctuary ? 'holy ground' : '', cell.shrine ? `a shrine kept by ${house(cell.shrine.of)}${cell.shrine.sanctioned ? ', sanctioned' : ''}` : '', cell.interdict > 0 ? `under interdict ${cell.interdict} more weeks` : ''].filter(Boolean).join('; ');
-  const iv = interventionAt(s, i), ivWords = ({ interdict: 'Lift the interdict', shrine: 'Sanction the shrine', stained: 'Put the stained priest to penance', feud: 'Impose the king’s peace on a feud' } as Record<string, string>)[iv];
+  const iv = interventionAt(s, i), ivWords = ({ interdict: 'Lift interdict', shrine: 'Sanction shrine', stained: 'Penance', feud: 'King’s peace' } as Record<string, string>)[iv];
   const wait = (k: string): number => (c ? Math.max(0, 13 - (s.t - (c.seen[`local:${k}:${i}`] ?? -999))) : 0);
-  /** An order, or why it cannot be given here now. */
-  const order = (k: LocalOrder, t: string, why = ''): string => { const w = wait(k), state = w > 0 ? `${w}w left` : why; return `<button data-local="${k}" ${state ? 'disabled' : ''}>${t}${state ? `<span class="why">${state}</span>` : ''}</button>`; };
+  const act = (attr: string, t: string, why: string): string => `<button class="alink" ${attr} ${why ? `disabled title="${esc(why)}"` : ''}>${t}${why ? `<small>${esc(why)}</small>` : ''}</button>`;
+  const order = (k: LocalOrder, t: string, why = ''): string => { const w = wait(k); return act(`data-local="${k}"`, t, w > 0 ? `${w}w` : why); };
   const inWant = l.some(b => cover(b.store, askAhead(s, b)).some((x, k) => NEEDS[k]!.harm >= 0.5 && x < P.short));
   const dues = s.bonds.filter(bd => bd.about === 'yield' && bd.way === 'crown' && l.some(b => b.id === bd.a));
   const star = (key: string): string => `<button class="star" data-watch="${key}" aria-pressed="${watched.has(key)}" aria-label="${watched.has(key) ? 'Stop watching' : 'Watch'}">${watched.has(key) ? '★' : '☆'}</button>`;
-  return `<div class="sheet"><div class="bar"><h3>${star(`c:${i}`)} ${esc(cellWords(i))}</h3><button data-cell="-1" aria-label="Close">✕</button></div>
-    ${holy ? `<p class="small">${esc(Cap(holy))}.</p>` : ''}
-    ${l.length ? `<ul class="list small">${l.map(b => `<li>${star(`b:${b.id}`)} ${esc(Cap(house(b.id)))}${c && mode === 'cockpit' && (b.rank === 'lord' || b.rank === 'priest' || top(s, b).id !== b.id) ? ` <button class="link" data-power="${b.rank ? b.id : top(s, b).id}">${b.rank ? 'deal with' : 'its body'}</button>` : ''} <span class="soft">· ${b.members.filter(m => s.people[m]!.alive).length} souls${c && (c.grief[b.id] ?? 0) >= P.aggrieved ? ' · <span class="bad">aggrieved</span>' : ''}</span></li>`).join('')}</ul>` : '<p class="soft small">Nobody lives here.</p>'}
-    ${c && mode === 'cockpit' ? (() => { const why = whyNotSeat(s, i); return `<div class="orders"><button data-seat="1" ${why ? 'disabled' : ''}>♛ Hold court here<span class="why">${why || `a royal progress, ${P.progressCost} grain`}</span></button></div>`; })() : ''}
-    ${c && mode === 'cockpit' ? `<div class="label">Build here</div><div class="orders works">${WORKS.map(([k, name, g]) => { const why = whyNotBuild(s, i, k); return `<button data-build="${k}" ${why ? 'disabled' : ''}>${g} ${name}<span class="why">${why || `${P.workCost[k]} timber`}</span></button>`; }).join('')}</div>${cell.works?.granary ? `<p class="small soft">The granary holds ${Math.round(cell.works.granary.reduce((a, q) => a + q, 0))} grain.</p>` : ''}<div class="label">Orders</div>` : ''}
-    ${c && mode === 'cockpit' ? `<div class="orders">${order('relief', 'Send relief', !l.length ? 'Nobody here' : inWant ? '' : 'No want')}${order('circuit', 'Send the bailiffs')}${order('charter', 'Remit the Crown’s share', !dues.length ? 'No dues' : dues.every(bd => bd.easedTo > s.t) ? 'Remitted' : '')}${order('intervene', ivWords ?? 'Intervene', iv ? '' : 'Nothing amiss')}</div>` : ''}</div>`;
+  const souls = l.reduce((a, b) => a + b.members.filter(m => s.people[m]!.alive).length, 0), food = NEEDS.findIndex(n => n.harm >= 0.5);
+  const weeks = l.length ? Math.min(...l.map(b => cover(b.store, askAhead(s, b))[food] ?? 0)) : -1;
+  const lordB = l.map(b => top(s, b)).find(t => t.rank === 'lord' || t.rank === 'priest' || t.parts.length);
+  const status = cell.interdict > 0 ? '<span class="bad">Interdict</span>' : c && l.some(b => (c.grief[b.id] ?? 0) >= P.aggrieved) ? '<span class="bad">Aggrieved</span>' : inWant ? '<span class="bad">In want</span>' : l.length ? 'Quiet' : 'Empty';
+  const kpis = `<div class="pk"><span><b>${souls}</b> souls</span><span><b>${weeks < 0 ? '—' : weeks < 10 ? weeks.toFixed(1) + 'w' : Math.round(weeks) + 'w'}</b> food</span><span>${lordB ? esc(Cap(house(lordB.id)).replace(/ (of|at) [A-Z][a-z]+$/, '')) : 'Free'}</span><span>${status}</span></div>`;
+  const live = c && mode === 'cockpit';
+  return `<div class="sheet inspector"><div class="bar"><h3>${star(`c:${i}`)} ${esc(cellWords(i))}</h3><button class="x" data-cell="-1" aria-label="Close">✕</button></div>
+    ${kpis}
+    ${live ? `<div class="alinks">${order('relief', 'Relief', !l.length ? 'nobody' : inWant ? '' : 'no want')}${order('circuit', 'Bailiffs')}${order('charter', 'Remit', !dues.length ? 'no dues' : dues.every(bd => bd.easedTo > s.t) ? 'remitted' : '')}${order('intervene', ivWords ?? 'Intervene', iv ? '' : 'nothing amiss')}${act('data-seat="1"', 'Move seat', whyNotSeat(s, i).replace(/^Here now$/, 'here'))}</div>
+      <div class="alinks build"><span class="label">Build</span>${WORKS.map(([k, name]) => act(`data-build="${k}"`, Cap(name.replace(/^(Endowed |Bailiff’s |Forest )/, '')), whyNotBuild(s, i, k).replace(/^Need (\d+) timber$/, '$1 timber').replace(/^Built$/, 'built'))).join('')}</div>` : ''}
+    ${l.length ? `<ul class="houses">${l.map(b => `<li>${star(`b:${b.id}`)}<span>${esc(Cap(house(b.id)))}</span><span class="soft">${b.members.filter(m => s.people[m]!.alive).length}</span>${c && (c.grief[b.id] ?? 0) >= P.aggrieved ? '<span class="bad">aggrieved</span>' : ''}${live && (b.rank === 'lord' || b.rank === 'priest' || top(s, b).id !== b.id) ? `<button class="alink" data-power="${b.rank ? b.id : top(s, b).id}">${b.rank ? 'Deal' : 'Body'}</button>` : ''}</li>`).join('')}</ul>` : ''}
+    ${cell.works?.granary ? `<p class="small soft">Granary: ${Math.round(cell.works.granary.reduce((a, q) => a + q, 0))} grain.</p>` : ''}</div>`;
 }
 function chronicleView(): string {
   const homes = new Set<number>([...watched].filter(k => k.startsWith('b:')).map(k => s.bodies[Number(k.slice(2))]?.home ?? -1));
@@ -730,15 +730,15 @@ function chronicleView(): string {
   const all = [...ev, ...feed.map(f => ({ ...f, why: '' as string | undefined, watch: false, era: false })), ...eras.map(e => ({ t: e.t, text: e.html, major: true, why: '' as string | undefined, watch: false, era: true }))]
     .filter(x => !majorOnly || x.major).sort((a, b) => b.t - a.t || Number(b.era) - Number(a.era)).slice(0, 80);
   return `<div class="pills"><button data-major="0" aria-pressed="${!majorOnly}">All</button><button data-major="1" aria-pressed="${majorOnly}">Major</button></div>
-    <ul class="list">${all.map(x => `<li${x.era ? ' class="era"' : x.watch ? ' class="watch"' : ''}><span class="label">Y${Math.floor(x.t / 52) + 1}·W${(x.t % 52) + 1}</span> ${x.text}${x.why ? `<div class="small soft">because ${esc(named(x.why))}</div>` : ''}</li>`).join('') || '<li class="soft">Nothing yet. Let time run.</li>'}</ul>`;
+    <ul class="list chron">${all.map(x => `<li class="${x.era ? 'era' : x.watch ? 'watch' : x.major ? 'major' : ''}"><span class="label">Y${Math.floor(x.t / 52) + 1}·W${(x.t % 52) + 1}</span> ${x.text}${x.why ? `<div class="small soft">because ${esc(named(x.why))}</div>` : ''}</li>`).join('') || '<li class="soft">Nothing yet. Let time run.</li>'}</ul>`;
 }
 
 function lawsDeck(): string {
   const pol = s.court!.policy;
   return (Object.keys(LAW_WORDS) as LawKey[]).map(k => {
     const [name, opts] = LAW_WORDS[k], set = pol.lawSetAt[k] >= 0, warm = set && s.t - pol.lawSetAt[k] < 52;
-    return `<div class="law"><div class="lname"><strong>${name}</strong>${pol.inscribed[k] ? ' <span class="gilt" title="On the roll">◉</span>' : ''}${warm ? ' <span class="dot" title="Laid down within the year: changing it now is caprice"></span>' : ''}<span class="small soft">${!set ? 'not laid down' : k === 'forest' ? `${s.cells.filter((_x, i) => clearingBarred(s, i, -1)).length} places closed to clearing` : `${pol.lawHits[k]} settled`}</span></div>
-      <div class="small soft">${esc(LAW_HINT[k])}</div>
+    return `<div class="law row" title="${esc(LAW_HINT[k])}"><div class="lname"><strong>${name}</strong>${pol.inscribed[k] ? ' <span class="gilt" title="On the roll">◉</span>' : ''}${warm ? ' <span class="dot" title="Laid down within the year: changing it now is caprice"></span>' : ''}<span class="small soft">${!set ? 'not laid down' : k === 'forest' ? `${s.cells.filter((_x, i) => clearingBarred(s, i, -1)).length} places closed to clearing` : `${pol.lawHits[k]} settled`}</span></div>
+      <div class="small soft hint">${esc(LAW_HINT[k])}</div>
       <div class="seg">${opts.map(([v, t]) => `<button data-law="${k}:${v}" aria-pressed="${set && pol.laws[k] === v}">${t}</button>`).join('')}</div></div>`;
   }).join('');
 }
@@ -1038,15 +1038,14 @@ function start(seed: number, side: number, souls: number, years: number): void {
 
 function welcome(): void {
   document.body.classList.remove('cockpit-on'); speed = 0;
-  app.innerHTML = `<div class="wrap"><section class="start">
-    <h1>Vicarius Regis</h1>
-    <p>The king is away and the realm is yours to keep in his name. Govern it from above with laws, the treasury and decrees; watch it live without you; or sit in his court and hear its quarrels one by one.</p>
-    <p class="soft">Nothing in this realm is scripted. Its people farm, deal, quarrel and believe by their own lights, and they will learn what to expect of you.</p>
-    ${(() => { const k = saved(); return k ? `<button class="go" id="resume">Resume your realm: ${k.mode === 'cockpit' ? 'the Cockpit' : 'the Chronicle'}, year ${Math.floor(k.t / 52) + 1}, ${k.souls} souls</button>` : ''; })()}
-    <div class="modes">${([['cockpit', 'The Cockpit', 'Time runs on its own. Trim the realm with laws, the treasury and decrees, and give orders place by place. Nobody petitions you.'], ['chronicle', 'The Chronicle', 'Watch the realm live: no court, no Crown, just people, decades of them.'], ['regency', 'The Regency', 'The king is away three years. Week by week, petitioners come before you: hear up to three; lose the realm’s confidence and you fall.']] as const).map(([k, t, d]) => `<button class="mode" data-mode="${k}" aria-pressed="${mode === k}"><strong>${t}</strong><span>${d}</span></button>`).join('')}</div>
-    <div><label class="label" for="seed">Seed of the realm</label><br><input id="seed" type="number" min="1" value="${1 + Math.floor(Math.random() * 999)}"></div>
-    <div class="choices"><button class="go" id="small">A small realm: about 200 souls, ready in seconds</button><button id="full">The realm: about 900 souls, takes a minute to found</button></div>
-  </section></div>`;
+  const modes = [['cockpit', 'The Cockpit', 'Govern from above: laws, treasury, works and powers, while time runs on.'], ['chronicle', 'The Chronicle', 'Watch the realm live for decades, with no court and no Crown.'], ['regency', 'The Regency', 'Three years in the king’s court, hearing petitioners week by week.']] as const;
+  app.innerHTML = `<div class="wrap landing">
+    <header class="masthead"><h1>Vicarius Regis</h1><p>A living medieval realm, kept in the king’s name.</p></header>
+    ${(() => { const k = saved(); return k ? `<button class="moderow resume" id="resume"><span><strong>Resume your realm</strong><small>${k.mode === 'cockpit' ? 'The Cockpit' : 'The Chronicle'} · year ${Math.floor(k.t / 52) + 1} · ${k.souls} souls</small></span><i>→</i></button>` : ''; })()}
+    <div class="moderows">${modes.map(([k, t, d]) => `<button class="moderow" data-mode="${k}" aria-pressed="${mode === k}"><span><strong>${t}</strong><small>${d}</small></span><i>→</i></button>`).join('')}</div>
+    <div class="seedrow"><label class="label" for="seed">Seed</label><input id="seed" type="number" min="1" value="${1 + Math.floor(Math.random() * 999)}"><button class="go" id="small">Small realm</button><button id="full">Full realm</button></div>
+    <p class="small soft">Small: about 200 souls, ready in seconds. Full: about 900, a minute to found. Nothing in the realm is scripted.</p>
+  </div>`;
 }
 
 app.addEventListener('click', ev => {
