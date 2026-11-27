@@ -309,7 +309,7 @@ function arrange(s: State, L: Land, cs: Map<number, Ctx>, A: Ctx, need: number):
         const known = a.ways[way];
         if (!known && a.stuck < P.stuck) continue;
         // A way believed to bring harm is not used, by either.
-        if ((a.lore[`way:${way}`] ?? 0) > P.heed || (B.b.lore[`way:${way}`] ?? 0) > P.heed) continue;
+        if (((a.lore[`way:${way}`] ?? 0) > P.heed && !desperate(A)) || (B.b.lore[`way:${way}`] ?? 0) > P.heed) continue;
         // The other is left a margin over what it gives up, or the share of the gain it is customary to concede.
         const share = known ? known.p : Math.max(0.1, Math.min(0.6, (P.concede * 2 * B.h.temper) / (A.h.temper + B.h.temper)));
         const target = Math.max(P.margin * costB, share * recvA);
@@ -510,13 +510,19 @@ function work(s: State, L: Land, c: Ctx): void {
   const planned = new Map<number, number>(), sown = new Map<number, number>();
   const helpLeft = proj.map(q => q * P.days);
   const bold = c.press > c.h.scruple;
-  let left = muster(s, b);
+  // Choice comes in tiers, never in one sum. What a house holds forbidden it will not do, unless it is near starving
+  // and has little scruple. Below contentment, need alone decides. Above it, a share of its days is set aside, in
+  // proportion to its drive, for what others cannot also have; those days are not weighed against food.
+  const forbidden = (o: Opt): boolean => (b.lore[`cell:${o.cell}`] ?? 0) > P.heed && !desperate(c);
+  const all = muster(s, b), reserve = Math.min(all * 0.6, Math.round(c.drive * P.surplusShare * all));
+  let left = all - reserve;
   b.plan = [];
   while (left > 0.05) {
     const d = Math.min(P.block, left);
     const W0 = welfare(proj, c.ahead);
     let best: Opt | null = null, bestGain = P.rest * d, bestM = 0, bestAid = -1;
     for (const o of c.opts) {
+      if (forbidden(o)) continue;
       const r = Rc[o.r]!, cell = s.cells[o.cell]!;
       // Only want of the very thing drives a body to take it from ground that others hold.
       if (o.take && !(bold && r.out.some(([k]) => Kn[k]!.serves[c.pressNeed]! > 0))) continue;
@@ -545,8 +551,6 @@ function work(s: State, L: Land, c: Ctx): void {
         for (const [k, per] of gathered(st)) after[k] = after[k]! + more * per;
         g += P.later * (welfareLater(proj, after, c.ahead, T) - welfareLater(proj, pend, c.ahead, T));
       }
-      // Ground nobody holds is worth putting something onto for its own sake to a house that reaches for more than it needs.
-      if (r.to.length && o.mine <= 0 && c.drive > 0) g += c.drive * P.claimWorth * d;
       if (g > bestGain) { bestGain = g; best = o; bestM = m; bestAid = aid; }
     }
     if (!best) break;
@@ -566,7 +570,23 @@ function work(s: State, L: Land, c: Ctx): void {
     if (same) same.days += d; else b.plan.push({ r: best.r, cell: best.cell, days: d });
     left -= d;
   }
+  // The days set aside go to claiming ground nobody holds: putting something onto it, the richest first, as long as there
+  // is seed to spare. What finds no ground to claim is rested.
+  let spare = reserve;
+  const open = c.opts.filter(o => !o.take && !forbidden(o) && Rc[o.r]!.to.length && o.mine <= 0 && !(L.holds.get(o.cell)?.length)).sort((x, y) => y.score - x.score || x.cell - y.cell);
+  for (const o of open) {
+    if (spare < 1) break;
+    const r = Rc[o.r]!, d = Math.min(spare, 2 * P.block);
+    const m = d * (1 - P.travel * dist(s.side, b.home, o.cell)) * (b.skill[o.r] ?? 1);
+    if (r.inp.some(([k, q]) => q * m > proj[k]! * 0.5)) continue;
+    for (const [k, q] of r.inp) proj[k] = proj[k]! - q * m;
+    b.plan.push({ r: o.r, cell: o.cell, days: d });
+    spare -= d;
+  }
 }
+
+/** Near starving, with little scruple: the state in which a house will do what it holds forbidden. */
+const desperate = (c: Ctx): boolean => c.cov[BY_HARM[0]!]! < P.dire && c.h.scruple < 0.6;
 
 // --- Moving: a body goes where the ground within reach promises more ---
 

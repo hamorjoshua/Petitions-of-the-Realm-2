@@ -225,7 +225,7 @@ export const P = {
   crownWeeks: 1, crownFee: 0.1, wordWeeks: 13, harmWord: 50,
   /** Rights: the share owed to the holder, the days a house must have worked to ask for one, what the Crown asks for selling one, how fast the reckoning of who works where fades, and how long a ban lasts. */
   /** Ambition: weeks of the first need beyond which a house is content and looks to more than need; what it values a day spent claiming new ground at, at full drive. */
-  content: 26, claimWorth: 0.01,
+  content: 26, surplusShare: 0.5,
   toll: 0.2, charterDays: 40, charterFee: 40, workedFade: 0.985, banWeeks: 104,
   /** Harm laid to the court by one who could find no one to deal with because of what the law now says. */
   harmChilled: 3,
