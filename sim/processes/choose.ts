@@ -7,7 +7,7 @@ import { askAhead, cover, drive, welfare, welfareLater, zeros } from '../value.t
 import { around, bond, dist, grown, head, hearthIndex, holdsByCell, kinOf, muster, near, rec, struggle, sheltered, tenancies, tie, top, warm, type Tenancy } from '../util.ts';
 import { bear } from './grow.ts';
 import { tBar } from './sky.ts';
-import { boundByLaw, chilled, clearingBarred, freeByLaw, statute, tollOn, toCrown, upheld } from '../court/court.ts';
+import { boundByLaw, chilled, clearingBarred, freeByLaw, rateOf, statute, tollOn, toCrown, underWatch, upheld } from '../court/court.ts';
 import { weekOf, type Body, type Bond, type Person, type State } from '../types.ts';
 
 interface Opt { r: number; cell: number; mine: number; take: boolean; score: number; rent: number }
@@ -357,7 +357,11 @@ function arrange(s: State, L: Land, cs: Map<number, Ctx>, A: Ctx, need: number):
           }
         } else if (have === 'D' || have === 'DS') {
           if (anyRush(A) || B.dayWorth <= 1e-6) continue;
-          const D = target / (B.dayWorth * t);
+          // Days of work for goods the Chancery has assized, before witnesses: the days are fixed by the schedule, and
+          // either side may find the terms will not do.
+          const fixed = get.kind >= 0 && get.q > 0 && rateOf(s, get.kind) !== 1 && ((L.kin.get(a.id)?.has(B.b.id) ?? false) || (a.of >= 0 && a.of === B.b.of));
+          const D = fixed ? get.q * TOIL[get.kind]! * rateOf(s, get.kind) : target / (B.dayWorth * t);
+          if (fixed && (B.dayWorth * D * t < costB || A.dayWorth * D > recvA)) continue;
           if (D > 40) { if (D * sure <= 40) rulesStood = true; continue; }
           give = { t: have, kind: -1, q: D, rb: null, cell: -1 }; costA = A.dayWorth * D;
         } else if (have === 'U') {
@@ -460,9 +464,18 @@ function deal(s: State, L: Land, cs: Map<number, Ctx>, kin: Map<number, Set<numb
   }
   if (best) {
     const { B, k, j, ra, rb } = best, b = B.b;
-    const rate = Math.sqrt(Math.min(ra, rb * 4) * rb);
-    let qk = Math.min(b.store[k]! * P.part, (a.store[j]! * 0.5) / rate);
+    const agreed = Math.sqrt(Math.min(ra, rb * 4) * rb);
+    // Where the Chancery has assized either good, a formal trade goes at the assized labour values. Either side may refuse
+    // those terms; then strangers, with no one to witness it, may still deal at what the goods are worth to them, at a risk.
+    const assized = rateOf(s, k) !== 1 || rateOf(s, j) !== 1, witnessed = (L.kin.get(a.id)?.has(b.id) ?? false) || (a.of >= 0 && a.of === b.of);
+    const atAssize = (TOIL[k]! * rateOf(s, k)) / (TOIL[j]! * rateOf(s, j));
     const Wa = welfare(a.store, A.ahead), Wb = welfare(b.store, B.ahead);
+    const takes = (rate: number, q: number): boolean => gain(A, a.store, Wa, [[k, q], [j, -q * rate]]) > 0 && gain(B, b.store, Wb, [[k, -q], [j, q * rate]]) > 0;
+    const q0 = (rate: number): number => Math.min(b.store[k]! * P.part, (a.store[j]! * 0.5) / rate);
+    const formal = !assized || takes(atAssize, q0(atAssize)) || takes(atAssize, q0(atAssize) / 2);
+    const rate = assized && formal ? atAssize : agreed, black = assized && !formal;
+    // Before witnesses no one deals off the assize: refused terms are simply no trade.
+    let qk = black && witnessed ? 0 : q0(rate);
     for (let tries = 0; tries < 4 && qk > 0.01; tries++, qk /= 2) {
       const qj = qk * rate;
       if (gain(A, a.store, Wa, [[k, qk], [j, -qj]]) <= 0 || gain(B, b.store, Wb, [[k, -qk], [j, qj]]) <= 0) continue;
@@ -471,6 +484,8 @@ function deal(s: State, L: Land, cs: Map<number, Ctx>, kin: Map<number, Set<numb
       a.store[k] = a.store[k]! + qk * (1 - cut); a.store[j] = a.store[j]! - qj;
       b.store[k] = b.store[k]! - qk; b.store[j] = b.store[j]! + qj * (1 - cut);
       if (cut > 0) { toCrown(s, k, qk * cut, 'tolls'); toCrown(s, j, qj * cut, 'tolls'); }
+      // A dealing off the assize, found out by strict bailiffs or the justices in eyre, forfeits a fifth of what changed hands.
+      if (black && underWatch(s)) { const fa = Math.min(a.store[k]!, qk * 0.2), fb = Math.min(b.store[j]!, qj * 0.2); a.store[k] = a.store[k]! - fa; b.store[j] = b.store[j]! - fb; toCrown(s, k, fa, 'dealing off the assize'); toCrown(s, j, fb, 'dealing off the assize'); }
       a.spent += Math.min(2, (qk * Kn[k]!.weight + qj * Kn[j]!.weight) * dist(s.side, a.home, b.home) * P.carry);
       warm(s, a.id, b.id, P.warm); warm(s, b.id, a.id, P.warm);
       rec(s, 'trade', { a: a.id, b: b.id, kind: k, q: qk, kind2: j, q2: qj, need: A.scarce, cell: b.home });
@@ -582,6 +597,8 @@ function work(s: State, L: Land, c: Ctx): void {
       for (const [k, q] of r.inp) delta.push([k, -q * m]);
       for (const [k, q] of r.out) delta.push([k, q * m * (1 - o.rent)]);
       let g = gain(c, proj, W0, delta) * waitFor;
+      // A house past want works toward what the assize makes dear, and away from what it makes cheap, to trade.
+      if (c.cov[BY_HARM[0]!]! > P.content) { const out = r.out.filter(([k]) => !Kn[k]!.fixed); if (out.length) g *= 1 + 0.6 * (out.reduce((x, [k]) => x + rateOf(s, k), 0) / out.length - 1); }
       for (const [st, q] of r.to) {
         const key = o.cell * NS + st, K = L.bears[o.cell]![st]!, T = weeksLeft(s, L, o.cell, st);
         const x = cell.stock[st]! + (sown.get(key) ?? 0);

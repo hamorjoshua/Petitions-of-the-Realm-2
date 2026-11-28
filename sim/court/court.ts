@@ -856,6 +856,8 @@ export function statute(s: State, key: LawKey): string {
 }
 /** The assized labour value of a kind: its customary toil times the Chancery's rate for it. */
 export const rateOf = (s: State, k: number): number => (s.court?.policy.mode === 'cockpit' ? s.court.policy.dials.rates?.[k] ?? 1 : 1);
+/** Whether dealing off the assize is likely to be found out: strict bailiffs, or justices in eyre. */
+export const underWatch = (s: State): boolean => { const pol = s.court?.policy; return !!pol && pol.mode === 'cockpit' && !pol.weak && (pol.dials.bailiff === 'strict' || pol.ord.eyre > 0); };
 /** The realm's measure: what a debt of one is reckoned at when paid. */
 export const measureOf = (s: State): number => { const m = s.court?.policy.mode === 'cockpit' ? s.court.policy.dials.measure : undefined; return m === 'lords' ? 1.1 : m === 'small' ? 0.9 : 1; };
 /** The dials as a new court finds them. */
