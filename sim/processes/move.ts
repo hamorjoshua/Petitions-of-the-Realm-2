@@ -79,6 +79,8 @@ export function move(prev: State, s: State): void {
     let left = 0;
     for (let k = 0; k < NK; k++) if (Kn[k]!.fixed && b.store[k]! > 0) { left += b.store[k]!; b.store[k] = 0; }
     rec(s, 'move', { a: b.id, cell: b.goto, q: left, q2: b.home });
+    delete b.sanctuarySince;
+    b.sheltered = null;
     b.home = b.goto;
     b.since = s.t;
     b.goto = -1;

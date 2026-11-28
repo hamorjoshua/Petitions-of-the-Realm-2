@@ -82,6 +82,7 @@ export interface Body {
    *  rigour (norms over survival), folk (tolerance of shrines and signs not sanctioned), purity (rites of a stained man are void). */
   authority: 'none' | 'symbolic'; creed: { rigour: number; folk: number; purity: number };
   /** Force against it turned back by sanctuary: by whom, over which bond, when. Lately tolerated in a creed apart. */
+  sanctuarySince?: Record<number, number>;
   sheltered: { from: number; bond: number; t: number } | null; tolerated: number;
   speaker: number; breach: { sign: string; t: number } | null; harmedBy: { by: number; cell: number; loss: number; t: number } | null;
   alive: boolean;
@@ -187,6 +188,11 @@ export interface Dials {
   /** The Crown's levies on what is gathered: grain from sown ground, timber from the woods. */
   grainShare: number; timberShare: number;
   relief: 'off' | 'starving' | 'want'; bailiff: 'light' | 'regular' | 'strict';
+  bloodPrice: 0.5 | 1 | 1.5 | 2;
+  debtTerm: 13 | 26 | 52 | 104;
+  titheCeiling: 0 | 0.05 | 0.1 | 0.15;
+  sanctuaryTerm: 0 | 6 | 13 | -1; // -1 means indefinite.
+  tallageWeight: 0.5 | 1 | 1.5;
   /** The most days a week a lord may draw in boon-work from a tenant (6: unchecked). */
   boonCap: 0 | 1 | 2 | 3 | 6;
   /** The schedule of assized rates: for each kind, a multiple of its customary labour value; and the measure the realm uses. */

@@ -215,3 +215,21 @@ test('mortmain and shrine disputes are settled by their own statutes', async () 
   assert.equal(lawOf(s, p('shrine')), 'shrines');
   assert.equal(lawOf(s, p('heresy')), 'swords');
 });
+
+test('sanctuary expires from first refuge even when force is attempted again', async () => {
+  const { openCourt } = await import('../sim/court/court.ts');
+  const { sheltered } = await import('../sim/util.ts');
+  const s = found(3), c = openCourt(s, 'cockpit');
+  const [actor, target] = s.bodies;
+  s.cells[target!.home]!.sanctity = 100;
+  c.policy.dials.sanctuaryTerm = 6;
+  assert.ok(sheltered(s, actor!, target!));
+  s.t += 5;
+  assert.ok(sheltered(s, actor!, target!));
+  s.t++;
+  assert.equal(sheltered(s, actor!, target!), false);
+  c.policy.dials.sanctuaryTerm = -1;
+  assert.ok(sheltered(s, actor!, target!));
+  c.policy.dials.sanctuaryTerm = 0;
+  assert.equal(sheltered(s, actor!, target!), false);
+});

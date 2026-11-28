@@ -7,6 +7,9 @@ import type { Body, Bond, Person, Rec, State } from './types.ts';
 export const dist = (side: number, a: number, b: number): number =>
   Math.max(Math.abs((a % side) - (b % side)), Math.abs(Math.floor(a / side) - Math.floor(b / side)));
 
+export const debtTerm = (s: State): number => s.court?.policy.mode === 'cockpit' ? s.court.policy.dials.debtTerm ?? 52 : P.term;
+export const bloodPriceWeight = (s: State): number => s.court?.policy.mode === 'cockpit' ? s.court.policy.dials.bloodPrice ?? 1 : 1;
+
 const nearCache = new Map<string, number[]>();
 /** The cells within r of cell i, nearest first. */
 export function near(side: number, i: number, r: number): number[] {
@@ -120,7 +123,7 @@ export function struggle(s: State, kin: Map<number, Set<number>>, taker: Body, h
   // Those bound to both sides chose one, and the other side remembers it.
   const ofT = new Set<number>([...(kin.get(taker.id) ?? []), ...fellows(s, taker)]), ofH = new Set<number>([...(kin.get(holder.id) ?? []), ...fellows(s, holder)]);
   for (const k of ofT) if (ofH.has(k) && k !== taker.id && k !== holder.id) { const sideT = tie(s, k, taker.id) > tie(s, k, holder.id); warm(s, sideT ? holder.id : taker.id, k, -0.25); }
-  for (const k of kin.get(holder.id) ?? []) warm(s, k, taker.id, -0.2);
+  for (const k of kin.get(holder.id) ?? []) warm(s, k, taker.id, -0.2 / bloodPriceWeight(s));
   for (const k of kin.get(taker.id) ?? []) warm(s, k, holder.id, -0.2);
   return p;
 }
@@ -220,9 +223,17 @@ export function inheritTies(s: State, from: number, to: number, share: number): 
 }
 
 /** Force against one who stands on holy ground is turned back, for any who recognise it. Logged as sanctuary. */
-export function sheltered(s: State, actor: Body, target: Body, bond = -1): boolean {
-  if ((s.cells[target.home]?.sanctity ?? 0) < P.sanctuary) return false;
-  rec(s, 'sanctuary', { a: actor.id, b: target.id, cell: target.home });
+export function sanctuaryOpen(s: State, target: Body, cell: number): boolean {
+  const term = s.court?.policy.mode === 'cockpit' ? s.court.policy.dials.sanctuaryTerm ?? -1 : -1;
+  if ((s.cells[cell]?.sanctity ?? 0) < P.sanctuary || term === 0) return false;
+  const since = target.sanctuarySince?.[cell] ?? s.t;
+  return term < 0 || s.t - since < term;
+}
+
+export function sheltered(s: State, actor: Body, target: Body, bond = -1, cell = target.home): boolean {
+  if (!sanctuaryOpen(s, target, cell)) return false;
+  (target.sanctuarySince ??= {})[cell] ??= s.t;
+  rec(s, 'sanctuary', { a: actor.id, b: target.id, cell });
   target.sheltered = { from: actor.id, bond, t: s.t };
   return true;
 }

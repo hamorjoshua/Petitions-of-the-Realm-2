@@ -785,6 +785,11 @@ function dialsDeck(): string {
   const pick = (key: string, cur: string, opts: [string, string][], name: string, hint: string): string => `<div class="law row"><div class="lname"><strong>${name}</strong></div><div class="small soft hint">${hint}</div><div class="seg">${opts.map(([v, t]) => `<button data-dial2="${key}:${v}" aria-pressed="${cur === v}">${t}</button>`).join('')}</div></div>`;
   return `<div class="label">Royal measure</div>${pick('measure', d.measure ?? 'kings', [['lords', 'Lord’s bushel'], ['kings', 'King’s standard'], ['small', 'Small']], 'Weights & measures', 'What a debt or share of one is reckoned at when paid: more for lords and creditors, or less for tenants and debtors.')}
     ${pick('boonCap', String(d.boonCap), [['0', '0d'], ['1', '1d'], ['2', '2d'], ['3', '3d'], ['6', 'Unchecked']], 'Lord’s boon-work cap', 'The most days a week a lord may draw from a tenant; below three, tenants are calmer and lords aggrieved.')}
+    ${pick('bloodPrice', String(d.bloodPrice), [['0.5', '0.5×'], ['1', '1.0×'], ['1.5', '1.5×'], ['2', '2.0×']], 'Wergild / Blood-Price', 'Labour owed to the bereaved house after a violent death. Higher prices discourage violent takings.')}
+    ${pick('debtTerm', String(d.debtTerm), [['13', '13w'], ['26', '26w'], ['52', '52w'], ['104', '104w']], 'Debt Grace Term', 'New goods debts fall due after this many weeks. Longer terms make lenders less willing to extend credit.')}
+    ${pick('titheCeiling', String(d.titheCeiling), [['0', '0%'], ['0.05', '5%'], ['0.1', '10%'], ['0.15', '15%']], 'Tithe Ceiling', 'Maximum harvest share payable to the parish. Cutting below the customary tenth angers priests.')}
+    ${pick('sanctuaryTerm', String(d.sanctuaryTerm), [['0', 'None'], ['6', '6w (40 days)'], ['13', '13w'], ['-1', 'Indefinite']], 'Sanctuary Term', 'How long holy ground protects a house from force, counted from its first claim there.')}
+    ${pick('tallageWeight', String(d.tallageWeight), [['0.5', 'Light'], ['1', 'Customary'], ['1.5', 'Heavy']], 'Tallage / Purveyance Weight', 'Heavier levies retire more tallies and requisition more grain. Estates resent the burden.')}
     <div class="label">Schedule of assized rates</div><p class="small soft">Every good is valued in days of labour, so any two goods exchange at the ratio of their rates. Below customary eases those who owe it and squeezes those who make it; above, the reverse.</p>
     ${groups.map(([g, ids]) => `<div class="label">${g}</div>${ids.map(row).join('')}`).join('')}`;
 }
@@ -926,6 +931,7 @@ function resume(): void {
     if (s.court && !('forest' in s.court.policy.laws)) Object.assign(s.court.policy, freshLaws());
     if (s.court) { const f = freshLaws(), pol = s.court.policy; for (const k of LAWS_ALL) { if (!(k in pol.laws)) { pol.laws[k] = f.laws[k]; pol.lawSetAt[k] = -1; pol.inscribed[k] = false; pol.lawHits[k] = 0; } } }
     if (s.court && !('grainShare' in s.court.policy.dials)) { const old = s.court.policy.dials as Partial<Dials>; s.court.policy.dials = { ...freshDials(), ...(old.relief ? { relief: old.relief } : {}), ...(old.bailiff ? { bailiff: old.bailiff } : {}) }; levies(s); }
+    if (s.court) s.court.policy.dials = { ...freshDials(), ...s.court.policy.dials };
     if (s.court && s.court.tallies === undefined) { s.court.writs = 3; s.court.tallies = 0; s.court.commissions = []; if ((s.court.policy.laws.credit as string) === 'custom') s.court.policy.laws.credit = 'frankpledge'; }
     if (s.court && s.court.seat === undefined) s.court.seat = s.bodies.find(b => b.alive && b.rank === 'bailiff')?.home ?? Math.floor(s.cells.length / 2); R.events = j.events ?? []; mode = j.mode; feed = j.feed ?? []; hist = j.hist ?? []; eras = j.eras ?? []; eraFrom = j.eraFrom ?? 0; eraStats = j.eraStats ?? eraStats;
     watched.clear(); for (const w of j.watched ?? []) watched.add(w);
@@ -1069,7 +1075,12 @@ function cockpitClick(b: HTMLButtonElement): boolean {
   if (b.dataset.law) { const [k, v] = b.dataset.law.split(':') as [LawKey, string]; const leg0 = c.legitimacy; setLaw(s, k, v as never); if (c.legitimacy < leg0) doFlash({ legitimacy: 'bad' }); feed.push({ t: s.t, text: `You laid down the law: <strong>${LAW_WORDS[k][0]}: ${LAW_WORDS[k][1].find(x => x[0] === v)![1]}</strong>.`, major: true }); paint(); return true; }
   if (b.dataset.dial) { const [k, d] = b.dataset.dial.split(':') as [keyof Dials, string]; const x = DIALS.find(y => y.key === k)!, i = x.vals.indexOf((c.policy.dials as any)[k]) + Number(d); if (i >= 0 && i < x.vals.length) { setDial(s, k, x.vals[i] as never); doFlash(k === 'tithe' ? { tallies: 'good', legitimacy: 'bad' } : k === 'grainShare' || k === 'timberShare' || k === 'toll' ? { tallies: Number(d) > 0 ? 'good' : 'warn' } : k === 'relief' ? { tallies: 'warn' } : k === 'bailiff' ? (x.vals[i] === 'strict' ? { tallies: 'good', reach: 'bad' } : {}) : {}); } paint(); return true; }
   if (b.dataset.rate) { const [k, d] = b.dataset.rate.split(':').map(Number) as [number, number], rates = (c.policy.dials.rates ??= KINDS.map(() => 1)), i = RATE_STEPS.indexOf(rates[k] ?? 1) + d; if (i >= 0 && i < RATE_STEPS.length) rates[k] = RATE_STEPS[i]!; paint(); return true; }
-  if (b.dataset.dial2) { const [key, v] = b.dataset.dial2.split(':') as [string, string]; if (key === 'measure') c.policy.dials.measure = v as 'lords' | 'kings' | 'small'; else c.policy.dials.boonCap = Number(v) as 0 | 1 | 2 | 3 | 6; paint(); return true; }
+  if (b.dataset.dial2) {
+    const [key, v] = b.dataset.dial2.split(':') as [string, string];
+    if (key === 'measure') c.policy.dials.measure = v as 'lords' | 'kings' | 'small';
+    else if (key === 'boonCap' || key === 'bloodPrice' || key === 'debtTerm' || key === 'titheCeiling' || key === 'sanctuaryTerm' || key === 'tallageWeight') setDial(s, key, Number(v) as Dials[typeof key]);
+    paint(); return true;
+  }
   if (b.dataset.spend) { const bud = c.policy.dials.budget, vals = [0, 5, 10] as const, i = vals.indexOf(bud.spend) + Number(b.dataset.spend); if (i >= 0 && i < 3) { bud.spend = vals[i]!; doFlash({ tallies: 'warn' }); } paint(); return true; }
   if (b.dataset.budget) {
     // Moving one share moves the largest of the others the other way, so the three always come to a hundred.

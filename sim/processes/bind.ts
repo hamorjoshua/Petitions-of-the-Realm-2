@@ -22,6 +22,7 @@ function canSpare(s: State, b: Body, kind: number, q: number): boolean {
 
 export function bind(s: State): void {
   const kin = kinOf(s);
+  const boonDays = new Map<number, number>();
 
   // Tenants owe their lord days of work when he needs hands. A lord reaching for more demands more than is owed, unless
   // the court has held him to it. What is taken beyond what is owed is remembered.
@@ -36,8 +37,10 @@ export function bind(s: State): void {
     const tc = cover(T.store, askAhead(s, T));
     if (BY_HARM.some(n => NEEDS[n]!.harm >= 0.5 && tc[n]! < P.short)) continue;
     const cap = s.court?.policy.mode === 'cockpit' ? (s.court.policy.dials.boonCap >= 6 ? Infinity : s.court.policy.dials.boonCap) : P.boonMax;
-    const d = Math.min(asked, 0.5 * muster(s, T), cap);
+    const drawn = boonDays.get(T.id) ?? 0;
+    const d = Math.min(asked, 0.5 * muster(s, T), cap - drawn);
     if (d <= 0) continue;
+    boonDays.set(T.id, drawn + d);
     T.spent += d; L.spent -= d;
     if (d > bd.boon) T.overworked += d - bd.boon;
   }

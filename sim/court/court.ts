@@ -8,7 +8,7 @@
 
 import { BY_HARM, KINDS, Kn, NEEDS, NK, NN, P, Rc, St, TOIL } from '../tables.ts';
 import { askAhead, cover, drive } from '../value.ts';
-import { around, bond, dist, setTie, fellows, grown, head, hearthIndex, kinOf, leaves, living, might, near, rec, top, warm } from '../util.ts';
+import { around, debtTerm, sanctuaryOpen, bond, dist, setTie, fellows, grown, head, hearthIndex, kinOf, leaves, living, might, near, rec, top, warm } from '../util.ts';
 import { body, handOver, shift } from '../processes/gather.ts';
 import type { Body, Bond, Clerk, ClerkTarget, RealmSlot, Court, Dials, LawKey, Laws, Mode, Petition, Policy, PowerAct, Rule, State, WorkKey } from '../types.ts';
 
@@ -665,7 +665,7 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
     const q = Math.min(most * P.part, (3 * askAhead(s, by)[p.need]! * Kn[bestK]!.use) / Kn[bestK]!.serves[p.need]!);
     best.store[bestK] = best.store[bestK]! - q; by.store[bestK] = by.store[bestK]! + q;
     const e = rec(s, 'judge', { a: p.by, b: best.id, kind: bestK, q, need: p.need, cause: p.rec, way: `levy ${p.shape}` });
-    bond(s, { about: 'act', a: by.id, b: best.id, kind: bestK, q, due: s.t + P.term, basis: 'grant', rec: e.id });
+    bond(s, { about: 'act', a: by.id, b: best.id, kind: bestK, q, due: s.t + debtTerm(s), basis: 'grant', rec: e.id });
     grieve(c, best.id, P.harmPaid);
     return true;
   }
@@ -862,7 +862,7 @@ export const underWatch = (s: State): boolean => { const pol = s.court?.policy; 
 /** The realm's measure: what a debt of one is reckoned at when paid. */
 export const measureOf = (s: State): number => { const m = s.court?.policy.mode === 'cockpit' ? s.court.policy.dials.measure : undefined; return m === 'lords' ? 1.1 : m === 'small' ? 0.9 : 1; };
 /** The dials as a new court finds them. */
-export const freshDials = (): Dials => ({ grainShare: P.crownDue, timberShare: P.crownDue, relief: 'off', bailiff: 'regular', boonCap: 3, tithe: 'protected', toll: 0, budget: { spend: 0, relief: 34, reach: 33, legitimacy: 33 } });
+export const freshDials = (): Dials => ({ grainShare: P.crownDue, timberShare: P.crownDue, relief: 'off', bailiff: 'regular', boonCap: 3, bloodPrice: 1, debtTerm: 52, titheCeiling: .1, sanctuaryTerm: -1, tallageWeight: 1, tithe: 'protected', toll: 0, budget: { spend: 0, relief: 34, reach: 33, legitimacy: 33 } });
 /** Work out the levies from the dials: grain's share on everything sown that feeds; timber's on timber, wherever it is cut. */
 export function levies(s: State): void {
   const pol = s.court?.policy;
@@ -1045,12 +1045,13 @@ export function setDial<K extends keyof Dials>(s: State, key: K, val: Dials[K]):
 function collectTallage(s: State, c: Court): void {
     if (!(c.tallies && c.tallies > 0)) return;
     const payers = s.bodies.filter(b => b.alive && (b.rank === 'lord' || b.rank === 'priest'));
-    const can = payers.reduce((a, b) => a + b.store.reduce((x, q, k) => x + (Kn[k]!.fixed ? 0 : q * 0.015), 0), 0), share = can > 0 ? Math.min(1, (c.tallies ?? 0) / can) * 0.015 : 0;
+    const weight = c.policy.dials.tallageWeight ?? 1, rate = .015 * weight;
+    const can = payers.reduce((a, b) => a + b.store.reduce((x, q, k) => x + (Kn[k]!.fixed ? 0 : q * rate), 0), 0), share = can > 0 ? Math.min(1, (c.tallies ?? 0) / can) * rate : 0;
     let paid = 0;
     for (const b of payers) {
       for (let k = 0; k < NK; k++) if (!Kn[k]!.fixed) { const q = b.store[k]! * share; b.store[k] = b.store[k]! - q; paid += q; }
-      grieve(c, b.id, P.harmPaid / 8);
-      for (const h of underPower(s, b)) grieve(c, h.id, P.harmPaid / 16);
+      grieve(c, b.id, P.harmPaid * weight / 8);
+      for (const h of underPower(s, b)) grieve(c, h.id, P.harmPaid * weight / 16);
     }
     tally(s, c, -paid, 'a general tallage');
 }
@@ -1126,12 +1127,13 @@ function requisition(s: State, c: Court, cell: number, floor: number): void {
     for (const b of here) {
       const ahead = askAhead(s, b), cov = cover(b.store, ahead);
       if (gk < 0 || cov[food]! >= floor) continue;
-      const want = (3 * ahead[food]! * Kn[gk]!.use) / Kn[gk]!.serves[food]!;
+      const weight = c.policy.dials.tallageWeight ?? 1;
+      const want = (3 * weight * ahead[food]! * Kn[gk]!.use) / Kn[gk]!.serves[food]!;
       const sup = suppliers.find(x => x.id !== b.id && x.store[gk]! >= want * 1.5);
       if (!sup) continue;
       sup.store[gk] = sup.store[gk]! - want; b.store[gk] = b.store[gk]! + want;
       tally(s, c, want * rateOf(s, gk), 'purveyance');
-      grieve(c, sup.id, P.harmPaid); grieve(c, b.id, -P.harmPaid);
+      grieve(c, sup.id, P.harmPaid * weight); grieve(c, b.id, -P.harmPaid);
     }
 }
 
@@ -1470,6 +1472,8 @@ function policyWeek(s: State, c: Court): void {
     const cap = pol.dials.boonCap;
     if (cap < 3) for (const b of s.bodies) if (b.alive && b.rank === 'lord') grieve(c, b.id, (P.harmPaid * (3 - cap)) / 3);
     if (cap < 3) for (const bd of s.bonds) if (bd.about === 'bond' && bd.way === 'manor' && c.grief[bd.a]) c.grief[bd.a] = c.grief[bd.a]! * 0.9;
+    const ceiling = pol.dials.titheCeiling ?? .1;
+    if (ceiling < P.tithe) for (const b of s.bodies) if (b.alive && b.rank === 'priest') grieve(c, b.id, P.harmPaid * (1 - ceiling / P.tithe));
     if (pol.dials.tithe !== 'protected') {
       gauge(s, c, 'legitimacy', pol.dials.tithe === 'taxed' ? -0.15 : -0.05, 'the Crown takes of the tithe');
       for (const b of s.bodies) if (b.alive && b.rank === 'priest') grieve(c, b.id, pol.dials.tithe === 'taxed' ? P.harmPaid : P.harmPaid / 2);
@@ -1712,7 +1716,7 @@ export function audience(s: State): Petition[] {
   }
   for (const T of s.bodies) {
     const sh = T.sheltered;
-    if (!T.alive || !sh || s.t - sh.t > 8 || s.cells[T.home]!.sanctity < P.sanctuary || !s.bodies[sh.from]?.alive) continue;
+    if (!T.alive || !sh || s.t - sh.t > 8 || !sanctuaryOpen(s, T, T.home) || !s.bodies[sh.from]?.alive) continue;
     const bd = s.bonds.find(x => x.id === sh.bond);
     if (!bd || bd.q <= 0.05) continue;
     add(sh.from, T.id, bd, 'sanctuary', lack.get(sh.from) ?? -1, bd.rec, '', `sa${T.id}`);

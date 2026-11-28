@@ -69,7 +69,7 @@ export function make(s: State): void {
         const hb = s.bodies[h.a]!;
         if (hb.alive && h.strength > most && dist(s.side, hb.home, j.w.cell) <= P.reach) { most = h.strength; guard = hb; }
       }
-      if (sum >= P.held && guard && !over.some(h => h.a === b.id) && (s.cells[j.w.cell]!.sanctity >= P.sanctuary ? sheltered(s, b, guard) || true : false)) m = 0;
+      if (sum >= P.held && guard && !over.some(h => h.a === b.id) && sheltered(s, b, guard, -1, j.w.cell)) m = 0;
       else if (sum >= P.held && guard && !over.some(h => h.a === b.id)) m *= struggle(s, kin, b, guard, s.nrec, 'need');
       if (m <= 1e-9) continue;
     }
@@ -91,7 +91,9 @@ export function make(s: State): void {
       // A capped tithe is half a tenth; and the realm's measure weighs on every share paid.
       const part = (bd.way === 'tithe' && statute(s, 'tithe') === 'capped' ? 0.5 : 1) * measureOf(s);
       for (const [k, q] of r.out) {
-        const owed = Math.min(b.store[k]!, q * m * (lv?.[k] ?? bd.share) * part), pay = hides ? owed / 2 : owed;
+        const share = (lv?.[k] ?? bd.share) * part;
+        const ceiling = bd.way === 'tithe' && s.court?.policy.mode === 'cockpit' ? s.court.policy.dials.titheCeiling ?? .1 : Infinity;
+        const owed = Math.min(b.store[k]!, q * m * Math.min(share, ceiling)), pay = hides ? owed / 2 : owed;
         b.store[k] = b.store[k]! - pay; to.store[k] = to.store[k]! + pay * (1 - skim);
         if (skim > 0) toCrown(s, k, pay * skim, 'the Crown’s part of the tithe');
         if (bd.way === 'crown') { to.owedUp[k] = (to.owedUp[k] ?? 0) + pay; b.paidUp += pay; if (hides) b.hid[k] = (b.hid[k] ?? 0) + owed - pay; }

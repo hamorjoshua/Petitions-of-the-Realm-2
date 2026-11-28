@@ -4,7 +4,7 @@
 import { exp } from '../math.ts';
 import { AIDERS, BY_HARM, Kn, NEEDS, NK, NN, NS, P, Rc, St, TOIL } from '../tables.ts';
 import { askAhead, cover, drive, welfare, welfareLater, zeros } from '../value.ts';
-import { around, bond, dist, grown, head, hearthIndex, holdsByCell, kinOf, muster, near, rec, struggle, sheltered, tenancies, tie, top, warm, type Tenancy } from '../util.ts';
+import { around, bloodPriceWeight, debtTerm, bond, dist, grown, head, hearthIndex, holdsByCell, kinOf, muster, near, rec, struggle, sheltered, tenancies, tie, top, warm, type Tenancy } from '../util.ts';
 import { bear } from './grow.ts';
 import { tBar } from './sky.ts';
 import { staffed, boundByLaw, chilled, clearingBarred, freeByLaw, rateOf, statute, tollOn, toCrown, underWatch, upheld } from '../court/court.ts';
@@ -335,7 +335,8 @@ function arrange(s: State, L: Land, cs: Map<number, Ctx>, A: Ctx, need: number):
         let give: Item | null = null, costA = 0;
         // What is promised is worth to the other only what the rules they live under would let them count on.
         const sure = have === 'G' || have === 'U' ? 1 : (staffed(s.court, 'stay') ? .75 : 1) * upheld(s, want === 'U' && have === 'L' ? 'Y' : have, way, a.id, B.b.id) * (have === 'LS' || have === 'DS' ? upheld(s, 'S', way, a.id, B.b.id) : 1);
-        const secured = have === 'LS' || have === 'DS', t = (secured ? 1 : tB) * sure;
+        const discount = have === 'L' || have === 'LS' ? (1 + P.term / 156) / (1 + debtTerm(s) / 156) : 1;
+        const secured = have === 'LS' || have === 'DS', t = (secured ? 1 : tB) * sure * discount;
         if (have === 'G') {
           let bestRate = 0;
           for (let j = 0; j < NK; j++) {
@@ -413,7 +414,7 @@ function arrange(s: State, L: Land, cs: Map<number, Ctx>, A: Ctx, need: number):
       const labour = it.t === 'D' || it.t === 'DS';
       // Between strangers a promise is spoken with nobody to bear witness; kin and fellows witness one another's.
       const witnessed = (L.kin.get(from.id)?.has(to.id) ?? false) || (from.of >= 0 && from.of === to.of);
-      const debt = bond(s, { about: 'act', a: from.id, b: to.id, kind: labour ? -1 : it.kind, q: it.q, due: labour ? s.t : s.t + P.term, labour, basis: 'word', rec: e.id, way, proof: witnessed ? 'witnessed' : 'spoken' });
+      const debt = bond(s, { about: 'act', a: from.id, b: to.id, kind: labour ? -1 : it.kind, q: it.q, due: labour ? s.t : s.t + debtTerm(s), labour, basis: 'word', rec: e.id, way, proof: witnessed ? 'witnessed' : 'spoken' });
       if ((it.t === 'LS' || it.t === 'DS') && surety) bond(s, { about: 'bond', a: to.id, b: from.id, on: surety.id, secures: debt.id, basis: 'word', rec: e.id, way });
     } else if (it.t === 'U' && it.rb) bond(s, { about: 'bond', a: to.id, b: from.id, on: it.rb.id, share: 0, due: s.t + P.lease, used: s.t, basis: 'word', rec: e.id, way });
   };
@@ -541,7 +542,7 @@ function deal(s: State, L: Land, cs: Map<number, Ctx>, kin: Map<number, Set<numb
   for (const B of partners) {
     if (kinOfA?.has(B.b.id) || dist(s.side, a.home, B.b.home) > P.reach + 1) continue;
     const regard = tie(s, a.id, B.b.id);
-    if (A.press <= A.h.scruple * Math.max(0.7, 1 + regard)) continue;
+    if (A.press <= A.h.scruple * Math.max(0.7, 1 + regard) * Math.sqrt(bloodPriceWeight(s))) continue;
     for (const k of serving) {
       const q = amount(B, k) * (1 - 0.5 * regard);
       if (q > vBest) { vBest = q; victim = B; vk = k; }
