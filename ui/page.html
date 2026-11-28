@@ -159,7 +159,6 @@ button.ord { cursor: pointer; } button.ord:disabled { cursor: default; opacity: 
 .map .regions polygon { fill: var(--land); stroke: var(--rule); stroke-width: 1px; vector-effect: non-scaling-stroke; stroke-linejoin: round; cursor: pointer; }
 .map .regions polygon.water { fill: transparent; stroke: none; }
 .map .regions polygon.on { stroke: var(--woad); stroke-width: 2px; paint-order: stroke; }
-.map .coast { fill: none; stroke: var(--soft); stroke-width: 1px; vector-effect: non-scaling-stroke; pointer-events: none; }
 .map .borders path { fill: none; stroke: var(--ink); stroke-width: 1.5px; vector-effect: non-scaling-stroke; stroke-linecap: round; pointer-events: none; }
 .map .roads { fill: none; stroke: var(--rule); stroke-width: 1px; vector-effect: non-scaling-stroke; pointer-events: none; }
 .map .tokens, .map .labels { pointer-events: none; }
@@ -247,7 +246,6 @@ button, input { border-radius: 3px; }
 .sheet, .gpop, .key, .legend-scale, .cockpit.full #sheet { border-radius: 3px; box-shadow: none; }
 #legend { bottom: calc(52px + env(safe-area-inset-bottom, 0px) + 8px); }
 .up { color: var(--good); } .down { color: var(--seal); }
-.map .coast { stroke: var(--coast); stroke-width: 1.5px; stroke-linejoin: round; stroke-linecap: round; }
 .map .regions polygon.wild { fill: var(--wild); } .map .regions polygon.wild2 { fill: var(--wild2); } .map .regions polygon.wild3 { fill: var(--wild3); }
 .map .t-lord { fill: var(--ink); } .map .t-parish { fill: var(--panel); stroke: var(--gilt); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
 .map .t-crown { fill: var(--gilt); } .map .t-watchdot { fill: var(--woad); }
@@ -273,7 +271,15 @@ button, input { font-size: 13px; }
 .seedrow { display: flex; align-items: center; gap: 8px; } .seedrow input { width: 6rem; min-height: 36px; border: 1px solid var(--rule); background: var(--panel); padding: 0 8px; border-radius: 2px; font-variant-numeric: tabular-nums; }
 .seedrow button { min-height: 36px; padding: 0 12px; border: 1px solid var(--ink); background: var(--panel); color: var(--ink); border-radius: 2px; cursor: pointer; font-weight: 500; } .seedrow button.go { background: var(--ink); color: var(--panel); }
 /* Strip: four figures with bars, then the toolbar */
-.cockpit.full { background: var(--bg) !important; background-image: none !important; }
+/* The atlas uses the same printed stock across light and dark control themes. */
+.cockpit.full .map-host {
+  background-color: #e7edef;
+  background-image: linear-gradient(#83969e19 1px, transparent 1px), linear-gradient(90deg, #83969e19 1px, transparent 1px);
+  background-size: 80px 80px;
+}
+.cockpit.full .map, #legend {
+  --stone: #fffdfa; --unsettled: #d8d8d1; --seal: #a43222; --good: #1d6357; --gilt: #916713;
+}
 .cockpit.full .strip { background: var(--panel); border-bottom: 1px solid var(--rule); padding: 8px 12px 0; gap: 0; }
 .kpis { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 1.5fr) minmax(0, 0.9fr); gap: 12px; }
 .kpi { display: flex; flex-direction: column; gap: 2px; text-align: left; background: none; border: 0; padding: 0; color: var(--ink); font: inherit; cursor: pointer; min-width: 0; border-radius: 0; }
@@ -297,11 +303,10 @@ div.kpi { cursor: default; }
 .map .regions polygon { fill: var(--stone); stroke: var(--bg); stroke-width: 0.75px; vector-effect: non-scaling-stroke; }
 .map .regions polygon.water { fill: transparent; stroke: none; }
 .map .regions polygon.on { stroke: var(--blue); stroke-width: 2px; }
-.map .coast { stroke: var(--soft); stroke-width: 0.75px; opacity: 0.6; }
 .map .borders path { stroke: var(--ink); stroke-width: 1px; opacity: 0.7; }
 .map .roads { stroke: var(--soft); stroke-width: 0.75px; opacity: 0.35; }
 .map .t-dot { fill: var(--ink); } .map .t-seat { fill: var(--bg); stroke: var(--ink); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
-.map .labels text { font-family: var(--body); font-size: 0.17px; font-weight: 500; text-transform: none; letter-spacing: 0; dominant-baseline: hanging; fill: var(--ink); paint-order: stroke; stroke: var(--bg); stroke-width: 0.045px; stroke-linejoin: round; opacity: 1; }
+.map .labels text { font-family: var(--body); font-size: 0.17px; font-weight: 500; text-transform: none; letter-spacing: 0; dominant-baseline: hanging; fill: var(--ink); opacity: 1; }
 .map .labels .fig { fill: var(--soft); font-weight: 400; font-variant-numeric: tabular-nums; }
 /* Dock and sheets */
 .dock { background: var(--panel); border-top: 1px solid var(--rule); }
@@ -342,5 +347,89 @@ progress.amb::-webkit-progress-bar, .ord progress::-webkit-progress-bar { backgr
 .houses li { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--rule); font-size: 12px; } .houses li span:nth-child(2) { flex: 1; }
 #legend .legend-scale { background: var(--panel); border: 1px solid var(--rule); border-radius: 2px; } #legend { bottom: calc(48px + env(safe-area-inset-bottom, 0px) + 8px); }
 .gpop { background: var(--panel); border: 0; border-top: 1px solid var(--rule); border-radius: 0; margin: 0 -12px; padding: 8px 12px; }
+/* Shorelines and settlement type stay legible above every thematic wash. */
+.map .regions polygon { stroke: #b6b8ac; stroke-width: .45px; }
+.map .regions polygon.on { stroke: #33534a; stroke-width: 1.8px; paint-order: normal; }
+.map .borders path { stroke: #64685a; stroke-width: .75px; stroke-dasharray: 2.5 2; stroke-linecap: butt; opacity: .75; }
+.map .coast {
+  fill: none; stroke: #355465; stroke-width: calc(1.5px / var(--map-zoom, 1));
+  stroke-linecap: round; vector-effect: non-scaling-stroke; pointer-events: none;
+}
+.map .terrain { pointer-events: none; opacity: .23; }
+.map #woodland { fill: #33474a; }
+.map .tokens { fill: #293e34; stroke: #f8f4e7; }
+.map .tokens > * { vector-effect: non-scaling-stroke; stroke-width: .65px; }
+.map .tokens .seat-ring { fill: #f8f4e7; stroke: #293e34; stroke-width: 1.35px; }
+.map .labels text { font: 600 .157px/1 Helvetica, Arial, sans-serif; fill: #27352c; stroke: none; }
+.map .labels .fig { font: 400 .88em Helvetica, Arial, sans-serif; font-variant-numeric: tabular-nums; fill: #39443b; }
+.lenstabs button[aria-pressed="true"]:not(.tlink) { background: var(--ink); color: var(--panel); }
+#legend .legend-scale { border-left: 4px solid var(--ink); padding: 7px 9px; }
+.legend-scale .sw i { width: 11px; height: 7px; }
+.measure-key { width: min(268px, calc(100vw - 48px)); padding: 10px 12px; background: var(--panel); border-top: 2px solid var(--ink); color: var(--ink); }
+.measure-key strong { display: block; font: 650 16px/1.2 Helvetica, Arial, sans-serif; }
+.measure-unit, .measure-key small { font-size: 11px; color: var(--soft); }
+.measure-bands { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; margin: 7px 0 2px; font: 11px/1.4 monospace; }
+.measure-bands i { display: block; height: 9px; border: 1px solid #0002; }
+.measure-key small i { display: inline-block; width: 10px; height: 8px; background: var(--unsettled); margin-right: 5px; }
+.measure-key small.interdict i { background: var(--seal); }
+/* Give the chart its own drawing area between the controls and the scale. */
+.cockpit.full { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px)); box-sizing: border-box; }
+.cockpit.full .hud-top { position: relative; grid-row: 1; }
+.cockpit.full .map-host { position: relative; grid-row: 2; min-height: 0; container-type: size; }
+.cockpit.full .map { width: min(100cqw, 100cqh); }
+.cockpit.full #legend { position: static; grid-row: 3; background: var(--panel); }
+.measure-key { box-sizing: border-box; width: min(100%, 44rem); margin: auto; padding: 14px 18px; border-top: 1px solid var(--rule); }
+.measure-key strong { font-size: 20px; letter-spacing: -.025em; }
+.measure-bands { max-width: 32rem; margin-top: 9px; }
+.map .labels rect { fill: #faf7ed; fill-opacity: .72; stroke: #777c70; stroke-opacity: .5; stroke-width: .55px; vector-effect: non-scaling-stroke; }
+.map .labels text { letter-spacing: 0; }
+/* A typographic plate with one reading axis from title to map to scale. */
+.cockpit.full {
+  --margin: clamp(14px, 4vw, 46px);
+  --panel: #f6f3e9; --ink: #212521; --soft: #565950; --rule: #c5c4b7;
+  background: var(--panel) !important; color: var(--ink); color-scheme: light;
+  padding-inline: var(--margin);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  font-family: Helvetica, Arial, sans-serif;
+}
+.cockpit.full .hud-top { grid-row: 1; display: flex; flex-direction: row-reverse; align-items: center; border-bottom: 1px solid var(--ink); }
+.court-controls { flex: none; }
+.court-controls summary { color: var(--ink); padding: 10px 0 10px 6px; cursor: pointer; font: 600 11px/1.2 Helvetica,Arial,sans-serif; }
+.court-controls #strip { position: absolute; top: 100%; inset-inline: 0; z-index: 2; }
+.court-controls .strip { max-width: none; box-shadow: 0 4px 8px #20251d18; }
+#lensbar { border: 0; max-width: none; min-width: 0; }
+.lenstabs { height: 40px; padding: 0; align-items: center; }
+.lenstabs button { padding: 0 5px; min-height: 30px; font-size: 11px; }
+.lenstabs button:first-child { padding-left: 0; }
+.lenstabs button[aria-pressed="true"]:not(.tlink) { color: var(--ink); background: transparent; border-bottom: 2px solid var(--ink); }
+#plate-title { grid-row: 2; padding: clamp(16px, 3vh, 32px) 0 16px; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; align-items: end; }
+#plate-title h1 { font: 650 clamp(40px, 9vw, 84px)/.92 Helvetica,Arial,sans-serif; letter-spacing: -.062em; text-align: left; max-width: 10ch; margin: 0; }
+.plate-stat { text-align: right; display: grid; gap: 5px; }
+.plate-stat b { color: #a43a24; font: 500 clamp(40px, 10vw, 84px)/.85 Helvetica,Arial,sans-serif; letter-spacing: -.075em; font-variant-numeric: tabular-nums; }
+.plate-stat span { font-size: 11px; }
+.cockpit[data-season="Winter"] { --map-water: #cfdee5; --map-ground: #f3f7f8; --map-open: #c3cdd1; }
+.cockpit[data-season="Spring"] { --map-water: #cddfd6; --map-ground: #f1f6df; --map-open: #bfcea9; }
+.cockpit[data-season="Summer"] { --map-water: #d4e4df; --map-ground: #fff5d8; --map-open: #daca98; }
+.cockpit[data-season="Autumn"] { --map-water: #ded8d0; --map-ground: #fff0df; --map-open: #d5b99f; }
+.cockpit.full .map-host { grid-row: 3; background: var(--map-water); border-block: 1px solid #888e80; }
+.cockpit.full .map, #legend { --unsettled: var(--map-open); --stone: var(--map-ground); --seal: #b33d22; }
+.cockpit.full #legend { grid-row: 4; }
+.cockpit.full .measure-key { max-width: none; border: none; padding: 10px 0 14px; }
+.measure-unit { font: 600 12px Helvetica,Arial,sans-serif; color: var(--ink); }
+.measure-bands { max-width: none; }
+.cockpit.full .dock { width: auto; left: var(--margin); right: var(--margin); max-width: none; backdrop-filter: none; }
+.dock .tabs .ico { display: none; }
+.dock .tabs button { font: 600 12px Helvetica,Arial,sans-serif; }
+@media (min-width: 860px) and (min-height: 500px) {
+  .cockpit.full { grid-template-columns: minmax(230px, 30%) 1fr; grid-template-rows: auto 1fr auto; column-gap: clamp(20px, 4vw, 70px); }
+  .cockpit.full .hud-top { grid-column: 1 / -1; }
+  #plate-title h1 { font-size: clamp(40px, 4.8vw, 80px); }
+  #plate-title { grid-column: 1; grid-row: 2; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; padding-block: 32px; }
+  .plate-stat { text-align: left; }
+  .cockpit.full .map-host { grid-column: 2; grid-row: 2 / 4; margin-block: 18px; }
+  .cockpit.full #legend { grid-column: 1; grid-row: 3; }
+}
+@media (max-width: 370px) { .lenstabs button, .lenstabs .tlink { padding-inline: 3px; } }
+@media (max-height: 480px) { #plate-title { padding: 5px 0; } #plate-title h1, .plate-stat b { font-size: 22px; max-width: none; } .measure-key { padding-block: 3px; } }
 </style>
 <div id="app"></div>

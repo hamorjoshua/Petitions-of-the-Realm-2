@@ -518,13 +518,13 @@ const WORKS: [WorkKey, string, string, string][] = [
   ['chapel', 'Endowed chapel', '✝', 'The place grows holier, grievance near it fades faster, and your legitimacy grows a little each season.'],
 ];
 const LEGEND: Record<Lens, string> = {
-  want: 'Darker: more of the houses there are in want. Numbers: houses.',
-  factions: 'Darker: more of the houses there hold a grievance against the Crown.',
-  sacred: 'Gold: holy ground; ✦ a shrine; red: under interdict.',
-  jurisdiction: 'Each colour is one body of houses, and whoever leads it.',
-  ecology: 'Darker red: soil worn out or ground flooded.',
+  want: 'Percentage of local households short of at least one essential need.',
+  factions: 'Percentage of local households whose grievance reaches the Crown’s threshold.',
+  sacred: 'The index combines sanctity, shrines and interdicts. Red identifies an interdict.',
+  jurisdiction: 'Colour identifies the local lordship. Figures give the settlement population.',
+  ecology: 'The index combines soil depletion, flooding and clearance.',
 };
-const GLYPHS = 'Each dot is a settlement; the hollow dot is your seat. Names carry the lens’s figure: weeks of food, aggrieved houses of all, holiness, soil left, or souls. Dark lines bound lordships. The lens fills places in four steps.';
+const GLYPHS = 'Dots mark villages, squares mark ranked settlements, and a ring marks the Crown seat. Short diagonal hatches mark uplands, fine dots mark woodland, and open ground is plain. Dashed lines separate lordships.';
 
 const storeTotal = (): number => (s.court ? s.court.store.reduce((x, y) => x + y, 0) : 0);
 /** Up, down or level against a season ago. */
@@ -587,22 +587,27 @@ const WASH = ['#c9a45c', '#93a57a', '#e0c99a', '#a9a293'];
 const herald = (id: number): string => HERALDRY[((id % HERALDRY.length) + HERALDRY.length) % HERALDRY.length]!;
 /** A quiet figure for a named place, by the active lens. */
 function microData(i: number, at: Map<number, Body[]>): string {
-  const l = at.get(i) ?? [], cell = s.cells[i]!, souls = l.reduce((a, b) => a + b.members.filter(m => s.people[m]!.alive).length, 0);
-  if (lens === 'want') { if (!l.length) return ''; const food = NEEDS.findIndex(n => n.harm >= 0.5); const w = Math.min(...l.map(b => cover(b.store, askAhead(s, b))[food] ?? 0)); return `${w < 10 ? w.toFixed(1) : Math.round(w)}w`; }
-  if (lens === 'factions') { const c = s.court; return c && l.length ? `${l.filter(b => (c.grief[b.id] ?? 0) >= P.aggrieved).length}/${l.length}` : ''; }
-  if (lens === 'sacred') return cell.interdict > 0 ? `int ${cell.interdict}w` : `${Math.round(cell.sanctity * 100)}%`;
-  if (lens === 'ecology') return `${Math.round((100 * cell.soil) / Math.max(0.01, cell.soil0))}%`;
+  const l = at.get(i) ?? [], souls = l.reduce((a, b) => a + b.members.filter(m => s.people[m]!.alive).length, 0);
   return souls ? String(souls) : '';
 }
 const titleCase = (x: string): string => x.replace(/\b([a-z])/g, m => m.toUpperCase());
 /** The lens's four steps, as a small legend above the dock. */
 function legend(): string {
-  if (lens === 'jurisdiction') return `<div class="legend-scale"><span class="label">Lords</span><span class="small soft">each colour a lordship</span></div>`;
-  const col = lens === 'sacred' ? 'var(--gilt)' : lens === 'ecology' ? 'var(--good)' : 'var(--seal)', name = ({ want: 'Want', factions: 'Aggrieved', sacred: 'Holiness', ecology: 'Worn land' } as Record<string, string>)[lens]!;
-  return `<div class="legend-scale"><span class="label">${name}</span>${[0, 18, 42, 72].map((p, k) => `<span class="sw"><i style="background:${p ? `color-mix(in srgb, ${col} ${p}%, var(--stone))` : 'var(--stone)'}"></i>${['None', 'Low', 'High', 'Severe'][k]}</span>`).join('')}</div>`;
+  if (lens === 'jurisdiction') return `<div class="measure-key"><span class="measure-unit">Colour denotes lordship · labels show population</span></div>`;
+  const household = lens === 'want' || lens === 'factions';
+  const col = lens === 'sacred' ? 'var(--gilt)' : lens === 'ecology' ? 'var(--good)' : 'var(--seal)';
+  const ranges = household ? ['0%', '>0%', '≥25%', '≥50%'] : ['0', '>0', '≥25', '≥50'];
+  return `<div class="measure-key"><span class="measure-unit">${household ? 'Share of local households' : 'Index · 0–100'}</span>
+    <div class="measure-bands">${MAP_INKS.map((ink, i) => `<span><i style="background:${mapInk(col, ink)}"></i>${ranges[i]}</span>`).join('')}</div>
+    ${household ? '<small><i></i>No households</small>' : lens === 'sacred' ? '<small class="interdict"><i></i>Under interdict</small>' : ''}</div>`;
+
 }
+const MAP_INKS = [0, 27, 56, 88] as const;
+const mapInk = (color: string, amount: number): string => `color-mix(in srgb, ${color} ${amount}%, var(--stone))`;
 /** Room around the realm so nothing at its edge is clipped. */
 const PAD = 0.45;
+const labelMeasure = document.createElement('canvas').getContext('2d')!;
+labelMeasure.font = '600 100px Helvetica, Arial, sans-serif';
 function mapView(): string {
   const hs = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length), at = new Map<number, Body[]>();
   for (const b of hs) { const l = at.get(b.home); if (l) l.push(b); else at.set(b.home, [b]); }
@@ -641,36 +646,96 @@ function mapView(): string {
     if (lens === 'want') return [l.filter(b => cover(b.store, askAhead(s, b)).some((x, k) => NEEDS[k]!.harm >= 0.5 && x < P.short)).length / l.length, 'var(--seal)'];
     return [c ? l.filter(b => (c.grief[b.id] ?? 0) >= P.aggrieved).length / l.length : 0, 'var(--seal)'];
   };
-  // Regions: flat fills in three steps of height, tinted by the lens; the sea shows between them as a gutter.
+  const readings = s.cells.map((_cell, i) => lensOf(i));
+  const householdLens = lens === 'want' || lens === 'factions';
+  let figure: string, caption: string;
+  if (householdLens) {
+    let affected = 0;
+    for (const [i, homes] of at) affected += Math.round(readings[i]![0] * homes.length);
+    figure = String(affected);
+    caption = `of ${hs.length} households`;
+  } else if (lens === 'jurisdiction') {
+    figure = String(new Set(land.filter(id => id >= 0)).size);
+    caption = 'lordships in the realm';
+  } else {
+    const dry = readings.filter((_, i) => !water(i));
+    figure = String(Math.round(100 * dry.reduce((sum, [value]) => sum + value, 0) / Math.max(1, dry.length)));
+    caption = 'mean land index / 100';
+  }
+  const title = { want: 'Households in want', factions: 'Grievance', sacred: 'Sacred influence', ecology: 'Land stress', jurisdiction: 'Lordships' }[lens];
+  swap('plate-title', `<h1>${title}</h1><div class="plate-stat"><b>${figure}</b><span>${caption}</span></div>`);
+  const upland = q(.75), grove = St.findIndex(row => row.id === 'grove');
+  const terrain: string[] = [];
   const regions = g.polys.map((poly, i) => {
     if (water(i)) return `<polygon data-cell="${i}" class="water${i === picked ? ' on' : ''}" points="${polyPath(poly)}"><title>${esc(cellWords(i))}</title></polygon>`;
-    // Four flat steps of one signal colour, like a chart: none, a little, more, much.
-    // Settled places stand forward in bright land; the wild moor lies darker, a shade darker again on high ground.
-    const [v, col] = lensOf(i), pct = v <= 0.05 ? 0 : v < 0.34 ? 18 : v < 0.67 ? 42 : 72;
-    return `<polygon data-cell="${i}" class="${i === picked ? 'on' : ''}" points="${polyPath(poly)}"${pct ? ` style="fill:color-mix(in srgb, ${col} ${pct}%, var(--stone))"` : ''}><title>${esc(cellWords(i))}</title></polygon>`;
+    const points = polyPath(poly), cell = s.cells[i]!;
+    const texture = cell.high >= upland ? 'upland' : cell.stock[grove]! >= St[grove]!.thin ? 'woodland' : '';
+    if (texture) terrain.push(`<polygon points="${points}" fill="url(#${texture})"/>`);
+    const [v, col] = readings[i]!;
+    const missing = (lens === 'want' || lens === 'factions') && !at.has(i);
+    const ink = MAP_INKS[v <= 0 ? 0 : v < .25 ? 1 : v < .5 ? 2 : 3];
+    const fill = missing ? 'var(--unsettled)' : mapInk(col, lens === 'jurisdiction' && land[i]! >= 0 ? 60 : ink);
+    return `<polygon data-cell="${i}" class="${i === picked ? 'on' : ''}" points="${points}" style="fill:${fill}"><title>${esc(cellWords(i))}</title></polygon>`;
+
   }).join('');
   // Jurisdictions: a lordship where there is one, otherwise the shire about a settled place. Their outer edges are inked.
   const realm = s.cells.map((_x, i) => { if (water(i)) return -2; const k = shire[i]!; if (k < 0) return -1; const L = lordAt(at, k); return L >= 0 ? 100000 + L : k; });
   const borders = edgesWhere(g, (i, j) => { const a = land[i]!, b = land[j]!; return a !== b && a !== -2 && b !== -2 && (a >= 0 || b >= 0); });
   void realm;
-  const coast = edgesWhere(g, (i, j) => water(i) !== water(j));
-  // Tokens: plain board pieces at each place's centre.
-  const tokens: string[] = [], labels: string[] = [];
-  g.pts.forEach(([x, y0], i) => {
-    let y = y0;
+  // A land edge shared by two dry cells is inland. Each remaining edge faces water.
+  const shore = new Map<string, string>();
+  g.polys.forEach((poly, i) => {
     if (water(i)) return;
-    const n = at.get(i)?.length ?? 0, rk = ranked.get(i), cell = s.cells[i]!, ly = y + 0.32;
-    y -= 0.06;
-    const X = x.toFixed(3), Y = y.toFixed(3);
-    // Every settlement the same small ink dot; the Crown's seat a hollow one. Trouble is shown by the lenses, not by rings.
-    if (i === seat) tokens.push(`<circle class="t-seat" cx="${X}" cy="${Y}" r="0.07"/>`);
-    else if (n || rk) tokens.push(`<circle class="t-dot" cx="${X}" cy="${Y}" r="0.05"/>`);
-    if (rk || i === seat) { const fig = microData(i, at); labels.push(`<text x="${X}" y="${(y + 0.14).toFixed(3)}">${esc(titleCase(cellWords(i)))}${fig ? `<tspan class="fig"> ${esc(fig)}</tspan>` : ''}</text>`); }
+    const vertices = polyPath(poly).split(' ');
+    vertices.forEach((start, k) => {
+      const end = vertices[(k + 1) % vertices.length]!;
+      if (start === end) return;
+      const edge = start < end ? start + '|' + end : end + '|' + start;
+      if (!shore.delete(edge)) shore.set(edge, `M${start}L${end}`);
+    });
   });
-  return `<div class="map-viewport"><div class="map" style="transform:translate(${panX}px,${panY}px) scale(${zoom})"><svg viewBox="${-PAD} ${-PAD} ${N + 2 * PAD} ${N + 2 * PAD}" preserveAspectRatio="xMidYMid meet">
-    <rect class="sea" x="-2" y="-2" width="${N + 4}" height="${N + 4}"/>
+  const tokens: string[] = [], labels: string[] = [];
+  const labelSize = 11 * (N + 2 * PAD) / (mapBox().m * zoom);
+  const occupied: { left: number; right: number; top: number; bottom: number }[] = [];
+  // Give the seat and the selected place first choice of label space.
+  const priority = (i: number): number => i === picked ? 2 : i === seat ? 1 : 0;
+  const places = g.pts.map((_, i) => i).sort((a, b) => priority(b) - priority(a) || readings[b]![0] - readings[a]![0]);
+  places.forEach(i => {
+    const [x, y] = g.pts[i]!;
+    const named = ranked.has(i) || i === seat;
+    if (water(i) || (!named && !at.has(i))) return;
+    if (i === seat) tokens.push(`<circle class="seat-ring" cx="${x}" cy="${y}" r=".12"/>`);
+    else if (named) tokens.push(`<rect x="${x - .075}" y="${y - .075}" width=".15" height=".15"/>`);
+    else tokens.push(`<circle cx="${x}" cy="${y}" r=".06"/>`);
+    if (named) {
+      const name = titleCase(cellWords(i));
+      const value = Math.round(readings[i]![0] * 100);
+      const fig = lens === 'jurisdiction' ? microData(i, at) : (lens === 'want' || lens === 'factions') ? (at.has(i) ? value + '%' : '') : String(value);
+      const width = labelSize * (.65 + Math.max(labelMeasure.measureText(name).width / 100, fig.length * .56));
+      const height = labelSize * (fig ? 2.5 : 1.45);
+      const left = Math.max(-PAD, Math.min(N + PAD - width, x - width / 2));
+      const gap = .13 + .12 * labelSize;
+      const top = y + gap + height <= N + PAD ? y + gap : y - gap - height;
+      const right = left + width, bottom = top + height;
+      if (occupied.some(box => left < box.right && right > box.left && top < box.bottom && bottom > box.top)) return;
+      occupied.push({ left, right, top, bottom });
+      labels.push(`<g transform="translate(${left} ${top})"><rect width="${width}" height="${height}"/>
+        <text style="font-size:${labelSize}px" x="${width / 2}" y="${.22 * labelSize}">${esc(name)}${fig ? `<tspan class="fig" x="${width / 2}" dy="1.22em">${esc(fig)}</tspan>` : ''}</text></g>`);
+
+    }
+  });
+  return `<div class="map-viewport"><div class="map" style="--map-zoom:${zoom};transform:translate(${panX}px,${panY}px) scale(${zoom})"><svg viewBox="${-PAD} ${-PAD} ${N + 2 * PAD} ${N + 2 * PAD}" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <pattern id="upland" width=".17" height=".17" patternUnits="userSpaceOnUse">
+        <path d="M.045 .12l.072-.078" stroke="#33474a" stroke-width=".014" stroke-linecap="round"/>
+      </pattern>
+      <pattern id="woodland" width=".18" height=".18" patternUnits="userSpaceOnUse">
+        <circle cx=".045" cy=".045" r=".016"/><circle cx=".135" cy=".135" r=".016"/>
+      </pattern>
+    </defs>
     <g class="regions">${regions}</g>
-    <path class="coast" d="${coast}"/><g class="borders"><path d="${borders}"/></g>
+    <g class="terrain" aria-hidden="true">${terrain.join('')}</g>
+    <g class="borders"><path d="${borders}"/></g><path class="coast" d="${[...shore.values()].join('')}"/>
     <g class="tokens">${tokens.join('')}</g>
     <g class="labels">${labels.join('')}</g></svg></div></div>`;
 }
@@ -779,25 +844,18 @@ function shell(): void {
   document.body.classList.add('cockpit-on');
   if (!live) deck = 'chronicle';
   const tabs = live ? (['dials', 'laws', 'works', 'powers', 'chronicle'] as const) : (['chronicle'] as const);
-  app.innerHTML = `<div class="cockpit full"><main class="view map-host" id="view"></main>
-    <div class="hud-top"><div id="strip"></div><div id="lensbar"></div></div>
+  app.innerHTML = `<div class="cockpit full"><header id="plate-title"></header><main class="view map-host" id="view"></main>
+    <div class="hud-top"><details class="court-controls"><summary>Court &amp; time</summary><div id="strip"></div></details><div id="lensbar"></div></div>
     <div id="sheet"></div>
     <div id="legend"></div>
     <footer class="dock"><div class="half" id="deck"></div><nav class="tabs">${tabs.map(d => `<button data-deck="${d}" aria-pressed="${dockOpen && deck === d}">${ICON[d]}<span>${({ dials: 'Dials', laws: 'Laws', works: 'Works', powers: 'Powers', chronicle: 'Chronicle' })[d]}</span></button>`).join('')}</nav></footer></div>`;
-  zoom = fitZoom(); panX = 0; panY = 0;
+  zoom = 1; panX = 0; panY = 0;
   paint(true);
-  centreOn(s.court?.seat ?? Math.floor(s.cells.length / 2));
-}
-/** Pan so a place sits in the middle of the screen. */
-function centreOn(cell: number): void {
-  const pt = geometry(s.side, s.seed).pts[cell];
-  if (!pt) return;
-  const { m } = mapBox();
-  panX = -((pt[0] + PAD) / (s.side + 2 * PAD) - 0.5) * m * zoom; panY = -((pt[1] + PAD) / (s.side + 2 * PAD) - 0.5) * m * zoom;
-  clampPan(); applyZoom();
 }
 const swap = (id: string, html: string): void => { const el = document.getElementById(id); if (el && el.dataset.h !== html) { const top = el.scrollTop; el.innerHTML = html; el.dataset.h = html; el.scrollTop = top; } };
 function paint(force = false): void {
+  const cockpit = document.querySelector<HTMLElement>('.cockpit.full');
+  if (cockpit) cockpit.dataset.season = seasonOf(s.t);
   if (force) for (const id of ['strip', 'view', 'deck', 'sheet', 'lensbar', 'legend']) { const el = document.getElementById(id); if (el) el.dataset.h = ''; }
   document.querySelectorAll<HTMLButtonElement>('[data-deck]').forEach(b => b.setAttribute('aria-pressed', String(dockOpen && b.dataset.deck === deck)));
   document.querySelector('.dock')?.classList.toggle('open', dockOpen);
@@ -901,10 +959,9 @@ for (const g of ['gesturestart', 'gesturechange']) document.addEventListener(g, 
 const ptrs = new Map<number, { x: number; y: number }>();
 let pinch0 = 0, zoom0 = 1, pan0 = { x: 0, y: 0 }, start0 = { x: 0, y: 0 }, moved = false;
 /** The map is a square as wide as the screen's narrower side; at the zoom that fills the screen, panning reaches its edges. */
-const mapBox = (): { w: number; h: number; m: number } => { const vp = document.querySelector('.map-viewport') as HTMLElement | null; const w = vp?.clientWidth ?? 390, h = vp?.clientHeight ?? 800; return { w, h, m: Math.min(w, h) }; };
-const fitZoom = (): number => { const { w, h, m } = mapBox(); return h > w ? Math.min(1.85, Math.max(1, ((h - 230) / m) * 1.15)) : Math.min(1.3, Math.max(1, (w * 0.9) / m)); };
+const mapBox = (): { w: number; h: number; m: number } => { const vp = document.querySelector('.map-host') as HTMLElement | null; const w = vp?.clientWidth ?? 390, h = vp?.clientHeight ?? 800; return { w, h, m: Math.min(w, h) }; };
 const clampPan = (): void => { const { w, h, m } = mapBox(), mx = Math.max(0, (m * zoom - w) / 2 + 24), my = Math.max(0, (m * zoom - h) / 2 + 120); panX = Math.max(-mx, Math.min(mx, panX)); panY = Math.max(-my, Math.min(my, panY)); };
-const applyZoom = (): void => { const m = document.querySelector('.map') as HTMLElement | null; if (m) m.style.transform = `translate(${panX}px,${panY}px) scale(${zoom})`; };
+const applyZoom = (): void => { const m = document.querySelector('.map') as HTMLElement | null; if (m) { m.style.setProperty('--map-zoom', String(zoom)); m.style.transform = `translate(${panX}px,${panY}px) scale(${zoom})`; } };
 app.addEventListener('pointerdown', e => {
   if (!(e.target as HTMLElement).closest('.map-viewport')) return;
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
