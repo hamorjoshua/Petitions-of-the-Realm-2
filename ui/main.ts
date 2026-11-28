@@ -659,6 +659,7 @@ function mapView(): string {
   const upland = q(.75), grove = St.findIndex(row => row.id === 'grove');
   const corn = St.findIndex(row => row.id === 'corn');
   const borders: string[] = [];
+  let liftedTile = '', liftedMark = '';
   const regions = s.cells.map((cell, i) => {
     const [x, y] = xy(i);
     if (water(i)) return `<rect data-cell="${i}" class="water" x="${x}" y="${y}" width="1" height="1"/>`;
@@ -690,7 +691,10 @@ function mapView(): string {
       if (x === N-1 || land[i+1]! < 0) borders.push(`M${x+1} ${y}v1`);
       if (y === N-1 || land[i+N]! < 0) borders.push(`M${x} ${y+1}h1`);
     }
-    return `<rect class="tile" style="fill:${fill}" data-cell="${i}" ${box}><title>${esc(cellWords(i))}</title></rect><g class="engraving">${layers.join('')}<path class="bevel" d="M${x+.11} ${y+.955}h.78"/>${picked === i ? `<rect class="tile-choice" ${box}/>` : ''}</g>`;
+    const face = `<rect class="tile" style="fill:${fill}" data-cell="${i}" ${box}><title>${esc(cellWords(i))}</title></rect><g class="engraving">${layers.join('')}<path class="bevel" d="M${x+.11} ${y+.955}h.78"/>${picked === i ? `<rect class="tile-choice" ${box}/>` : ''}</g>`;
+    if (picked !== i) return face;
+    liftedTile = face;
+    return `<rect class="socket" data-cell="${i}" ${box}/><rect class="lift-shadow" transform="translate(.03 .09)" ${box}/>`;
   }).join('');
   const marks: string[] = [];
   for (let i = 0; i < s.cells.length; i++) {
@@ -700,11 +704,12 @@ function mapView(): string {
     if (i === seat) marks.push(`<circle class="t-seat" cx="${x}" cy="${y}" r="0.07"/>`);
     else if (named) marks.push(`<rect class="t-rank" x="${x - 0.055}" y="${y - 0.055}" width="0.11" height="0.11"/>`);
     else marks.push(`<circle class="t-dot" cx="${x}" cy="${y}" r="0.045"/>`);
+    if (i === picked) liftedMark = marks.pop()!;
   }
   return `<div class="map-viewport"><div class="map" style="transform:translate(${panX}px,${panY}px) scale(${zoom})"><svg viewBox="${-PAD} ${-PAD} ${N + 2 * PAD} ${N + 2 * PAD}" preserveAspectRatio="xMidYMid meet">
     <defs>${tilePatterns}</defs>
     <g class="regions">${regions}</g><path class="tile-borders" d="${borders.join('')}"/>
-    <g class="tokens">${marks.join('')}</g></svg></div></div>`;
+    <g class="tokens">${marks.join('')}</g>${liftedTile ? `<g class="lifted">${liftedTile}<g class="tokens">${liftedMark}</g></g>` : ''}</svg></div></div>`;
 }
 /** The lens bar, and the key when asked for. */
 function lensBar(): string {
@@ -815,6 +820,7 @@ const ICON: Record<string, string> = {
   chronicle: icon('<path d="M2 3h10M2 6h10M2 9h10M2 12h6"/>'),
 };
 function shell(): void {
+  savedCamera = undefined;
   const live = mode === 'cockpit';
   document.body.classList.add('cockpit-on');
   if (!live) deck = 'chronicle';
@@ -948,8 +954,54 @@ const mapBox = (): { w: number; h: number; m: number } => { const vp = document.
 const fitZoom = (): number => { const { w, h, m } = mapBox(); return h > w ? Math.min(1.85, Math.max(1, ((h - 230) / m) * 1.15)) : Math.min(1.3, Math.max(1, (w * 0.9) / m)); };
 const clampPan = (): void => { const { w, h, m } = mapBox(), mx = Math.max(0, (m * zoom - w) / 2 + 24), my = Math.max(0, (m * zoom - h) / 2 + 120); panX = Math.max(-mx, Math.min(mx, panX)); panY = Math.max(-my, Math.min(my, panY)); };
 const applyZoom = (): void => { const m = document.querySelector('.map') as HTMLElement | null; if (m) m.style.transform = `translate(${panX}px,${panY}px) scale(${zoom})`; };
+let savedCamera: { zoom: number; panX: number; panY: number } | undefined;
+const ease = 'cubic-bezier(.22,1,.36,1)';
+function frameTile(): void {
+  const frame = document.querySelector<HTMLElement>('.map-viewport')!;
+  const bounds = frame.getBoundingClientRect();
+  const top = Math.max(bounds.top, document.querySelector('.hud-top')!.getBoundingClientRect().bottom);
+  const dock = document.querySelector('.dock')!.getBoundingClientRect();
+  const height = Math.max(0, Math.min(bounds.bottom, dock.top) - top);
+  const targetY = top + height * .24;
+  const base = Math.min(frame.clientWidth, frame.clientHeight) / (s.side + 2 * PAD);
+  zoom = Math.min(3, Math.max(1.8, 104 / (.91 * base)));
+  const unit = base * zoom;
+  panX = (s.side / 2 - picked % s.side - .5) * unit;
+  panY = targetY - bounds.top - bounds.height / 2 + (s.side / 2 - Math.floor(picked / s.side) - .5 + .12) * unit;
+  const card = document.getElementById('sheet')!;
+  card.style.setProperty('--card-top', (targetY + unit * .91 * 1.06 / 2 + 12) + 'px');
+  card.style.setProperty('--card-bottom', (innerHeight - dock.top + 8) + 'px');
+  card.style.setProperty('--card-center', (bounds.left + bounds.width / 2) + 'px');
+  applyZoom();
+}
+function selectTile(cell: number): void {
+  const before = document.querySelector<HTMLElement>('.map');
+  const from = before && getComputedStyle(before).transform;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const oldLift = before?.querySelector<SVGGElement>('.lifted');
+  const lowering = cell < 0 && oldLift ? oldLift.cloneNode(true) as SVGGElement : null;
+  if (cell >= 0) savedCamera ??= { zoom, panX, panY };
+  else if (savedCamera) { ({ zoom, panX, panY } = savedCamera); savedCamera = undefined; }
+  picked = cell; dockOpen = false;
+  const sheet = document.getElementById('sheet')!;
+  sheet.classList.toggle('anchored', picked >= 0);
+  paint();
+  if (picked >= 0) frameTile();
+  const map = document.querySelector<HTMLElement>('.map')!;
+  if (reduce) return;
+  if (from) map.animate([{ transform: from }, { transform: map.style.transform }], { duration: 240, easing: ease });
+  if (lowering) {
+    lowering.style.pointerEvents = 'none';
+    map.querySelector('svg')!.append(lowering);
+    lowering.animate([{ transform: 'translateY(-.12px) scale(1.06)' }, { transform: 'none' }], { duration: 200, easing: ease }).onfinish = () => lowering.remove();
+  } else if (picked >= 0) {
+    map.querySelector('.lifted')?.animate([{ transform: 'none' }, { transform: 'translateY(-.12px) scale(1.06)' }], { duration: 200, easing: ease });
+    sheet.animate([{ opacity: 0, translate: '0 6px' }, { opacity: 1, translate: '0 0' }], { duration: 160, easing: ease });
+  }
+}
+window.addEventListener('resize', () => { if (savedCamera && document.querySelector('.map-viewport')) frameTile(); });
 app.addEventListener('pointerdown', e => {
-  if (!(e.target as HTMLElement).closest('.map-viewport')) return;
+  if (savedCamera || !(e.target as HTMLElement).closest('.map-viewport')) return;
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   gesturing = true; moved = false;
   const pts = [...ptrs.values()];
@@ -968,7 +1020,7 @@ const lift = (e: PointerEvent): void => {
   if (!ptrs.delete(e.pointerId)) return;
   if (ptrs.size < 2) pinch0 = 0;
   if (ptrs.size === 1) { const p = [...ptrs.values()][0]!; start0 = { x: p.x, y: p.y }; pan0 = { x: panX, y: panY }; }
-  if (!ptrs.size) { gesturing = false; setTimeout(() => { moved = false; paint(); }, 0); }
+  if (!ptrs.size) { gesturing = false; setTimeout(() => { if (moved) { moved = false; paint(); } }, 0); }
 };
 window.addEventListener('pointerup', lift); window.addEventListener('pointercancel', lift);
 // A drag or a pinch that ends on a place is not a tap on it.
@@ -977,7 +1029,10 @@ app.addEventListener('click', e => {
   if (moved && t.closest('.map-viewport')) { e.stopImmediatePropagation(); e.preventDefault(); return; }
   // A tap on a place picks it; with the dock up, it lowers the dock as well.
   const poly = t.closest?.('rect[data-cell]') as SVGElement | null;
-  if (poly) { e.stopImmediatePropagation(); dockOpen = false; picked = Number(poly.dataset.cell); paint(); return; }
+  if (t.closest('.map-viewport')) {
+    const cell = poly && !poly.classList.contains('water') ? Number(poly.dataset.cell) : -1;
+    if (cell >= 0 || savedCamera) { e.stopImmediatePropagation(); selectTile(cell === picked ? -1 : cell); }
+  }
 }, true);
 
 function cockpitClick(b: HTMLButtonElement): boolean {
@@ -986,11 +1041,11 @@ function cockpitClick(b: HTMLButtonElement): boolean {
   if (b.dataset.gauge !== undefined) { openGauge = openGauge === b.dataset.gauge ? '' : (b.dataset.gauge as typeof openGauge); paint(); return true; }
   if (b.dataset.home) { save(); speed = 0; welcome(); return true; }
   if (b.dataset.watch) { const k = b.dataset.watch; if (watched.has(k)) watched.delete(k); else watched.add(k); paint(); return true; }
-    if (b.dataset.deck) { const d = b.dataset.deck as typeof deck; dockOpen = !(dockOpen && deck === d); deck = d; paint(); return true; }
+    if (b.dataset.deck) { if (savedCamera) selectTile(-1); const d = b.dataset.deck as typeof deck; dockOpen = !(dockOpen && deck === d); deck = d; paint(); return true; }
   if (b.dataset.key) { keyOpen = !keyOpen; paint(); return true; }
   if (b.dataset.lens) { lens = b.dataset.lens as Lens; paint(); return true; }
-  if (b.dataset.reset) { zoom = 1; panX = 0; panY = 0; applyZoom(); paint(); return true; }
-  if (b.dataset.cell !== undefined) { picked = Number(b.dataset.cell); paint(); return true; }
+  if (b.dataset.reset) { if (savedCamera) selectTile(-1); zoom = 1; panX = 0; panY = 0; applyZoom(); paint(); return true; }
+  if (b.dataset.cell !== undefined) { selectTile(Number(b.dataset.cell)); return true; }
   if (b.dataset.power !== undefined) { focusPower = Number(b.dataset.power); deck = 'powers'; dockOpen = true; paint(); document.getElementById('deck')?.scrollTo(0, 0); return true; }
   if (b.dataset.act) {
     const [id, a] = b.dataset.act.split(':') as [string, PowerAct];
@@ -1001,7 +1056,7 @@ function cockpitClick(b: HTMLButtonElement): boolean {
     }
     paint(); return true;
   }
-  if (b.dataset.goto !== undefined) { picked = Number(b.dataset.goto); dockOpen = false; paint(); return true; }
+  if (b.dataset.goto !== undefined) { selectTile(Number(b.dataset.goto)); return true; }
   if (b.dataset.major !== undefined) { majorOnly = b.dataset.major === '1'; paint(); return true; }
   if (!c) return false;
   if (b.dataset.law) { const [k, v] = b.dataset.law.split(':') as [LawKey, string]; const leg0 = c.legitimacy; setLaw(s, k, v as never); if (c.legitimacy < leg0) doFlash({ legitimacy: 'bad' }); feed.push({ t: s.t, text: `You laid down the law: <strong>${LAW_WORDS[k][0]}: ${LAW_WORDS[k][1].find(x => x[0] === v)![1]}</strong>.`, major: true }); paint(); return true; }
