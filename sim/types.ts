@@ -198,8 +198,6 @@ export interface Dials {
   /** Each season, a share of the store spent, and how it is divided among relief, the bailiffs' reach, and the parishes' goodwill (percent). */
   budget: { spend: 0 | 5 | 10; relief: number; reach: number; legitimacy: number };
 }
-export type OrdKey = 'stay' | 'granaries' | 'eyre' | 'penance' | 'tallage';
-export type LocalOrder = 'relief' | 'circuit' | 'charter' | 'intervene' | 'commission';
 export type Mode = 'cockpit' | 'chronicle' | 'regency';
 export type PowerAct = 'warden' | 'revoke' | 'charter' | 'uncharter' | 'church' | 'hostage';
 /** What the Crown has done with a named power: a warden and how far his ambition has grown, whether he defies the Crown;
@@ -211,7 +209,6 @@ export interface Policy {
   lawSetAt: Record<LawKey, number>; inscribed: Record<LawKey, boolean>; lawHits: Record<LawKey, number>;
   dials: Dials;
   /** Weeks each ordinance has left to run. */
-  ord: Record<OrdKey, number>;
   mode: Mode;
   /** The Crown has lost its hold: laws go unheeded and bailiffs send nothing up until it recovers. */
   weak: boolean;
@@ -220,7 +217,13 @@ export interface Policy {
   /** Named powers the Crown has dealt with, by body id. */
   powers?: Record<number, PowerState>;
 }
+export type RealmSlot = 'eyre' | 'inquest' | 'tallage' | 'stay' | 'penance' | 'purveyance';
+export type Posture = 'peace' | 'commission' | 'visitation';
+export type ClerkTarget = { kind: 'idle' } | { kind: 'slot'; slot: RealmSlot } | { kind: 'cell'; cell: number; posture: Posture };
+export interface Clerk { id: number; target: ClerkTarget; transit: number }
+
 export interface Court {
+  clerks?: Clerk[];
   policy: Policy;
   /** The Chancery: writs it can still seal this season; and royal tallies, what the absent King owes on purveyance and eyres. */
   writs?: number; tallies?: number;

@@ -167,22 +167,23 @@ test('flipping a standing law within the year is caprice; on the roll, worse', a
   assert.ok(c.legitimacy < leg);
 });
 
-test('a stay of debts halts seizures and forfeits for its full year', async () => {
+test('a stay of debts halts seizures and forfeits until its clerk is recalled', async () => {
   const { bond } = await import('../sim/util.ts');
   const { bind } = await import('../sim/processes/bind.ts');
-  const { openCourt, issueOrdinance } = await import('../sim/court/court.ts');
+  const { openCourt, postClerk, hear } = await import('../sim/court/court.ts');
   const s = found(3);
   const c = openCourt(s, 'cockpit');
-  assert.ok(issueOrdinance(s, 'stay'));
-  assert.ok(!issueOrdinance(s, 'stay'), 'an ordinance in force cannot be issued again');
+  assert.ok(postClerk(s, 1, {kind: 'slot', slot: 'stay'}));
+  assert.ok(!postClerk(s, 1, {kind: 'slot', slot: 'stay'}), 'an ordinance in force cannot be issued again');
+  hear(s, []); s.t++; hear(s, []);
   const hs = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length);
   const [X, C] = [hs[0]!, hs[1]!];
   X.store = X.store.map(() => 0);
   const land = bond(s, { about: 'land', a: X.id, cell: X.home, basis: 'grant', strength: 2 });
   const debt = bond(s, { about: 'act', a: X.id, b: C.id, kind: 0, q: 50, due: s.t, basis: 'word' });
   bond(s, { about: 'bond', a: C.id, b: X.id, on: land.id, secures: debt.id, basis: 'word' });
-  for (let w = 0; w < 52; w++) { s.log = []; bind(s); s.t++; c.policy.ord.stay--; assert.equal(land.a, X.id, `ground forfeit in week ${w} of the stay`); }
-  assert.equal(c.policy.ord.stay, 0);
+  for (let w = 0; w < 52; w++) { s.log = []; bind(s); s.t++; assert.equal(land.a, X.id, `ground forfeit in week ${w} of the stay`); }
+  assert.ok(postClerk(s, 1, {kind: 'idle'}));
   debt.due = s.t; s.log = []; bind(s);
   assert.equal(land.a, C.id, 'once the stay ends the pledge is forfeit');
 });

@@ -7,7 +7,7 @@ import { askAhead, cover, drive, welfare, welfareLater, zeros } from '../value.t
 import { around, bond, dist, grown, head, hearthIndex, holdsByCell, kinOf, muster, near, rec, struggle, sheltered, tenancies, tie, top, warm, type Tenancy } from '../util.ts';
 import { bear } from './grow.ts';
 import { tBar } from './sky.ts';
-import { boundByLaw, chilled, clearingBarred, freeByLaw, rateOf, statute, tollOn, toCrown, underWatch, upheld } from '../court/court.ts';
+import { staffed, boundByLaw, chilled, clearingBarred, freeByLaw, rateOf, statute, tollOn, toCrown, underWatch, upheld } from '../court/court.ts';
 import { weekOf, type Body, type Bond, type Person, type State } from '../types.ts';
 
 interface Opt { r: number; cell: number; mine: number; take: boolean; score: number; rent: number }
@@ -334,7 +334,7 @@ function arrange(s: State, L: Land, cs: Map<number, Ctx>, A: Ctx, need: number):
         const target = Math.max(P.margin * costB, share * recvA);
         let give: Item | null = null, costA = 0;
         // What is promised is worth to the other only what the rules they live under would let them count on.
-        const sure = have === 'G' || have === 'U' ? 1 : upheld(s, want === 'U' && have === 'L' ? 'Y' : have, way, a.id, B.b.id) * (have === 'LS' || have === 'DS' ? upheld(s, 'S', way, a.id, B.b.id) : 1);
+        const sure = have === 'G' || have === 'U' ? 1 : (staffed(s.court, 'stay') ? .75 : 1) * upheld(s, want === 'U' && have === 'L' ? 'Y' : have, way, a.id, B.b.id) * (have === 'LS' || have === 'DS' ? upheld(s, 'S', way, a.id, B.b.id) : 1);
         const secured = have === 'LS' || have === 'DS', t = (secured ? 1 : tB) * sure;
         if (have === 'G') {
           let bestRate = 0;

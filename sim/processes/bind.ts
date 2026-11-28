@@ -4,7 +4,7 @@
 import { BY_HARM, Kn, NEEDS, NK, NN, P, TOIL } from '../tables.ts';
 import { askAhead, cover, drive } from '../value.ts';
 import { around, bond, leaves, living, sheltered, setTie, dist, head, holdsByCell, kinOf, might, muster, rec, served as remember, struggle, tie, top, warm } from '../util.ts';
-import { measureOf, rateOf, statute } from '../court/court.ts';
+import { staffed, measureOf, rateOf, statute } from '../court/court.ts';
 import type { Body, Bond, Person, State } from '../types.ts';
 
 /** The needs a kind serves, for saying why someone's cover fell. */
@@ -30,7 +30,7 @@ export function bind(s: State): void {
     if (bd.about !== 'bond' || bd.way !== 'manor' || bd.boon <= 0 || bd.easedTo > s.t) continue;
     const T = s.bodies[bd.a], L = s.bodies[bd.b];
     if (!T || !L || !T.alive || !L.alive || !L.pressed) continue;
-    const stayed = (s.court?.policy.ord.stay ?? 0) > 0;
+    const stayed = staffed(s.court, 'stay');
     const asked = bd.capped || stayed ? bd.boon : bd.boon * (1 + 2 * drive(s, L));
     // A tenant in want is not called to the lord's fields: the lord takes its spare days, not the ones it lives by.
     const tc = cover(T.store, askAhead(s, T));
@@ -157,7 +157,7 @@ export function bind(s: State): void {
       continue;
     }
     // A stay of debts by ordinance: nothing is seized or forfeit while it runs.
-    const stay = (s.court?.policy.ord.stay ?? 0) > 0;
+    const stay = staffed(s.court, 'stay');
     if (stay) { bd.due = s.t + 4; continue; }
     if (!bd.broken) {
       // A debt secured on a holding: the holding passes, and there is nothing left to fight over.

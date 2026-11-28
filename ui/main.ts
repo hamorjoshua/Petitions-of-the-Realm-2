@@ -1,16 +1,17 @@
+import type { Clerk, Posture, RealmSlot } from '../sim/types.ts';
 // The screen. A reader and a player's hands: it shows what the court knows and passes rulings to it.
 // It changes the realm only through `hear` and `advance`.
 
 import { found } from '../sim/found.ts';
 import { advance } from '../sim/step.ts';
-import { LAWS as LAWS_ALL, STATUTES, commission, powerAt, whyNotCommission, writsMax, levies, ORD_WEEKS, actOn, freshDials, moveSeat, whyNotSeat, powersOf, underPower, whyNotAct, audience, build, clearingBarred, freshLaws, timberKind, whyNotBuild, cuts, hear, inscribeLaw, interventionAt, issueOrdinance, judgeOf, localOrder, localPower, openCourt, planesOf, setDial, setLaw, suretyFor, type Plane, type Ruling, type Width } from '../sim/court/court.ts';
+import { LAWS as LAWS_ALL, STATUTES, commission, powerAt, whyNotCommission, writsMax, levies, actOn, freshDials, moveSeat, whyNotSeat, powersOf, underPower, whyNotAct, audience, build, clearingBarred, freshLaws, timberKind, whyNotBuild, cuts, hear, inscribeLaw, postClerk, royalClerks, judgeOf, localPower, openCourt, planesOf, setDial, setLaw, suretyFor, type Plane, type Ruling, type Width } from '../sim/court/court.ts';
 import { askAhead, cover } from '../sim/value.ts';
 import { KINDS, NEEDS, P, RECIPES, St, TOIL } from '../sim/tables.ts';
 import { grown, top } from '../sim/util.ts';
 import { Readers, wayWords } from '../readers/readers.ts';
 import { placeName } from '../readers/names.ts';
 import { route } from '../sim/processes/move.ts';
-import type { Body, Bond, Dials, LawKey, LocalOrder, Mode, OrdKey, Petition, PowerAct, State, WorkKey } from '../sim/types.ts';
+import type { Body, Bond, Dials, LawKey, Mode, Petition, PowerAct, State, WorkKey } from '../sim/types.ts';
 
 const app = document.getElementById('app')!;
 const esc = (x: string): string => x.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -454,12 +455,12 @@ function passWeek(): void {
   else openWeek();
 }
 
-// --- The cockpit: the realm runs on its own. The regent trims it with laws, the treasury and decrees, and gives orders place by place ---
+// --- The cockpit: the realm runs on its own. The regent trims it with laws, the treasury and clerks, and gives orders place by place ---
 
 let mode: Mode = 'cockpit';
 let speed: 0 | 1 | 5 | 20 = 0, acc = 0, lastFrame = 0, lastPaint = 0, dirty = false;
 type Lens = 'want' | 'factions' | 'sacred' | 'jurisdiction' | 'ecology';
-let view: 'map' | 'chronicle' = 'map', deck: 'laws' | 'dials' | 'powers' | 'decrees' | 'chronicle' = 'laws', lens: Lens = 'want';
+let view: 'map' | 'chronicle' = 'map', deck: 'laws' | 'dials' | 'powers' | 'clerks' | 'chronicle' = 'laws', lens: Lens = 'want';
 /** Whether the dock's half-sheet is up, and whether the map key is showing. */
 let dockOpen = false, keyOpen = false;
 /** Where the river runs from each place, worked out once per realm. */
@@ -477,7 +478,7 @@ let eraFrom = 0, eraStats = { pop: 0, hunger: 0, withdrawals: 0, shrines: 0, flo
 let eras: { t: number; html: string }[] = [];
 /** The map's zoom and pan, and the pointers on it. */
 let zoom = 1, panX = 0, panY = 0, gesturing = false;
-/** What the cockpit has to say that the chroniclers do not: laws laid down, decrees, orders, what was settled below, the Crown's hold. */
+/** What the cockpit has to say that the chroniclers do not: laws laid down, clerks, orders, what was settled below, the Crown's hold. */
 let feed: { t: number; text: string; major: boolean }[] = [];
 const RATE = { 0: 0, 1: 1 / 1.5, 5: 3, 20: 20 } as const;
 const capOf = (): number => P.hearings;
@@ -493,12 +494,24 @@ const DIALS: { key: keyof Dials; name: string; vals: (number | string)[]; show: 
   { key: 'relief', name: 'Relief floor', vals: ['off', 'starving', 'want'], show: v => ({ off: 'Off', starving: 'Starving', want: 'In want' })[v as string]!, hint: 'Up to three houses a week below the floor are fed from the store.' },
   { key: 'bailiff', name: 'Bailiff posture', vals: ['light', 'regular', 'strict'], show: v => ({ light: 'Light', regular: 'Regular', strict: 'Strict inquest' })[v as string]!, hint: 'Light: twice a year, and they never take. Strict: every six weeks, and hidden shares and false claims are found out, at a cost to your reach.' },
 ];
-const ORDS: [OrdKey, string, string][] = [
-  ['stay', 'Year of stay', 'Nothing is seized or forfeit, and lords ask no more than custom, for a year.'],
-  ['eyre', 'General eyre', 'Justices ride the realm for half a year: false claims are found out, and legitimacy and reach rebuild. It is paid for on tallies.'],
-  ['penance', 'Solemn penance', 'For half a year interdicts lift sooner, stains and bans fade, and the fear of strangers cools.'],
-  ['tallage', 'General tallage', 'An extraordinary aid from the lords and abbeys pays down the King’s tallies at once; they, and those under them, will not forget it.'],
-];
+const slots: Record<RealmSlot, [string, string]> = {
+  eyre: ['General Eyre', 'Gain reach and legitimacy each week at a small cost in tallies.'],
+  inquest: ['Court of Inquest', 'Recover concealed shares and uncover fabricated debts.'],
+  tallage: ['Pipe Roll & Tallage', 'Collect estate dues to retire tallies. The levy stirs grievances.'],
+  stay: ['Writ of Stay', 'Suspend seizures and extra boon labour. Grievances ease and credit tightens.'],
+  penance: ['Solemn Penance', 'Interdicts, stains, bans and fear of newcomers fade faster.'],
+  purveyance: ['Purveyance Office', 'Buy surplus estate grain on tallies for starving shires.']
+};
+const postures: Record<Posture, string> = { peace: 'Keep the Peace', commission: 'Purveyance & Commission', visitation: 'Visitation & Parley' };
+
+function meeple(k: Clerk): string {
+  const shape = 'M.37 .24C.24 .04 .42 -.07 .54 .01Q.69 .08 .61 .24L.94 .46 .80 .61 .65 .54 .85 .96 .59 .96 .48 .72 .36 .96 .10 .96 .31 .53 .16 .61 .03 .46Z';
+  return `<g class="meeple" opacity="${k.transit ? .45 : 1}"><ellipse cx=".53" cy=".91" rx=".42" ry=".09" transform="rotate(-9 .53 .91)" fill="rgba(28,25,21,.22)"/><path d="${shape}" transform="translate(.10 -.08)" fill="#3d3832"/><path d="${shape}" fill="#1c1915" stroke="rgba(255,255,255,.18)" stroke-width=".5" vector-effect="non-scaling-stroke"/>${k.transit ? '<rect x="-.09" y="-.12" width="1.16" height="1.19" rx=".18" fill="none" stroke="#1c1915" stroke-width=".03" stroke-dasharray=".1 .09"/>' : ''}</g>`;
+}
+function piece(k: Clerk): string {
+  return `<svg aria-hidden="true" class="clerk-piece" viewBox="-.14 -.16 1.36 1.32">${meeple(k)}</svg>`;
+}
+function freeClerk(k: Clerk): boolean { return k.target.kind === 'idle' && !k.transit; }
 const WORKS: [WorkKey, string, string, string][] = [
   ['granary', 'Granary', '▣', 'Houses here and next door put by part of what they hold beyond ten weeks’ food, and draw on it in want. It spoils slowly.'],
   ['dike', 'Dike', '═', 'Raises the bank: the river must run much higher before it floods this place.'],
@@ -556,7 +569,7 @@ function strip(): string {
   return `<header class="strip"><div class="kpis">
     ${kpi('Legitimacy', c.legitimacy.toFixed(1), c.legitimacy / 5, c.legitimacy <= 1.5, 'legitimacy')}
     ${kpi('Reach', c.reach.toFixed(1), c.reach / 5, c.reach <= 1.5, 'reach')}
-    ${kpi('Writs', `${w} / ${wmax}`, w / wmax, w < 1)}
+    <button class="kpi clerk-tray" data-deck="clerks"><span class="label">Clerks</span><span>${royalClerks(c).map(k => `<i class="${freeClerk(k) ? 'free' : 'posted'}">${piece(k)}</i>`).join('')}</span><small>${royalClerks(c).filter(freeClerk).length} free</small></button>
     ${kpi('Tallies / Factions', `${fmt(tal)} · ${sore}/${need}`, Math.max(tal / P.tallyLimit, sore / need), tal > P.tallyLimit || sore >= need, 'tallies')}</div>${tool}${openGauge ? breakdown(openGauge) : ''}</header>`;
 }
 
@@ -630,7 +643,7 @@ function mapView(): string {
   const highs = s.cells.map(x => x.high), hsort = highs.slice().sort((a, b) => a - b);
   const q = (p: number): number => hsort[Math.floor(p * (hsort.length - 1))]!;
   const seat = c?.seat ?? s.bodies.find(b => b.alive && b.rank === 'bailiff')?.home ?? Math.floor(s.cells.length / 2);
-  const held = (i: number): boolean => (at.get(i)?.length ?? 0) > 0 || ranked.has(i) || i === seat || !!s.cells[i]!.works || !!s.cells[i]!.shrine;
+  const held = (i: number): boolean => (at.get(i)?.length ?? 0) > 0 || ranked.has(i) || i === seat || !!c?.clerks?.some(k => k.target.kind === 'cell' && k.target.cell === i) || !!s.cells[i]!.works || !!s.cells[i]!.shrine;
   const ring = (i: number): number => { const [x, y] = xy(i); return Math.min(x, y, N - 1 - x, N - 1 - y); };
   const wet = new Set<number>();
   for (let i = 0; i < s.cells.length; i++) if (ring(i) === 0 && !held(i)) wet.add(i);
@@ -659,6 +672,8 @@ function mapView(): string {
   const upland = q(.75), grove = St.findIndex(row => row.id === 'grove');
   const corn = St.findIndex(row => row.id === 'corn');
   const borders: string[] = [];
+  const posted = new Map<number, Clerk>();
+  if (c) for (const k of royalClerks(c)) if (k.target.kind === 'cell') posted.set(k.target.cell, k);
   let liftedTile = '', liftedMark = '';
   const regions = s.cells.map((cell, i) => {
     const [x, y] = xy(i);
@@ -691,6 +706,9 @@ function mapView(): string {
       if (x === N-1 || land[i+1]! < 0) borders.push(`M${x+1} ${y}v1`);
       if (y === N-1 || land[i+N]! < 0) borders.push(`M${x} ${y+1}h1`);
     }
+    const clerk = posted.get(i);
+    if (clerk) layers.push(`<g transform="translate(${x+.67} ${y+.11}) scale(.24)">${meeple(clerk)}</g>`);
+    if (picked >= 0 && nbrs(picked).includes(i)) layers.push(`<rect ${box} fill="none" stroke="rgba(28,25,21,.52)" stroke-width="1" vector-effect="non-scaling-stroke"/>`);
     const face = `<rect class="tile" style="fill:${fill}" data-cell="${i}" ${box}><title>${esc(cellWords(i))}</title></rect><g class="engraving">${layers.join('')}<path class="bevel" d="M${x+.11} ${y+.955}h.78"/>${picked === i ? `<rect class="tile-choice" ${box}/>` : ''}</g>`;
     if (picked !== i) return face;
     liftedTile = face;
@@ -719,10 +737,9 @@ function lensBar(): string {
 function sheet(): string {
   if (picked < 0 || view !== 'map') return '';
   const i = picked, cell = s.cells[i]!, c = s.court, l = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length && b.home === i);
-  const iv = interventionAt(s, i), ivWords = ({ interdict: 'Lift interdict', shrine: 'Sanction shrine', stained: 'Penance', feud: 'King’s peace' } as Record<string, string>)[iv];
-  const wait = (k: string): number => (c ? Math.max(0, 13 - (s.t - (c.seen[`local:${k}:${i}`] ?? -999))) : 0);
   const act = (attr: string, t: string, why: string): string => `<button class="alink" ${attr} ${why ? `disabled title="${esc(why)}"` : ''}>${t}${why ? `<small>${esc(why)}</small>` : ''}</button>`;
-  const order = (k: LocalOrder, t: string, why = ''): string => { const w = wait(k); return act(`data-local="${k}"`, t, w > 0 ? `${w}w` : !why && c && (c.writs ?? writsMax(c)) < 1 ? 'no writs' : why); };
+  const pool = c ? royalClerks(c) : [];
+  const posted = pool.find(k => k.target.kind === 'cell' && k.target.cell === i);
   const inWant = l.some(b => cover(b.store, askAhead(s, b)).some((x, k) => NEEDS[k]!.harm >= 0.5 && x < P.short));
   const dues = s.bonds.filter(bd => bd.about === 'yield' && bd.way === 'crown' && l.some(b => b.id === bd.a));
   const star = (key: string): string => `<button class="star" data-watch="${key}" aria-pressed="${watched.has(key)}" aria-label="${watched.has(key) ? 'Stop watching' : 'Watch'}">${watched.has(key) ? '★' : '☆'}</button>`;
@@ -734,7 +751,7 @@ function sheet(): string {
   const live = c && mode === 'cockpit';
   return `<div class="sheet inspector"><div class="bar"><h3>${star(`c:${i}`)} ${esc(cellWords(i))}</h3><button class="x" data-cell="-1" aria-label="Close">✕</button></div>
     ${kpis}
-    ${live ? `<div class="alinks"><span class="label">Writs · ${c!.writs ?? writsMax(c!)} left</span>${order('relief', 'Purveyance', !l.length ? 'nobody' : inWant ? '' : 'no want')}${order('circuit', 'Inquest')}${order('intervene', ivWords ?? 'King’s peace', iv ? '' : 'nothing amiss')}${act('data-seat="1"', 'Progress', whyNotSeat(s, i).replace(/^Here now$/, 'here'))}</div>
+    ${live ? `<div class="alinks"><span class="label">Regional clerk</span>${posted && posted.target.kind === 'cell' ? act(`data-recall="${posted.id}"`, `Recall · ${postures[posted.target.posture]}${posted.transit ? ' · '+posted.transit+'w' : ''}`, '') : (Object.keys(postures) as Posture[]).map(k => act(`data-posture="${k}"`, postures[k], pool.some(freeClerk) ? '' : 'no free clerk')).join('')}${act('data-seat="1"', 'Progress', whyNotSeat(s, i).replace(/^Here now$/, 'here'))}</div>
       <div class="alinks build"><span class="label">Commission${powerAt(s, i) ? ` of ${esc(Cap(house(powerAt(s, i)!.id)).replace(/ (of|at) [A-Z][a-z]+$/, ''))}` : ''}</span>${(['dike', 'granary', 'chapel', 'post'] as const).map(k => act(`data-commission="${k}"`, ({ dike: 'Dike', granary: 'Granary', chapel: 'Chapel', post: 'Watch' })[k], whyNotCommission(s, i, k))).join('')}</div>` : ''}
     ${l.length ? `<ul class="houses">${l.map(b => `<li>${star(`b:${b.id}`)}<span>${esc(Cap(house(b.id)))}</span><span class="soft">${b.members.filter(m => s.people[m]!.alive).length}</span>${c && (c.grief[b.id] ?? 0) >= P.aggrieved ? '<span class="bad">aggrieved</span>' : ''}${live && (b.rank === 'lord' || b.rank === 'priest' || top(s, b).id !== b.id) ? `<button class="alink" data-power="${b.rank ? b.id : top(s, b).id}">${b.rank ? 'Deal' : 'Body'}</button>` : ''}</li>`).join('')}</ul>` : ''}
     ${cell.works?.granary ? `<p class="small soft">Granary: ${Math.round(cell.works.granary.reduce((a, q) => a + q, 0))} grain.</p>` : ''}</div>`;
@@ -770,19 +787,18 @@ function dialsDeck(): string {
     <div class="label">Schedule of assized rates</div><p class="small soft">Every good is valued in days of labour, so any two goods exchange at the ratio of their rates. Below customary eases those who owe it and squeezes those who make it; above, the reverse.</p>
     ${groups.map(([g, ids]) => `<div class="label">${g}</div>${ids.map(row).join('')}`).join('')}`;
 }
-function writsSummary(): string {
-  const c = s.court!, wmax = writsMax(c), w = c.writs ?? wmax, renew = 13 - (s.t % 13), tal = talliesNow();
-  const pending = (c.commissions ?? []).map(cm => `<div class="row"><div><strong>${esc(WORKS.find(x => x[0] === cm.work)![1])} at <button class="link" data-goto="${cm.cell}">${esc(cellWords(cm.cell))}</button></strong><div class="small soft">commanded of ${esc(house(cm.by))}; lapses in ${Math.max(0, cm.due - s.t)}w if no timber</div></div></div>`).join('');
-  return `<div class="label">The Chancery</div><div class="row"><div><strong>${w} of ${wmax} writs this season</strong><div class="small soft">They renew in ${renew}w. Sound legitimacy seals more; a weak Crown seals two.</div></div></div>
-    <div class="row"><div><strong>Royal tallies: ${Math.round(tal).toLocaleString('en-GB')}</strong><div class="small soft">What the King owes on purveyance and eyres. The Crown’s dues pay it down; past ${P.tallyLimit}, his credit fails and legitimacy suffers each season. A general tallage clears it at a cost.</div></div></div>
-    <div class="label">Commissions awaited</div>${pending || '<p class="small soft">None. Tap a place to command a work of its lord.</div>'}
-    <div class="label">Writs you may seal on a place</div>
-    ${[['Purveyance', 'The nearest lord or abbey with food delivers it to houses in want, on a royal tally.'], ['Commission', 'The local lord, parish or body raises a granary, dike, chapel or watch out of its own timber, or shirks if your reach is short or it is aggrieved.'], ['Inquest', 'Officials expose hidden dues and false claims there.'], ['The king’s peace', 'Lift an interdict, sanction a shrine, put a stained priest to penance, or end a feud.']].map(([t, d]) => `<div class="row"><div><strong>${t}</strong><div class="small soft">${d}</div></div></div>`).join('')}`;
-}
-function decreesDeck(): string {
+function clerksDeck(): string {
   const pol = s.court!.policy;
   const can = (Object.keys(LAW_WORDS) as LawKey[]).filter(k => pol.lawSetAt[k] >= 0 && !pol.inscribed[k]);
-  return ORDS.map(([k, name, hint]) => { const left = pol.ord[k]; return `<button class="ord" data-ord="${k}" ${left > 0 ? 'disabled' : ''}><strong>${name}</strong><span class="small soft">${left > 0 ? `${left}w left` : hint}</span>${left > 0 ? `<progress max="${ORD_WEEKS[k]}" value="${left}"></progress>` : ''}</button>`; }).join('')
+  const pool = royalClerks(s.court!);
+  const roster = pool.map(k => {
+    const t = k.target, where = t.kind === 'slot' ? slots[t.slot][0] : t.kind === 'cell' ? postures[t.posture] + ' · ' + esc(cellWords(t.cell)) : k.transit ? 'Returning' : 'Available';
+    return `<div class="row">${piece(k)}<div><strong>Clerk ${k.id}</strong><div class="small">${where}${k.transit ? ' · '+k.transit+'w in transit' : ''}</div></div>${t.kind !== 'idle' ? `<button data-recall="${k.id}">Recall</button>` : ''}</div>`;
+  }).join('');
+  return '<div class="label">Royal clerks</div>' + roster + '<div class="label">Realm offices</div>' + (Object.keys(slots) as RealmSlot[]).map(slot => {
+    const k = pool.find(k => k.target.kind === 'slot' && k.target.slot === slot);
+    return `<button class="ord" ${k ? `data-recall="${k.id}"` : `data-slot="${slot}" ${pool.some(freeClerk) ? '' : 'disabled'}`}><strong>${slots[slot][0]}</strong><span class="small soft">${slots[slot][1]}</span><span>${k ? piece(k)+' Recall' : 'Assign'}</span></button>`;
+  }).join('')
     + `<div class="ord"><strong>Write a law on the roll</strong><span class="small soft">It gains you legitimacy; undoing it later is caprice of the worst kind.</span><div class="seg">${can.map(k => `<button data-inscribe="${k}">${LAW_WORDS[k][0]}</button>`).join('') || '<span class="small soft">Lay a law down first.</span>'}</div></div>`;
 }
 
@@ -812,7 +828,7 @@ function powersDeck(): string {
 /** Small monochrome icons for the dock, drawn in 1.5px strokes. */
 const icon = (d: string): string => `<svg class="ico" viewBox="0 0 14 14" width="14" height="14" aria-hidden="true">${d}</svg>`;
 const ICON: Record<string, string> = {
-  decrees: icon('<path d="M7 1.5v11M3.5 4.5h7"/><circle cx="7" cy="10.5" r="2"/>'),
+  clerks: icon('<path d="M7 1.5v11M3.5 4.5h7"/><circle cx="7" cy="10.5" r="2"/>'),
   dials: icon('<path d="M2 4h10M2 10h10"/><circle cx="5" cy="4" r="1.6"/><circle cx="9" cy="10" r="1.6"/>'),
   writs: icon('<path d="M3 2.5h6.5L11 4v7.5H3z"/><path d="M5 6h4M5 8.5h2.5"/><circle cx="9.5" cy="10" r="1.4"/>'),
   laws: icon('<rect x="3" y="1.75" width="8" height="10.5" rx="1"/><path d="M5 5h4M5 7.5h4M5 10h2.5"/>'),
@@ -824,12 +840,12 @@ function shell(): void {
   const live = mode === 'cockpit';
   document.body.classList.add('cockpit-on');
   if (!live) deck = 'chronicle';
-  const tabs = live ? (['laws', 'dials', 'powers', 'decrees', 'chronicle'] as const) : (['chronicle'] as const);
+  const tabs = live ? (['laws', 'dials', 'clerks', 'powers', 'chronicle'] as const) : (['chronicle'] as const);
   app.innerHTML = `<div class="cockpit full"><header id="plate-title"></header><main class="view map-host" id="view"></main>
     <div class="hud-top"><div id="strip"></div><div id="lensbar"></div></div>
     <div id="sheet"></div>
     <div id="legend"></div>
-    <footer class="dock"><div class="half" id="deck"></div><nav class="tabs">${tabs.map(d => `<button data-deck="${d}" aria-pressed="${dockOpen && deck === d}">${ICON[d]}<span>${({ laws: 'Laws', dials: 'Dials', powers: 'Powers', decrees: 'Decrees', chronicle: 'Chronicle' })[d]}</span></button>`).join('')}</nav></footer></div>`;
+    <footer class="dock"><div class="half" id="deck"></div><nav class="tabs">${tabs.map(d => `<button data-deck="${d}" aria-pressed="${dockOpen && deck === d}">${ICON[d]}<span>${({ laws: 'Laws', dials: 'Dials', powers: 'Powers', clerks: 'Clerks', chronicle: 'Chronicle' })[d]}</span></button>`).join('')}</nav></footer></div>`;
   zoom = 1; panX = 0; panY = 0;
   paint(true);
 }
@@ -855,7 +871,7 @@ function paint(force = false): void {
   document.querySelector('[data-deck="powers"]')?.classList.toggle('alert', defiant);
   if (!gesturing) swap('view', mapView());
   swap('sheet', dockOpen ? '' : sheet());
-  swap('deck', !dockOpen ? '' : deck === 'chronicle' ? chronicleView() : !s.court ? '' : deck === 'laws' ? lawsDeck() : deck === 'dials' ? dialsDeck() : deck === 'powers' ? powersDeck() : writsSummary() + '<div class="label">Decrees</div>' + decreesDeck());
+  swap('deck', !dockOpen ? '' : deck === 'chronicle' ? chronicleView() : !s.court ? '' : deck === 'laws' ? lawsDeck() : deck === 'dials' ? dialsDeck() : deck === 'powers' ? powersDeck() : clerksDeck());
 }
 
 /** One week of the living realm: the court's reckoning, the realm lives, and the next week's matters are settled below by the laws. */
@@ -919,10 +935,10 @@ function resume(): void {
     if (s.court && !('forest' in s.court.policy.laws)) Object.assign(s.court.policy, freshLaws());
     if (s.court) { const f = freshLaws(), pol = s.court.policy; for (const k of LAWS_ALL) { if (!(k in pol.laws)) { pol.laws[k] = f.laws[k]; pol.lawSetAt[k] = -1; pol.inscribed[k] = false; pol.lawHits[k] = 0; } } }
     if (s.court && !('grainShare' in s.court.policy.dials)) { const old = s.court.policy.dials as Partial<Dials>; s.court.policy.dials = { ...freshDials(), ...(old.relief ? { relief: old.relief } : {}), ...(old.bailiff ? { bailiff: old.bailiff } : {}) }; levies(s); }
-    if (s.court && s.court.tallies === undefined) { s.court.writs = 3; s.court.tallies = 0; s.court.commissions = []; s.court.policy.ord.tallage = 0; if ((s.court.policy.laws.credit as string) === 'custom') s.court.policy.laws.credit = 'frankpledge'; }
+    if (s.court && s.court.tallies === undefined) { s.court.writs = 3; s.court.tallies = 0; s.court.commissions = []; if ((s.court.policy.laws.credit as string) === 'custom') s.court.policy.laws.credit = 'frankpledge'; }
     if (s.court && s.court.seat === undefined) s.court.seat = s.bodies.find(b => b.alive && b.rank === 'bailiff')?.home ?? Math.floor(s.cells.length / 2); R.events = j.events ?? []; mode = j.mode; feed = j.feed ?? []; hist = j.hist ?? []; eras = j.eras ?? []; eraFrom = j.eraFrom ?? 0; eraStats = j.eraStats ?? eraStats;
     watched.clear(); for (const w of j.watched ?? []) watched.add(w);
-    lens = j.lens ?? 'want'; deck = (['laws', 'dials', 'powers', 'decrees', 'chronicle'].includes(j.deck) ? j.deck : 'laws'); dockOpen = false;
+    lens = j.lens ?? 'want'; deck = (['laws', 'dials', 'clerks', 'powers', 'chronicle'].includes(j.deck) ? j.deck : j.deck === 'decrees' ? 'clerks' : 'laws'); dockOpen = false;
     over = ''; speed = 0; picked = -1; view = 'map'; openGauge = ''; zoom = 1; panX = 0; panY = 0;
     shell();
   } catch { welcome(); }
@@ -1073,8 +1089,13 @@ function cockpitClick(b: HTMLButtonElement): boolean {
     paint(); return true;
   }
   if (b.dataset.seat !== undefined && picked >= 0) { if (moveSeat(s, picked)) { doFlash({ tallies: 'warn', legitimacy: 'good' }); feed.push({ t: s.t, text: `You held court at ${esc(cellWords(picked))}: a royal progress.`, major: true }); } paint(); return true; }
-  if (b.dataset.ord) { const k = b.dataset.ord as OrdKey; if (issueOrdinance(s, k)) doFlash(({ stay: { legitimacy: 'good' }, granaries: { tallies: 'warn' }, eyre: { tallies: 'warn', legitimacy: 'good', reach: 'good' }, penance: { legitimacy: 'good' } } as Record<OrdKey, typeof flash>)[k]);
-    if (c.policy.ord[k] === ORD_WEEKS[k]) feed.push({ t: s.t, text: `You decreed: <strong>${ORDS.find(o => o[0] === k)![1]}</strong>.`, major: true }); paint(); return true; }
+  if (b.dataset.recall || b.dataset.slot || b.dataset.posture) {
+    const k = royalClerks(c).find(freeClerk);
+    if (b.dataset.recall) postClerk(s, Number(b.dataset.recall), { kind: 'idle' });
+    else if (k && b.dataset.slot) postClerk(s, k.id, { kind: 'slot', slot: b.dataset.slot as RealmSlot });
+    else if (k && picked >= 0) postClerk(s, k.id, { kind: 'cell', cell: picked, posture: b.dataset.posture as Posture });
+    paint(); return true;
+  }
   if (b.dataset.inscribe) { const k = b.dataset.inscribe as LawKey; if (inscribeLaw(s, k)) { doFlash({ legitimacy: 'good' }); } if (c.policy.inscribed[k] && c.policy.lawSetAt[k] >= 0) feed.push({ t: s.t, text: `You wrote the law on the roll: <strong>${LAW_WORDS[k][0]}</strong>.`, major: true }); paint(); return true; }
   if (b.dataset.commission && picked >= 0) {
     const k = b.dataset.commission as WorkKey, by = powerAt(s, picked);
@@ -1084,13 +1105,6 @@ function cockpitClick(b: HTMLButtonElement): boolean {
   if (b.dataset.build && picked >= 0) {
     const k = b.dataset.build as WorkKey, w = WORKS.find(x => x[0] === k)!;
     if (build(s, picked, k)) { doFlash({ tallies: 'warn', ...(k === 'post' ? { reach: 'good' } : k === 'chapel' ? { legitimacy: 'good' } : {}) }); feed.push({ t: s.t, text: `You built ${w[2]} <strong>${w[1].toLowerCase()}</strong> at ${esc(cellWords(picked))}.`, major: true }); }
-    paint(); return true;
-  }
-  if (b.dataset.local && picked >= 0) {
-    const k = b.dataset.local as LocalOrder, what = b.textContent?.replace(/\s*\(\d+w\)/, '') ?? k;
-    const ok = localOrder(s, picked, k);
-    if (ok) doFlash(({ relief: { tallies: 'warn' }, circuit: { reach: 'good', tallies: 'good' }, charter: { tallies: 'warn', legitimacy: 'good' }, intervene: { legitimacy: 'good' } } as Record<LocalOrder, typeof flash>)[k]);
-    feed.push({ t: s.t, text: ok ? `You ordered at ${esc(cellWords(picked))}: <strong>${esc(what)}</strong>.` : `<span class="soft">Your order at ${esc(cellWords(picked))} came to nothing.</span>`, major: true });
     paint(); return true;
   }
   return false;
@@ -1122,7 +1136,7 @@ function start(seed: number, side: number, souls: number, years: number): void {
 
 function welcome(): void {
   document.body.classList.remove('cockpit-on'); speed = 0;
-  const modes = [['cockpit', 'The Chancery', 'Govern by writ and seal: assizes, commissions and decrees, while the realm runs on.'], ['chronicle', 'The Chronicle', 'Watch the realm live for decades, with no court and no Crown.'], ['regency', 'The Regency', 'Three years in the king’s court, hearing petitioners week by week.']] as const;
+  const modes = [['cockpit', 'The Chancery', 'Govern by writ and seal: assizes, commissions and royal clerks, while the realm runs on.'], ['chronicle', 'The Chronicle', 'Watch the realm live for decades, with no court and no Crown.'], ['regency', 'The Regency', 'Three years in the king’s court, hearing petitioners week by week.']] as const;
   app.innerHTML = `<div class="wrap landing">
     <header class="masthead"><h1>Vicarius Regis</h1><p>A living medieval realm, kept in the king’s name.</p></header>
     ${(() => { const k = saved(); return k ? `<button class="moderow resume" id="resume"><span><strong>Resume your realm</strong><small>${k.mode === 'cockpit' ? 'The Chancery' : 'The Chronicle'} · year ${Math.floor(k.t / 52) + 1} · ${k.souls} souls</small></span><i>→</i></button>` : ''; })()}
