@@ -826,16 +826,6 @@ function powersDeck(): string {
   }).join('');
 }
 
-/** Small monochrome icons for the dock, drawn in 1.5px strokes. */
-const icon = (d: string): string => `<svg class="ico" viewBox="0 0 14 14" width="14" height="14" aria-hidden="true">${d}</svg>`;
-const ICON: Record<string, string> = {
-  clerks: icon('<path d="M7 1.5v11M3.5 4.5h7"/><circle cx="7" cy="10.5" r="2"/>'),
-  dials: icon('<path d="M2 4h10M2 10h10"/><circle cx="5" cy="4" r="1.6"/><circle cx="9" cy="10" r="1.6"/>'),
-  writs: icon('<path d="M3 2.5h6.5L11 4v7.5H3z"/><path d="M5 6h4M5 8.5h2.5"/><circle cx="9.5" cy="10" r="1.4"/>'),
-  laws: icon('<rect x="3" y="1.75" width="8" height="10.5" rx="1"/><path d="M5 5h4M5 7.5h4M5 10h2.5"/>'),
-  powers: icon('<path d="M2 11.5h10M2.5 11.5 2 5l3 2.5L7 3l2 4.5L12 5l-.5 6.5"/>'),
-  chronicle: icon('<path d="M2 3h10M2 6h10M2 9h10M2 12h6"/>'),
-};
 function shell(): void {
   savedCamera = undefined;
   const live = mode === 'cockpit';
@@ -846,7 +836,7 @@ function shell(): void {
     <div class="hud-top"><div id="strip"></div><div id="lensbar"></div></div>
     <div id="sheet"></div>
     <div id="legend"></div>
-    <footer class="dock"><div class="half" id="deck"></div><nav class="tabs">${tabs.map(d => `<button data-deck="${d}" aria-pressed="${dockOpen && deck === d}">${ICON[d]}<span>${({ laws: 'Laws', dials: 'Dials', powers: 'Powers', clerks: 'Clerks', chronicle: 'Chronicle' })[d]}</span></button>`).join('')}</nav></footer></div>`;
+    <footer class="dock"><div class="half" id="deck"></div><nav class="tabs">${tabs.map(d => `<button data-deck="${d}" aria-pressed="${dockOpen && deck === d}">${({ laws: 'Laws', dials: 'Dials', powers: 'Powers', clerks: 'Clerks', chronicle: 'Chronicle' })[d]}</button>`).join('')}</nav></footer></div>`;
   zoom = 1; panX = 0; panY = 0;
   paint(true);
 }

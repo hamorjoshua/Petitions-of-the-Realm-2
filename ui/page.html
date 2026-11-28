@@ -184,8 +184,6 @@ button.ord { cursor: pointer; } button.ord:disabled { cursor: default; opacity: 
 .dock.open .half { max-height: 52dvh; padding: 12px 16px; }
 @media (prefers-reduced-motion: reduce) { .dock .half { transition: none; } }
 .dock .tabs { display: flex; margin: 0; border: 0; background: none; order: 2; }
-.dock .tabs button { flex: 1; min-height: 50px; font: inherit; font-size: 0.9rem; border: 0; background: none; color: var(--ink); border-top: 2px solid transparent; cursor: pointer; padding: 0 2px; }
-.dock .tabs button[aria-pressed="true"] { border-top-color: var(--woad); font-weight: 600; background: none; color: var(--ink); }
 .dock .half .list li { padding: 6px 0; }
 body.cockpit-on .strip .row:first-child { padding-top: 0; }
 
@@ -209,8 +207,6 @@ h1, h2, h3 { font-family: var(--body); font-weight: 600; letter-spacing: -0.01em
 .sheet, .gpop, .key { border-radius: 4px; background: var(--panel); border: 1px solid var(--rule); }
 .cockpit.full #sheet { border-radius: 4px; }
 .dock { background: var(--panel); border-top: 1px solid var(--rule); border-radius: 0; }
-.dock .tabs button { font-size: 0.82rem; font-weight: 500; border-top: 1.5px solid transparent; }
-.dock .tabs button[aria-pressed="true"] { border-top: 1.5px solid var(--ink); font-weight: 600; }
 .flash-good, .flash-bad, .flash-warn { animation-duration: 0.6s; }
 
 /* A survey sheet: a faint grid of crosses across the sea. */
@@ -222,9 +218,8 @@ h1, h2, h3 { font-family: var(--body); font-weight: 600; letter-spacing: -0.01em
 .legend-scale .sw { display: inline-flex; align-items: center; gap: 4px; }
 .legend-scale .sw i { width: 8px; height: 8px; display: inline-block; border: 1px solid var(--rule); }
 .legend-scale .small { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 11px; }
-.dock .tabs button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; position: relative; }
-.dock .tabs .ico { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.dock .tabs button[aria-pressed="false"] .ico { opacity: 0.7; }
+.dock .tabs button { position: relative; flex: 1; min-height: 44px; padding: 0 2px; border: 0; border-top: 2px solid transparent; background: none; color: var(--soft); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; }
+.dock .tabs button[aria-pressed="true"] { color: var(--ink); border-top-color: var(--ink); }
 .dock .tabs button.alert::after { content: ""; position: absolute; top: 7px; left: calc(50% + 8px); width: 6px; height: 6px; border-radius: 50%; background: var(--seal); }
 
 /* The Braun pass: warm panels, recessed tracks, woad for what is active, 3px corners, 44px targets, hairlines only. */
@@ -241,7 +236,6 @@ button, input { border-radius: 3px; }
 .tools button { min-width: 44px; min-height: 44px; border: 0; border-top: 1px solid var(--rule); background: transparent; color: var(--ink); font: inherit; font-size: 0.8rem; font-weight: 600; border-radius: 0; cursor: pointer; }
 .tools button:first-child { border-top: 0; } .tools button[aria-pressed="true"] { background: var(--woad); color: #fff; }
 .key { position: absolute; right: 64px; top: calc(100% + 8px); left: 12px; margin: 0; border-radius: 3px; }
-.dock .tabs button { min-height: 52px; }
 .orders button, .step button, .ord, button.go, .mode, .home { min-height: 44px; border-radius: 3px; }
 .step { background: var(--recess); border: 1px solid var(--rule); border-radius: 3px; }
 .sheet, .gpop, .key, .legend-scale, .cockpit.full #sheet { border-radius: 3px; box-shadow: none; }
@@ -305,9 +299,6 @@ div.kpi { cursor: default; }
 .map .labels .fig { fill: var(--soft); font-weight: 400; font-variant-numeric: tabular-nums; }
 /* Dock and sheets */
 .dock { background: var(--panel); border-top: 1px solid var(--rule); }
-.dock .tabs button { min-height: 48px; font-size: 10px; letter-spacing: 0.04em; border-top: 2px solid transparent; gap: 2px; color: var(--soft); }
-.dock .tabs button[aria-pressed="true"] { border-top: 2px solid var(--ink); color: var(--ink); background: none; font-weight: 600; }
-.dock .tabs .ico { stroke-width: 1.4; }
 .dock.open { border-top: 1px solid var(--ink); }
 .dock .half { padding: 0 12px; gap: 0; } .dock.open .half { padding: 4px 12px 8px; }
 .dock .half > .label { padding: 12px 0 4px; }
