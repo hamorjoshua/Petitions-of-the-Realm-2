@@ -179,7 +179,7 @@ export interface Petition { /** For a house in want: everything that weighs on i
 export interface Rule { /** Written on the roll: it cannot be challenged or undone. */ roll?: boolean; id: number; scope: number; shape: string; cut: string; since: number; uses: number }
 /** The cockpit: standing laws, regulators and timed ordinances the regent sets, and how the realm is played. */
 export type LawKey = 'forest' | 'movement' | 'credit' | 'swords';
-export interface Laws { forest: 'free' | 'stinted' | 'kings'; movement: 'free' | 'bound'; credit: 'enforce' | 'mercy' | 'custom'; swords: 'immunity' | 'concordat' | 'supremacy' }
+export interface Laws { forest: 'free' | 'stinted' | 'kings'; movement: 'free' | 'customary' | 'bound'; credit: 'enforce' | 'frankpledge' | 'mercy'; swords: 'immunity' | 'concordat' | 'supremacy' }
 export interface Dials {
   /** The Crown's levies on what is gathered: grain from sown ground, timber from the woods. */
   grainShare: number; timberShare: number;
@@ -193,8 +193,8 @@ export interface Dials {
   /** Each season, a share of the store spent, and how it is divided among relief, the bailiffs' reach, and the parishes' goodwill (percent). */
   budget: { spend: 0 | 5 | 10; relief: number; reach: number; legitimacy: number };
 }
-export type OrdKey = 'stay' | 'granaries' | 'eyre' | 'penance';
-export type LocalOrder = 'relief' | 'circuit' | 'charter' | 'intervene';
+export type OrdKey = 'stay' | 'granaries' | 'eyre' | 'penance' | 'tallage';
+export type LocalOrder = 'relief' | 'circuit' | 'charter' | 'intervene' | 'commission';
 export type Mode = 'cockpit' | 'chronicle' | 'regency';
 export type PowerAct = 'warden' | 'revoke' | 'charter' | 'uncharter' | 'church' | 'hostage';
 /** What the Crown has done with a named power: a warden and how far his ambition has grown, whether he defies the Crown;
@@ -217,10 +217,14 @@ export interface Policy {
 }
 export interface Court {
   policy: Policy;
+  /** The Chancery: writs it can still seal this season; and royal tallies, what the absent King owes on purveyance and eyres. */
+  writs?: number; tallies?: number;
+  /** Works the Crown has commanded of a local power, not yet raised: where, what, of whom, by when. */
+  commissions?: { cell: number; work: WorkKey; by: number; due: number }[];
   /** Where the Crown sits now, and when it last moved: a royal progress. */
   seat?: number; seatMoved?: number;
   /** What moved the Crown's gauges, week by week, and why: kept for a year, so the regent can see what is doing it. */
-  ledger?: { t: number; g: 'legitimacy' | 'reach' | 'store'; d: number; why: string }[];
+  ledger?: { t: number; g: 'legitimacy' | 'reach' | 'store' | 'tallies'; d: number; why: string }[];
   /** How the court last ruled on each kind of matter, how far it found for the one who asked, and when; and how often it has gone back on itself lately. */
   precedent: Record<string, { fav: number; t: number }>; caprice: number;
   /** The Crown's two capacities: whether its rulings are accepted (legitimacy) and whether it can enforce them (reach). Standing is the lesser. */

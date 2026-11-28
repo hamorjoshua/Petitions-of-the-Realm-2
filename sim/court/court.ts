@@ -29,10 +29,11 @@ export function openCourt(s: State, mode: Mode = 'regency'): Court {
   const policy: Policy = {
     ...freshLaws(),
     dials: freshDials(),
-    ord: { stay: 0, granaries: 0, eyre: 0, penance: 0 }, mode, weak: false,
+    ord: { stay: 0, granaries: 0, eyre: 0, penance: 0, tallage: 0 }, mode, weak: false,
   };
-  const court: Court = { policy, seat: s.bodies.find(b => b.alive && b.rank === 'bailiff')?.home ?? Math.floor(s.cells.length / 2), legitimacy: 5, reach: 5, collected: 0, precedent: {}, caprice: 0, standing: 5, docket: [], rules: [], grief: {}, seen: {}, next: 0, quiet: 0, declined: 0, chilled: 0, store, words: [], wordsKept: 0, wordsBroken: 0, store0: store.reduce((x, y) => x + y, 0) };
+  const court: Court = { policy, writs: 3, tallies: 0, commissions: [], seat: s.bodies.find(b => b.alive && b.rank === 'bailiff')?.home ?? Math.floor(s.cells.length / 2), legitimacy: 5, reach: 5, collected: 0, precedent: {}, caprice: 0, standing: 5, docket: [], rules: [], grief: {}, seen: {}, next: 0, quiet: 0, declined: 0, chilled: 0, store, words: [], wordsKept: 0, wordsBroken: 0, store0: store.reduce((x, y) => x + y, 0) };
   s.court = court;
+  court.writs = writsMax(court);
   levies(s);
   return court;
 }
@@ -50,7 +51,7 @@ function relieve(s: State, c: Court, to: Body, need: number): number {
 
 /** Move a gauge, and note why. */
 const gauge = (s: State, c: Court, g: 'legitimacy' | 'reach', d: number, why: string): void => { c[g] += d; note(s, c, g, d, why); };
-const note = (s: State, c: Court, g: 'legitimacy' | 'reach' | 'store', d: number, why: string): void => {
+const note = (s: State, c: Court, g: 'legitimacy' | 'reach' | 'store' | 'tallies', d: number, why: string): void => {
   if (Math.abs(d) < 1e-6) return;
   const l = (c.ledger ??= []), last = l[l.length - 1];
   if (last && last.t === s.t && last.g === g && last.why === why) last.d += d; else l.push({ t: s.t, g, d, why });
@@ -845,6 +846,54 @@ export function toCrown(s: State, k: number, q: number, why: string): void {
   c.store[k] = c.store[k]! + q;
   note(s, c, 'store', q, why);
 }
+/** The Chancery's writs this season: three, a fourth with sound legitimacy, a fifth with high; two when the Crown is weak. */
+export const writsMax = (c: Court): number => (c.policy.weak ? 2 : 3 + (c.legitimacy >= 2.5 ? 1 : 0) + (c.legitimacy >= 4.5 ? 1 : 0));
+const spendWrit = (c: Court): boolean => { const n = c.writs ?? writsMax(c); if (n < 1) return false; c.writs = n - 1; return true; };
+const tally = (s: State, c: Court, q: number, why: string): void => { const was = c.tallies ?? 0; c.tallies = Math.max(0, was + q); note(s, c, 'tallies', c.tallies - was, why); };
+/** The power a writ for a place is addressed to: its lord, parish or body; else the nearest lord; else its foremost house. */
+export function powerAt(s: State, cell: number): Body | undefined {
+  const here = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length && b.home === cell);
+  const t = here.map(b => top(s, b)).find(x => x.rank === 'lord' || x.rank === 'priest' || x.parts.length);
+  return t ?? lordNear(s, cell) ?? here.sort((a, b) => b.store.reduce((x, y) => x + y, 0) - a.store.reduce((x, y) => x + y, 0) || a.id - b.id)[0];
+}
+/** Why a work cannot be commissioned at a place now, or '' if it can. */
+export function whyNotCommission(s: State, cell: number, key: WorkKey): string {
+  const c = s.court;
+  if (!c || c.policy.mode !== 'cockpit') return 'no Crown';
+  if (s.cells[cell]!.works?.[key]) return 'built';
+  if (c.commissions?.some(x => x.cell === cell && x.work === key)) return 'commanded';
+  if (!powerAt(s, cell)) return 'no one to command';
+  if ((c.writs ?? writsMax(c)) < 1) return 'no writs';
+  return '';
+}
+/** A writ of commission: the local power is to raise a work out of its own timber and labour. */
+export function commission(s: State, cell: number, key: WorkKey): boolean {
+  const c = s.court;
+  if (!c || whyNotCommission(s, cell, key) || !spendWrit(c)) return false;
+  const by = powerAt(s, cell)!;
+  (c.commissions ??= []).push({ cell, work: key, by: by.id, due: s.t + P.commissionWait });
+  rec(s, 'judge', { a: -1, b: by.id, cell, way: `commission ${key}` });
+  return true;
+}
+/** Commissions are obeyed, delayed for want of timber, or shirked, by the Crown's reach and the power's temper. */
+function commissionsWeek(s: State, c: Court): void {
+  if (!c.commissions?.length) return;
+  const tk = KINDS.findIndex(k => k.id === 'timber');
+  c.commissions = c.commissions.filter(cm => {
+    const B = s.bodies[cm.by];
+    const shirks = !B?.alive || c.policy.weak || c.reach < 1 || (c.grief[cm.by] ?? 0) >= P.aggrieved || c.policy.powers?.[cm.by]?.defiant;
+    if (shirks) { gauge(s, c, 'reach', -0.1, 'a commission ignored'); rec(s, 'defy', { a: cm.by, cell: cm.cell, way: 'commission' }); return false; }
+    const cost = P.workCost[cm.work]!;
+    if (tk >= 0 && B!.store[tk]! >= cost) {
+      B!.store[tk] = B!.store[tk]! - cost;
+      raise(s, cm.cell, cm.work);
+      grieve(c, cm.by, P.harmPaid / 2);
+      return false;
+    }
+    if (s.t >= cm.due) { gauge(s, c, 'reach', -0.05, 'a commission lapsed for want of timber'); return false; }
+    return true;
+  });
+}
 /** Why the Crown cannot hold court at a place now, or '' if it can: a royal progress. */
 export function whyNotSeat(s: State, cell: number): string {
   const c = s.court;
@@ -852,15 +901,11 @@ export function whyNotSeat(s: State, cell: number): string {
   if (c.seat === cell) return 'Here now';
   const w = 13 - (s.t - (c.seatMoved ?? -999));
   if (w > 0) return `${w}w left`;
-  const gk = KINDS.findIndex(k => k.id === 'grain');
-  if (gk >= 0 && c.store[gk]! < P.progressCost) return `Need ${P.progressCost} grain`;
   return '';
 }
 export function moveSeat(s: State, cell: number): boolean {
   const c = s.court;
   if (!c || whyNotSeat(s, cell)) return false;
-  const gk = KINDS.findIndex(k => k.id === 'grain');
-  if (gk >= 0) { c.store[gk] = c.store[gk]! - P.progressCost; note(s, c, 'store', -P.progressCost, 'a royal progress'); }
   c.seat = cell; c.seatMoved = s.t;
   rec(s, 'judge', { a: -1, cell, way: 'royal progress' });
   return true;
@@ -869,9 +914,9 @@ const nearSeat = (s: State, c: Court, home: number): boolean => c.seat !== undef
 /** The laws as a new court finds them: none laid down. */
 export const freshLaws = (): Pick<Policy, 'laws' | 'lawSetAt' | 'inscribed' | 'lawHits'> => {
   const per = <T,>(v: T) => Object.fromEntries(LAWS.map(k => [k, v])) as Record<LawKey, T>;
-  return { laws: { forest: 'free', movement: 'free', credit: 'enforce', swords: 'immunity' }, lawSetAt: per(-1), inscribed: per(false), lawHits: per(0) };
+  return { laws: { forest: 'free', movement: 'customary', credit: 'enforce', swords: 'immunity' }, lawSetAt: per(-1), inscribed: per(false), lawHits: per(0) };
 };
-export const ORD_WEEKS: Record<OrdKey, number> = { stay: 52, granaries: 13, eyre: 26, penance: 26 };
+export const ORD_WEEKS: Record<OrdKey, number> = { stay: 52, granaries: 13, eyre: 26, penance: 26, tallage: 13 };
 const live = (c: Court): boolean => c.policy.mode !== 'regency';
 
 /** Lay down a standing law. Changing one within the year it was laid down is caprice; changing one on the roll is worse, and takes it off the roll. */
@@ -899,6 +944,21 @@ export function issueOrdinance(s: State, key: OrdKey): boolean {
   const pol = s.court?.policy;
   if (!pol || pol.ord[key] > 0) return false;
   pol.ord[key] = ORD_WEEKS[key];
+  const c = s.court!;
+  if (key === 'eyre') tally(s, c, P.eyreCost, 'the justices’ eyre');
+  if (key === 'tallage') {
+    // An extraordinary aid from the lords and abbeys, toward what the King owes: they pay, and do not forget it.
+    // They give a fifth of what they hold at most, and no more than the King owes.
+    const payers = s.bodies.filter(b => b.alive && (b.rank === 'lord' || b.rank === 'priest'));
+    const can = payers.reduce((a, b) => a + b.store.reduce((x, q, k) => x + (Kn[k]!.fixed ? 0 : q * 0.2), 0), 0), share = can > 0 ? Math.min(1, (c.tallies ?? 0) / can) * 0.2 : 0;
+    let paid = 0;
+    for (const b of payers) {
+      for (let k = 0; k < NK; k++) if (!Kn[k]!.fixed) { const q = b.store[k]! * share; b.store[k] = b.store[k]! - q; paid += q; }
+      grieve(c, b.id, P.harmPaid * 2);
+      for (const h of underPower(s, b)) grieve(c, h.id, P.harmPaid / 2);
+    }
+    tally(s, c, -paid, 'a general tallage');
+  }
   rec(s, 'rule', { a: -1, kind2: 0, q2: -4, way: `decree ${key}` });
   return true;
 }
@@ -934,9 +994,10 @@ export function lawCut(s: State, p: Petition): string | null {
   const v = L[key] as string;
   if (key === 'credit') {
     if (p.burdens.length) return v === 'mercy' ? can.find(x => x.startsWith('ease:')) ?? null : 'dismiss';
-    return v === 'enforce' ? first('enforce') : v === 'mercy' ? first('surety', 'pardon', 'stay', 'answer', 'bar') : remits[0] ?? first('answer', 'surety', 'enforce');
+    // Frankpledge: the tithing, the kin or the body answers for the debtor before force is used.
+    return v === 'enforce' ? first('enforce') : v === 'mercy' ? first('surety', 'pardon', 'stay', 'bar') : first('surety', 'answer', 'enforce');
   }
-  if (key === 'movement') return p.side === 'exit' ? first(v === 'free' ? 'release' : 'tie') : first(v === 'free' ? 'custom' : 'uphold');
+  if (key === 'movement') return p.side === 'exit' ? first(v === 'bound' ? 'tie' : 'release') : first(v === 'bound' ? 'uphold' : 'custom');
   if (p.side === 'heresy') return v === 'immunity' ? remits[0] ?? null : v === 'concordat' ? first('silence') : first('tolerate');
   return v === 'immunity' ? first('uphold', 'respect', 'sanction', 'compel') : v === 'concordat' ? first('commute', 'abjure', 'inquire', 'penance') : first('break', 'extract', 'suppress', 'depose');
 }
@@ -960,14 +1021,24 @@ export function localOrder(s: State, cell: number, kind: LocalOrder): boolean {
   // Orders for a place still go out when the Crown is weak: they are how it wins back trust and obedience.
   if (!c || !live(c)) return false;
   const key = `local:${kind}:${cell}`;
-  if (s.t - (c.seen[key] ?? -999) < 13) return false;
+  if (s.t - (c.seen[key] ?? -999) < 13 || (c.writs ?? writsMax(c)) < 1) return false;
   const idx = hearthIndex(s), here = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length && b.home === cell);
   const near = around(idx, s.side, cell, 1), stL = storeOf(c);
   let done = false;
   if (kind === 'relief') {
+    // A writ of purveyance: the nearest lord or abbey with food to spare delivers it, on a royal tally.
+    const gk = grainKind(), food = BY_HARM[0]!;
+    const suppliers = s.bodies.filter(b => b.alive && (b.rank === 'lord' || b.rank === 'priest') && dist(s.side, b.home, cell) <= P.far).sort((a, b) => dist(s.side, a.home, cell) - dist(s.side, b.home, cell) || a.id - b.id);
     for (const b of here) {
-      const cov = cover(b.store, askAhead(s, b));
-      for (let k = 0; k < NN; k++) if (NEEDS[k]!.harm >= 0.5 && cov[k]! < P.short) { if (relieve(s, c, b, k) > 0) { done = true; grieve(c, b.id, -P.harmPaid); } break; }
+      const ahead = askAhead(s, b), cov = cover(b.store, ahead);
+      if (gk < 0 || cov[food]! >= P.short) continue;
+      const want = (3 * ahead[food]! * Kn[gk]!.use) / Kn[gk]!.serves[food]!;
+      const sup = suppliers.find(x => x.store[gk]! >= want * 1.5);
+      if (!sup) continue;
+      sup.store[gk] = sup.store[gk]! - want; b.store[gk] = b.store[gk]! + want;
+      tally(s, c, want, 'purveyance');
+      grieve(c, sup.id, P.harmPaid); grieve(c, b.id, -P.harmPaid);
+      done = true;
     }
   } else if (kind === 'circuit') {
     // The bailiffs ride through: what was kept back is paid, false claims are found out, and the Crown is seen.
@@ -997,6 +1068,7 @@ export function localOrder(s: State, cell: number, kind: LocalOrder): boolean {
   }
   if (!done) return false;
   note(s, c, 'store', storeOf(c) - stL, kind === 'relief' ? 'relief sent' : kind === 'circuit' ? 'bailiffs sent' : 'an order');
+  spendWrit(c);
   c.seen[key] = s.t;
   rec(s, 'judge', { a: -1, cell, way: `local ${kind}` });
   return true;
@@ -1018,15 +1090,20 @@ export function whyNotBuild(s: State, cell: number, key: WorkKey): string {
 export function build(s: State, cell: number, key: WorkKey): boolean {
   const c = s.court;
   if (!c || whyNotBuild(s, cell, key)) return false;
-  const tk = timberKind(), cl = s.cells[cell]!, w = (cl.works ??= {});
+  const tk = timberKind();
   c.store[tk] = c.store[tk]! - P.workCost[key]!;
   note(s, c, 'store', -P.workCost[key]!, 'works built');
+  raise(s, cell, key);
+  return true;
+}
+/** A work stands at a place. */
+function raise(s: State, cell: number, key: WorkKey): void {
+  const cl = s.cells[cell]!, w = (cl.works ??= {});
   if (key === 'granary') w.granary = new Array<number>(NK).fill(0);
   else w[key] = true;
   // A chapel makes the place holier.
   if (key === 'chapel') cl.sanctity = Math.min(1, cl.sanctity + 0.3);
   rec(s, 'build', { a: -1, cell, way: key });
-  return true;
 }
 /** The works' week: granaries take in what houses can spare and give it back in want; posts and chapels calm the places about them. */
 function worksWeek(s: State, c: Court): void {
@@ -1179,6 +1256,14 @@ function policyWeek(s: State, c: Court): void {
   if (pol.mode === 'regency') return;
   worksWeek(s, c);
   powersWeek(s, c);
+  commissionsWeek(s, c);
+  // The Crown's dues, as the bailiffs send them up, go to paying what the King owes.
+  if ((c.tallies ?? 0) > 0) { const have = storeOf(c), pay = Math.min(c.tallies!, have); if (pay > 0) { for (let k = 0; k < NK; k++) c.store[k] = c.store[k]! * (1 - pay / have); tally(s, c, -pay, 'the Crown’s dues'); } }
+  if (s.t % 13 === 0) {
+    c.writs = writsMax(c);
+    if ((c.tallies ?? 0) > P.tallyLimit) { gauge(s, c, 'legitimacy', -0.25, 'the King’s tallies unpaid'); for (const b of s.bodies) if (b.alive && (b.rank === 'lord' || b.rank === 'priest')) grieve(c, b.id, P.harmPaid); }
+    if (pol.lawSetAt.credit >= 0 && pol.laws.credit === 'frankpledge' && !pol.weak) gauge(s, c, 'reach', 0.05, 'frankpledge: the tithings police themselves');
+  }
   const idx = hearthIndex(s);
   // Relief from the Crown's store for houses below the floor; the granaries open wider while ordered.
   let st1 = storeOf(c);

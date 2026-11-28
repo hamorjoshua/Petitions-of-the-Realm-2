@@ -3,17 +3,17 @@
 <style>
 /* Layout: a sticky tally bar over one column: the audience first, then the week's record and the rolls. */
 :root {
-  --bg: #f6f2ea; --panel: #fbf9f4; --stone: #eae3d5; --rule: #dcd4c4; --ink: #1a1815; --soft: #6f685d;
-  --red: #c23b2b; --blue: #235789; --amber: #b87a1a; --green: #2e6f40;
-  --seal: var(--red); --woad: var(--blue); --woad-ink: #ffffff; --gilt: var(--amber); --good: var(--green); --water: var(--blue);
+  --bg: #f6f2ea; --panel: #fbf9f4; --stone: #eae3d5; --water: #dce3e2; --rule: #d8d0bf; --ink: #1c1915; --soft: #6d6558;
+  --red: #a43222; --blue: #235789; --amber: #916713; --green: #1d6357;
+  --seal: var(--red); --woad: var(--blue); --woad-ink: #ffffff; --gilt: var(--amber); --good: var(--green);
   --sea: var(--bg); --land: var(--stone); --cloth: var(--bg); --recess: var(--stone); --coast: var(--soft);
-  --body: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", sans-serif;
-  --display: Georgia, "Newsreader", "Iowan Old Style", serif;
+  --ui: -apple-system, BlinkMacSystemFont, "Inter", sans-serif; --body: var(--ui);
+  --display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #171614; --panel: #1f1d1a; --stone: #2a2723; --rule: #3a362f; --ink: #ece6da; --soft: #9a9182; --red: #e0614f; --blue: #6a9fd4; --amber: #d9a23a; --green: #5fae7a; --seal: var(--red); --woad: var(--blue); --woad-ink: #0b1220; --gilt: var(--amber); --good: var(--green); --sea: var(--bg); --land: var(--stone); --cloth: var(--bg); --recess: var(--stone); --coast: var(--soft); color-scheme: dark; } }
+  --bg: #171614; --panel: #1f1d1a; --stone: #2a2723; --water: #1e2526; --rule: #3a362f; --ink: #ece6da; --soft: #9a9182; --red: #e0614f; --blue: #6a9fd4; --amber: #d9a23a; --green: #5fae7a; --seal: var(--red); --woad: var(--blue); --woad-ink: #0b1220; --gilt: var(--amber); --good: var(--green); --sea: var(--bg); --land: var(--stone); --cloth: var(--bg); --recess: var(--stone); --coast: var(--soft); color-scheme: dark; } }
 :root[data-theme="dark"] {
-  --bg: #171614; --panel: #1f1d1a; --stone: #2a2723; --rule: #3a362f; --ink: #ece6da; --soft: #9a9182; --red: #e0614f; --blue: #6a9fd4; --amber: #d9a23a; --green: #5fae7a; --seal: var(--red); --woad: var(--blue); --woad-ink: #0b1220; --gilt: var(--amber); --good: var(--green); --sea: var(--bg); --land: var(--stone); --cloth: var(--bg); --recess: var(--stone); --coast: var(--soft); color-scheme: dark; }
+  --bg: #171614; --panel: #1f1d1a; --stone: #2a2723; --water: #1e2526; --rule: #3a362f; --ink: #ece6da; --soft: #9a9182; --red: #e0614f; --blue: #6a9fd4; --amber: #d9a23a; --green: #5fae7a; --seal: var(--red); --woad: var(--blue); --woad-ink: #0b1220; --gilt: var(--amber); --good: var(--green); --sea: var(--bg); --land: var(--stone); --cloth: var(--bg); --recess: var(--stone); --coast: var(--soft); color-scheme: dark; }
 body { background: var(--cloth); color: var(--ink); font: 16px/1.5 var(--body); }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--panel); }
 .wrap { max-width: 60rem; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 1rem 3rem; display: flex; flex-direction: column; gap: 1.25rem; }
@@ -275,7 +275,7 @@ button, input { font-size: 13px; }
 /* Strip: four figures with bars, then the toolbar */
 .cockpit.full { background: var(--bg) !important; background-image: none !important; }
 .cockpit.full .strip { background: var(--panel); border-bottom: 1px solid var(--rule); padding: 8px 12px 0; gap: 0; }
-.kpis { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 1.5fr) minmax(0, 0.9fr); gap: 12px; }
+.kpis { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 0.7fr) minmax(0, 0.6fr) minmax(0, 1.5fr); gap: 12px; }
 .kpi { display: flex; flex-direction: column; gap: 2px; text-align: left; background: none; border: 0; padding: 0; color: var(--ink); font: inherit; cursor: pointer; min-width: 0; border-radius: 0; }
 div.kpi { cursor: default; }
 .kpi .val { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -342,5 +342,23 @@ progress.amb::-webkit-progress-bar, .ord progress::-webkit-progress-bar { backgr
 .houses li { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--rule); font-size: 12px; } .houses li span:nth-child(2) { flex: 1; }
 #legend .legend-scale { background: var(--panel); border: 1px solid var(--rule); border-radius: 2px; } #legend { bottom: calc(48px + env(safe-area-inset-bottom, 0px) + 8px); }
 .gpop { background: var(--panel); border: 0; border-top: 1px solid var(--rule); border-radius: 0; margin: 0 -12px; padding: 8px 12px; }
+
+/* The Chancery: a printed atlas and ledger. Book serif for names and the chronicle, a small sans for labels and controls. */
+.cockpit.full .strip { border-bottom: 0; padding-bottom: 4px; background:
+  linear-gradient(var(--ink), var(--ink)) left bottom / 100% 1px no-repeat,
+  linear-gradient(var(--ink), var(--ink)) left calc(100% - 3px) / 100% 2px no-repeat, var(--panel); }
+.kpi .val { font-family: var(--ui); }
+.map .regions rect { fill: var(--stone); stroke: var(--bg); stroke-width: 0.5px; vector-effect: non-scaling-stroke; cursor: pointer; }
+.map .regions rect.water { fill: var(--water); stroke: var(--water); }
+.map .regions rect.on { stroke: var(--blue); stroke-width: 2px; }
+.map .coast { fill: none; stroke: var(--soft); stroke-width: 1.25px; vector-effect: non-scaling-stroke; stroke-linecap: square; opacity: 1; }
+.map .borders { fill: none; stroke: var(--ink); stroke-width: 1.5px; vector-effect: non-scaling-stroke; stroke-linecap: square; }
+.map .t-dot { fill: var(--ink); }
+.map .t-seat { fill: var(--bg); stroke: var(--amber); stroke-width: 2px; vector-effect: non-scaling-stroke; }
+.map .labels text { font-family: var(--display); font-size: 0.18px; font-weight: 400; letter-spacing: 0.01em; text-anchor: middle; dominant-baseline: hanging; fill: var(--ink); paint-order: stroke; stroke: var(--stone); stroke-width: 0.045px; }
+.map .labels .fig { font-style: italic; fill: var(--soft); }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 10px; border-bottom: 1px solid var(--rule); padding: 10px 0; }
+.row strong { font-size: 13px; font-weight: 600; }
+.list.chron li, .inspector h3, .moderow strong, .masthead h1 { font-family: var(--display); }
 </style>
 <div id="app"></div>
