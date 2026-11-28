@@ -513,7 +513,7 @@ const LEGEND: Record<Lens, string> = {
   jurisdiction: 'Colour identifies the local lordship; figures give the settlement population.',
   ecology: 'An index of soil depletion, flooding and clearance.',
 };
-const GLYPHS = 'One square for each place the realm reckons with. Dots mark villages, small squares ranked seats, and the gold ring the Chancery’s seat. Fine hatching marks uplands, fine dots woodland, open ground is plain. The coast is drawn in blue-grey; dark lines bound lordships.';
+const GLYPHS = 'One square for each place the realm reckons with. Dots mark villages, small squares ranked seats, and the gold ring the Chancery’s seat. Diagonal furrows mark corn, paired dots woodland, horizontal bars uplands and broken dashes flooded ground. Dark lines bound lordships.';
 
 const talliesNow = (): number => s.court?.tallies ?? 0;
 /** Up, down or level against a season ago. */
@@ -600,6 +600,23 @@ function legend(): string {
 const PAD = 0.45;
 const labelMeasure = document.createElement('canvas').getContext('2d')!;
 labelMeasure.font = '400 100px "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif';
+function pattern(id: string, period: number, mark: string, color = '#30372e', rotate = 0): string {
+  return `<pattern id="${id}" width="${period}" height="${period}" patternUnits="userSpaceOnUse" patternTransform="rotate(${rotate})"><g fill="${color}" stroke="${color}" stroke-width=".014">${mark}</g></pattern>`;
+}
+const horizontal = '<path d="M0 .04h1"/>';
+const cross = '<path d="M0 .04h1M.04 0v1"/>';
+const dots = '<circle cx=".045" cy=".045" r=".022" stroke="none"/><circle cx=".135" cy=".135" r=".022" stroke="none"/>';
+const tilePatterns = [
+  pattern('pat-corn', .14, horizontal, '#30372e', 45),
+  pattern('pat-grove', .18, dots), pattern('pat-high', .15, horizontal),
+  pattern('pat-wet', .18, '<path d="M0 .06h.18" stroke-dasharray=".09 .09"/>'),
+  pattern('want-low', .19, horizontal, '#971e3d', 45),
+  pattern('want-medium', .21, cross, '#971e3d', 45), pattern('want-high', .12, cross, '#971e3d', 45),
+  pattern('faction', .16, horizontal, '#bf452d', 90), pattern('sacred', .19, cross, '#976918', 45),
+  pattern('lord-0', .16, horizontal, '#30372e', 90), pattern('lord-1', .16, horizontal),
+  pattern('lord-2', .16, horizontal, '#30372e', 45), pattern('lord-3', .18, dots),
+  pattern('lord-4', .2, '<path d="M0 .15l.1-.1.1.1" fill="none"/>'), pattern('lord-5', .19, cross),
+].join('');
 function mapView(): string {
   const hs = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length), at = new Map<number, Body[]>();
   for (const b of hs) { const l = at.get(b.home); if (l) l.push(b); else at.set(b.home, [b]); }
@@ -639,56 +656,55 @@ function mapView(): string {
   else if (lens === 'jurisdiction') { figure = String(new Set(land.filter(id => id >= 0)).size); caption = 'lordships in the realm'; }
   else { const dry = readings.filter((_x, i) => !water(i)); figure = String(Math.round((100 * dry.reduce((a, [v]) => a + v, 0)) / Math.max(1, dry.length))); caption = 'mean land index / 100'; }
   swap('plate-title', `<h1>${({ want: 'Households in want', factions: 'Grievance', sacred: 'Sacred influence', ecology: 'Land stress', jurisdiction: 'Lordships' } as const)[lens]}</h1><div class="plate-stat"><b>${figure}</b><span>${caption}</span></div>`);
-  // Terrain, as a printed atlas marks it: fine hatching on the uplands, fine dots in standing woods.
-  const upland = q(0.75), grove = St.findIndex(r => r.id === 'grove'), terrain: string[] = [];
-  const tiles = s.cells.map((cell, i) => {
+  const upland = q(.75), grove = St.findIndex(row => row.id === 'grove');
+  const corn = St.findIndex(row => row.id === 'corn');
+  const borders: string[] = [];
+  const regions = s.cells.map((cell, i) => {
     const [x, y] = xy(i);
-    if (water(i)) return `<rect data-cell="${i}" class="water${i === picked ? ' on' : ''}" x="${x}" y="${y}" width="1" height="1"><title>${esc(cellWords(i))}</title></rect>`;
-    const tex = cell.high >= upland ? 'upland' : grove >= 0 && cell.stock[grove]! >= St[grove]!.thin ? 'woodland' : '';
-    if (tex) terrain.push(`<rect x="${x}" y="${y}" width="1" height="1" fill="url(#${tex})"/>`);
-    const [v, col] = readings[i]!, missing = household && !at.has(i);
-    const fill = missing ? 'var(--unsettled)' : lens === 'jurisdiction' ? (land[i]! >= 0 ? mapInk(col, at.has(i) ? 60 : 30) : 'var(--stone)') : mapInk(col, MAP_INKS[stepOf(v)]!);
-    return `<rect data-cell="${i}" class="${i === picked ? 'on' : ''}" x="${x}" y="${y}" width="1" height="1" style="fill:${fill}"><title>${esc(cellWords(i))}</title></rect>`;
-  }).join('');
-  // Edges between squares that differ: the coast, and the outer bounds of lordships.
-  const edges = (differ: (i: number, j: number) => boolean): string => {
-    let d = '';
-    for (let i = 0; i < s.cells.length; i++) {
-      const [x, y] = xy(i);
-      if (x < N - 1 && differ(i, i + 1)) d += `M${x + 1},${y}V${y + 1}`;
-      if (y < N - 1 && differ(i, i + N)) d += `M${x},${y + 1}H${x + 1}`;
+    if (water(i)) return `<rect data-cell="${i}" class="water" x="${x}" y="${y}" width="1" height="1"/>`;
+    const box = `x="${x+.045}" y="${y+.045}" width=".91" height=".91" rx=".065"`;
+    const layers: string[] = [];
+    const overlay = (pattern: string, opacity: number) => layers.push(`<rect ${box} fill="url(#${pattern})" opacity="${opacity}"/>`);
+    if (cell.stock[corn]! > 0) overlay('pat-corn', .18);
+    if (!cell.cleared && cell.stock[grove]! >= St[grove]!.thin) overlay('pat-grove', .18);
+    if (cell.high >= upland) overlay('pat-high', .18);
+    if (cell.flood > 0) overlay('pat-wet', .18);
+    const [v, col] = readings[i]!;
+    const missing = (lens === 'want' || lens === 'factions') && !at.has(i);
+    const ink = MAP_INKS[stepOf(v)]!;
+    const fill = missing ? 'var(--unsettled)' : mapInk(col, lens === 'jurisdiction' && land[i]! >= 0 ? 60 : ink);
+    if (lens === 'want' && v > 0) overlay(v < .25 ? 'want-low' : v < .5 ? 'want-medium' : 'want-high', .52);
+    if (lens === 'factions' && v > 0) {
+      overlay('faction', .55);
+      layers.push(`<rect class="grief-frame" x="${x+.095}" y="${y+.095}" width=".81" height=".81" rx=".04"/>`);
     }
-    return d;
-  };
-  const coast = edges((i, j) => water(i) !== water(j));
-  const borders = edges((i, j) => { const a = land[i]!, b = land[j]!; return a !== b && a !== -2 && b !== -2 && (a >= 0 || b >= 0); });
-  // Marks: a dot for a village, a small square for a ranked seat, a gold ring for the Chancery's seat. Labels keep one
-  // size on screen at every zoom, and a label that would overlap one already placed is left out.
-  const marks: string[] = [], labels: string[] = [], occupied: { l: number; r: number; t: number; b: number }[] = [];
-  const size = (11 * (N + 2 * PAD)) / (mapBox().m * zoom);
-  const priority = (i: number): number => (i === picked ? 2 : i === seat ? 1 : 0);
-  const order = s.cells.map((_x, i) => i).sort((a, b) => priority(b) - priority(a) || readings[b]![0] - readings[a]![0] || a - b);
-  for (const i of order) {
+    if (lens === 'sacred') {
+      if (cell.sanctity > 0 || cell.shrine) overlay('sacred', .55);
+      if (cell.interdict > 0) layers.push(`<path d="M${x+.16} ${y+.84}l.68-.68" stroke="#a42733" stroke-width=".07"/>`);
+    }
+    const lord = land[i]!;
+    if (lens === 'jurisdiction' && lord >= 0) overlay('lord-'+lord%6, .45);
+    if (lord >= 0) {
+      if (!x || land[i-1] !== lord) borders.push(`M${x} ${y}v1`);
+      if (!y || land[i-N] !== lord) borders.push(`M${x} ${y}h1`);
+      if (x === N-1 || land[i+1]! < 0) borders.push(`M${x+1} ${y}v1`);
+      if (y === N-1 || land[i+N]! < 0) borders.push(`M${x} ${y+1}h1`);
+    }
+    return `<rect class="tile" style="fill:${fill}" data-cell="${i}" ${box}><title>${esc(cellWords(i))}</title></rect><g class="engraving">${layers.join('')}<path class="bevel" d="M${x+.11} ${y+.955}h.78"/>${picked === i ? `<rect class="tile-choice" ${box}/>` : ''}</g>`;
+  }).join('');
+  const marks: string[] = [];
+  for (let i = 0; i < s.cells.length; i++) {
     if (water(i)) continue;
     const [gx, gy] = xy(i), x = gx + 0.5, y = gy + 0.42, rk = ranked.get(i), named = !!rk || i === seat;
     if (!named && !at.has(i)) continue;
     if (i === seat) marks.push(`<circle class="t-seat" cx="${x}" cy="${y}" r="0.07"/>`);
     else if (named) marks.push(`<rect class="t-rank" x="${x - 0.055}" y="${y - 0.055}" width="0.11" height="0.11"/>`);
     else marks.push(`<circle class="t-dot" cx="${x}" cy="${y}" r="0.045"/>`);
-    if (!named) continue;
-    const name = titleCase(cellWords(i)), v = Math.round(readings[i]![0] * 100);
-    const fig = lens === 'jurisdiction' ? microData(i, at) : household ? (at.has(i) ? `${v}%` : '') : String(v);
-    const w = size * (0.4 + labelMeasure.measureText(name).width / 100 + (fig ? 0.5 * (fig.length + 1) : 0)), h = size * 1.3;
-    const l = Math.max(-PAD, Math.min(N + PAD - w, x - w / 2)), gap = 0.1 + 0.1 * size, t = y + gap + h <= N + PAD ? y + gap : y - gap - h, r = l + w, bt = t + h;
-    if (occupied.some(o => l < o.r && r > o.l && t < o.b && bt > o.t)) continue;
-    occupied.push({ l, r, t, b: bt });
-    labels.push(`<text style="font-size:${size.toFixed(4)}px" x="${(l + w / 2).toFixed(3)}" y="${t.toFixed(3)}">${esc(name)}${fig ? `<tspan class="fig"> ${esc(fig)}</tspan>` : ''}</text>`);
   }
   return `<div class="map-viewport"><div class="map" style="transform:translate(${panX}px,${panY}px) scale(${zoom})"><svg viewBox="${-PAD} ${-PAD} ${N + 2 * PAD} ${N + 2 * PAD}" preserveAspectRatio="xMidYMid meet">
-    <defs><pattern id="upland" width=".17" height=".17" patternUnits="userSpaceOnUse"><path d="M.045 .12l.072-.078" stroke="currentColor" stroke-width=".014" stroke-linecap="round"/></pattern>
-      <pattern id="woodland" width=".18" height=".18" patternUnits="userSpaceOnUse"><circle cx=".045" cy=".045" r=".016" fill="currentColor"/><circle cx=".135" cy=".135" r=".016" fill="currentColor"/></pattern></defs>
-    <g class="regions">${tiles}</g><g class="terrain" aria-hidden="true">${terrain.join('')}</g><path class="coast" d="${coast}"/><path class="borders" d="${borders}"/>
-    <g class="tokens">${marks.join('')}</g><g class="labels">${labels.join('')}</g></svg></div></div>`;
+    <defs>${tilePatterns}</defs>
+    <g class="regions">${regions}</g><path class="tile-borders" d="${borders.join('')}"/>
+    <g class="tokens">${marks.join('')}</g></svg></div></div>`;
 }
 /** The lens bar, and the key when asked for. */
 function lensBar(): string {

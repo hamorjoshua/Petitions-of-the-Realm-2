@@ -348,9 +348,9 @@ progress.amb::-webkit-progress-bar, .ord progress::-webkit-progress-bar { backgr
   linear-gradient(var(--ink), var(--ink)) left bottom / 100% 1px no-repeat,
   linear-gradient(var(--ink), var(--ink)) left calc(100% - 3px) / 100% 2px no-repeat, var(--panel); }
 .kpi .val { font-family: var(--ui); }
-.map .regions rect { fill: var(--stone); stroke: var(--bg); stroke-width: 0.5px; vector-effect: non-scaling-stroke; cursor: pointer; }
-.map .regions rect.water { fill: var(--water); stroke: var(--water); }
-.map .regions rect.on { stroke: var(--blue); stroke-width: 2px; }
+.map .regions rect[data-cell] { fill: var(--stone); stroke: var(--bg); stroke-width: 0.5px; vector-effect: non-scaling-stroke; cursor: pointer; }
+.map .regions rect[data-cell].water { fill: var(--water); stroke: var(--water); }
+.map .regions rect[data-cell].on { stroke: var(--blue); stroke-width: 2px; }
 .map .coast { fill: none; stroke: var(--soft); stroke-width: 1.25px; vector-effect: non-scaling-stroke; stroke-linecap: square; opacity: 1; }
 .map .borders { fill: none; stroke: var(--ink); stroke-width: 1.5px; vector-effect: non-scaling-stroke; stroke-linecap: square; }
 .map .t-dot { fill: var(--ink); }
@@ -385,7 +385,7 @@ progress.amb::-webkit-progress-bar, .ord progress::-webkit-progress-bar { backgr
 .cockpit[data-season="Summer"] { --map-water: #d4e3df; --map-ground: #f7f0dc; --map-open: #d8cba1; }
 .cockpit[data-season="Autumn"] { --map-water: #dbd8d1; --map-ground: #f6ecdc; --map-open: #d4bea5; }
 .cockpit.full .map, #legend { --stone: var(--map-ground, #eae3d5); --unsettled: var(--map-open, #d8d0bf); }
-.map .regions rect.water { fill: var(--map-water, var(--water)); stroke: none; }
+.map .regions rect[data-cell].water { fill: var(--map-water, var(--water)); stroke: none; }
 .map .coast { stroke: #355465; stroke-width: 1.5px; }
 .map .terrain { pointer-events: none; opacity: 0.22; color: #33474a; }
 .map .t-rank { fill: var(--ink); }
@@ -400,5 +400,12 @@ progress.amb::-webkit-progress-bar, .ord progress::-webkit-progress-bar { backgr
   .cockpit.full #legend { grid-column: 1; grid-row: 3; }
 }
 @media (max-height: 560px) { #plate-title { padding: 4px 14px; } #plate-title h1, .plate-stat b { font-size: 20px; max-width: none; } }
+.map .regions rect.tile { stroke: rgba(28,25,21,.14); stroke-width: .5px; cursor: pointer; }
+.map .tile, .map .bevel, .map .tile-borders, .map .grief-frame, .map .tile-choice { vector-effect: non-scaling-stroke; }
+.map .engraving, .map .tile-borders { pointer-events: none; }
+.map .bevel { stroke: rgba(28,25,21,.22); stroke-width: 1.5px; }
+.map .tile-borders { fill: none; stroke: var(--ink); stroke-width: 1.5px; }
+.map .grief-frame { fill: none; stroke: #ad422b; stroke-width: 1px; }
+.map .tile-choice { fill: none; stroke: #194e68; stroke-width: 2px; }
 </style>
 <div id="app"></div>
