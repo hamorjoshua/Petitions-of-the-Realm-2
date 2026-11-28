@@ -96,10 +96,13 @@ export function bind(s: State): void {
 
   // What is owed and due is paid, or broken, or fought over.
   // A debt is paid by the realm's measure: the lord's bushel takes more, the small measure less.
+  // What cannot be paid by the measure stays owing, in the debt's own reckoning.
   const pay = (bd: Bond, D: Body, C: Body): void => {
-    const q = Math.min(D.store[bd.kind]!, bd.q * measureOf(s));
+    const m = measureOf(s), due = bd.q * m, q = Math.min(D.store[bd.kind]!, due);
     D.store[bd.kind] = D.store[bd.kind]! - q;
     C.store[bd.kind] = C.store[bd.kind]! + q;
+    const short = (due - q) / m;
+    if (short > 0.05) { bd.q = short; bd.due = s.t + 2; rec(s, 'keep', { a: D.id, b: C.id, kind: bd.kind, q, cause: bd.rec }); return; }
     rec(s, 'keep', { a: D.id, b: C.id, kind: bd.kind, q: bd.q, cause: bd.rec });
     remember(s, bd, true);
     warm(s, C.id, D.id, 0.3); warm(s, D.id, C.id, 0.1);

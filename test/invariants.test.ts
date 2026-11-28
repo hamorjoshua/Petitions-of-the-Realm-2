@@ -186,3 +186,31 @@ test('a stay of debts halts seizures and forfeits for its full year', async () =
   debt.due = s.t; s.log = []; bind(s);
   assert.equal(land.a, C.id, 'once the stay ends the pledge is forfeit');
 });
+
+test('by the lord’s bushel, what a debtor cannot pay stays owing', async () => {
+  const { bond, head } = await import('../sim/util.ts');
+  const { bind } = await import('../sim/processes/bind.ts');
+  const { openCourt } = await import('../sim/court/court.ts');
+  const s = found(3);
+  const c = openCourt(s, 'cockpit');
+  c.policy.dials.measure = 'lords';
+  const hs = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length);
+  const [D, C] = [hs[0]!, hs[1]!];
+  head(s, D)!.scruple = 0.95;
+  D.store = D.store.map(() => 0); D.store[0] = 10;
+  const debt = bond(s, { about: 'act', a: D.id, b: C.id, kind: 0, q: 10, due: s.t, basis: 'word' });
+  s.log = [];
+  bind(s);
+  assert.equal(D.store[0], 0, 'the debtor pays all it has');
+  assert.ok(Math.abs(debt.q - (11 - 10) / 1.1) < 1e-6, `a shortfall of ${(1 / 1.1).toFixed(3)} should stay owing, not ${debt.q}`);
+});
+
+test('mortmain and shrine disputes are settled by their own statutes', async () => {
+  const { openCourt, lawOf } = await import('../sim/court/court.ts');
+  const s = found(3);
+  openCourt(s, 'cockpit');
+  const p = (side: string) => ({ burdens: [], shapes: [], id: 0, t: 0, by: 0, against: 1, bond: -1, need: -1, rec: -1, shape: '', side, reason: 'none', speaksFor: 1, waited: 0, urgency: 0 }) as never;
+  assert.equal(lawOf(s, p('mortmain')), 'mortmain');
+  assert.equal(lawOf(s, p('shrine')), 'shrines');
+  assert.equal(lawOf(s, p('heresy')), 'swords');
+});

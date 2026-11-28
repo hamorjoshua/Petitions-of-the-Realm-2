@@ -1075,7 +1075,10 @@ export function inscribeLaw(s: State, key: LawKey): boolean {
 export function lawOf(s: State, p: Petition): LawKey | null {
   if (p.reason !== 'none') return null;
   if (p.burdens.length) return 'liability';
-  if (p.side === 'heresy' || p.side === 'mortmain' || p.side === 'sanctuary' || p.side === 'shrine' || p.side === 'unclean') return 'swords';
+  // Mortmain and shrines have statutes of their own; the rest of the holy is the two swords.
+  if (p.side === 'mortmain') return 'mortmain';
+  if (p.side === 'shrine') return 'shrines';
+  if (p.side === 'heresy' || p.side === 'sanctuary' || p.side === 'unclean') return 'swords';
   if (p.side === 'exceeds' || p.side === 'exit') return 'movement';
   const bd = s.bonds.find(b => b.id === p.bond);
   if (bd && bd.about === 'act' && (p.side === 'owed' || p.side === 'owes')) return 'liability';
@@ -1101,6 +1104,10 @@ export function lawCut(s: State, p: Petition): string | null {
     return v === 'kin' ? first('surety', 'enforce') : v === 'body' ? first('answer', 'surety', 'enforce') : first('enforce');
   }
   if (key === 'movement') return p.side === 'exit' ? first(v === 'bound' ? 'tie' : 'release') : first(v === 'bound' ? 'uphold' : 'custom');
+  // A claim on ground given to the church for ever: upheld if mortmain is allowed, returned for a due if licensed, broken if barred.
+  if (key === 'mortmain') return first(v === 'allowed' ? 'uphold' : v === 'licensed' ? 'commute' : 'break');
+  // A folk shrine: sanctioned if pilgrimage is open, inquired into if only sanctioned shrines may stand, put down if suppressed.
+  if (key === 'shrines') return first(v === 'open' ? 'sanction' : v === 'sanctioned' ? 'inquire' : 'suppress');
   if (p.side === 'heresy') return v === 'immunity' ? remits[0] ?? null : v === 'concordat' ? first('silence') : first('tolerate');
   return v === 'immunity' ? first('uphold', 'respect', 'sanction', 'compel') : v === 'concordat' ? first('commute', 'abjure', 'inquire', 'penance') : first('break', 'extract', 'suppress', 'depose');
 }
