@@ -569,7 +569,7 @@ function strip(): string {
   return `<header class="strip"><div class="kpis">
     ${kpi('Legitimacy', c.legitimacy.toFixed(1), c.legitimacy / 5, c.legitimacy <= 1.5, 'legitimacy')}
     ${kpi('Reach', c.reach.toFixed(1), c.reach / 5, c.reach <= 1.5, 'reach')}
-    <button class="kpi clerk-tray" data-deck="clerks"><span class="label">Clerks</span><span>${royalClerks(c).map(k => `<i class="${freeClerk(k) ? 'free' : 'posted'}">${piece(k)}</i>`).join('')}</span><small>${royalClerks(c).filter(freeClerk).length} free</small></button>
+    <button class="kpi clerk-tray" data-deck="clerks" aria-pressed="${dockOpen && deck === 'clerks'}"><span class="label">Clerks</span><span>${royalClerks(c).map(k => `<i class="${freeClerk(k) ? 'free' : 'posted'}">${piece(k)}</i>`).join('')}</span><small>${royalClerks(c).filter(freeClerk).length} free</small></button>
     ${kpi('Tallies / Factions', `${fmt(tal)} · ${sore}/${need}`, Math.max(tal / P.tallyLimit, sore / need), tal > P.tallyLimit || sore >= need, 'tallies')}</div>${tool}${openGauge ? breakdown(openGauge) : ''}</header>`;
 }
 
@@ -803,7 +803,8 @@ function clerksDeck(): string {
   }).join('');
   return '<div class="label">Royal clerks</div>' + roster + '<div class="label">Realm offices</div>' + (Object.keys(slots) as RealmSlot[]).map(slot => {
     const k = pool.find(k => k.target.kind === 'slot' && k.target.slot === slot);
-    return `<button class="ord" ${k ? `data-recall="${k.id}"` : `data-slot="${slot}" ${pool.some(freeClerk) ? '' : 'disabled'}`}><strong>${slots[slot][0]}</strong><span class="small soft">${slots[slot][1]}</span><span>${k ? piece(k)+' Recall' : 'Assign'}</span></button>`;
+    return `<div class="office-row"><div class="office-copy"><strong>${slots[slot][0]}</strong><span class="small soft">${slots[slot][1]}</span></div>
+      <button aria-label="${k ? 'Recall from' : 'Assign to'} ${slots[slot][0]}" ${k ? `data-recall="${k.id}"` : `data-slot="${slot}" ${pool.some(freeClerk) ? '' : 'disabled'}`}>${k ? piece(k)+' Recall' : 'Assign'}</button></div>`;
   }).join('')
     + `<div class="ord"><strong>Write a law on the roll</strong><span class="small soft">It gains you legitimacy; undoing it later is caprice of the worst kind.</span><div class="seg">${can.map(k => `<button data-inscribe="${k}">${LAW_WORDS[k][0]}</button>`).join('') || '<span class="small soft">Lay a law down first.</span>'}</div></div>`;
 }
