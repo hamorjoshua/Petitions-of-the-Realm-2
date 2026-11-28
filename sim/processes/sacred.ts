@@ -5,6 +5,7 @@
 import { BY_HARM, Kn, NK, P } from '../tables.ts';
 import { askAhead, cover } from '../value.ts';
 import { around, dist, grown, head, hearthIndex, rec } from '../util.ts';
+import { statute } from '../court/court.ts';
 import type { State } from '../types.ts';
 
 export function sacred(s: State): void {
@@ -23,7 +24,7 @@ export function sacred(s: State): void {
   const struck = new Set(s.log.filter(r => r.k === 'decay' && r.q2 === 1 && r.cell >= 0).map(r => r.cell));
   for (const i of struck) {
     const c = s.cells[i]!;
-    if (c.shrine || c.awe >= P.shrineChance) continue;
+    if (c.shrine || c.awe >= P.shrineChance || statute(s, 'shrines') === 'suppressed') continue;
     const hs = idx[i]!.filter(b => b.alive && b.members.length);
     const heads = hs.map(b => head(s, b)).filter(h => h !== undefined);
     if (!heads.length || heads.reduce((x, h) => x + h!.credulous, 0) / heads.length < 0.55) continue;
@@ -36,6 +37,9 @@ export function sacred(s: State): void {
   for (let i = 0; i < s.cells.length; i++) {
     const c = s.cells[i]!, sh = c.shrine;
     if (!sh || !s.bodies[sh.of]?.alive) continue;
+    // Offerings go only to sanctioned shrines, or to none, if the statute on pilgrimage says so.
+    const pil = statute(s, 'shrines');
+    if (pil === 'suppressed' || (pil === 'sanctioned' && !sh.sanctioned)) continue;
     const keeper = s.bodies[sh.of]!, share = sh.sanctioned && sh.to >= 0 && s.bodies[sh.to]?.alive ? s.bodies[sh.to]! : undefined;
     for (const h of around(idx, s.side, i, P.far)) {
       const sp = head(s, h);

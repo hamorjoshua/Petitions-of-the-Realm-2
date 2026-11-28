@@ -821,7 +821,43 @@ function carry(s: State, c: Court, p: Petition, cut: string): boolean {
   return true;
 }
 
-export const LAWS: LawKey[] = ['forest', 'movement', 'credit', 'swords'];
+/** The standing statutes: their sections, names, options, and the option that leaves the realm as it would be without one. */
+export const STATUTES: { key: LawKey; part: 'A' | 'B' | 'C'; name: string; options: [string, string][]; none: string; hint: string }[] = [
+  { key: 'forest', part: 'A', name: 'Assize of the forest', options: [['free', 'Free'], ['stinted', 'Stinted'], ['kings', 'King’s forest']], none: 'free', hint: 'Timber and fields, against floods below.' },
+  { key: 'movement', part: 'A', name: 'Movement & ties', options: [['free', 'Free'], ['customary', 'Customary'], ['bound', 'Bound']], none: 'customary', hint: 'Tenants leave at once, after a season’s notice, or not at all; bound tenants in want hold it against you.' },
+  { key: 'sublet', part: 'A', name: 'Subletting (Quia Emptores)', options: [['allowed', 'Allowed'], ['barred', 'Barred']], none: 'allowed', hint: 'Whether ground held on a letting may be let on again.' },
+  { key: 'enclosure', part: 'A', name: 'Enclosure & waste', options: [['protect', 'Protect commons'], ['idle', 'Idle claimable'], ['enclose', 'Lords may enclose']], none: 'idle', hint: 'Open ground stays open; is taken by use; or lords take idle holdings.' },
+  { key: 'prescription', part: 'A', name: 'Prescription', options: [['forever', 'Forever'], ['ten', '10-year bar'], ['three', '3-year bar']], none: 'forever', hint: 'How long a claim by blood to lost ground may be brought.' },
+  { key: 'wardship', part: 'A', name: 'Wardship', options: [['kin', 'Kin'], ['lord', 'Lord'], ['crown', 'Crown']], none: 'kin', hint: 'Who takes the profits of a house of children: kin, the lord, or the King, toward his tallies.' },
+  { key: 'dower', part: 'A', name: 'Widow’s third', options: [['all', 'Keeps all'], ['third', 'Third'], ['reverts', 'Reverts']], none: 'all', hint: 'A widow keeps all, keeps a third and kin take the rest, or her ground goes to the lord.' },
+  { key: 'inherit', part: 'A', name: 'Inheritance', options: [['kin', 'Kin first'], ['creditors', 'Creditors first'], ['escheat', 'Escheat']], none: 'kin', hint: 'A dying house’s goods go to kin; to its creditors first; or, with no kin, to the lord.' },
+  { key: 'marriage', part: 'B', name: 'Marriage (merchet)', options: [['free', 'Free'], ['local', 'Local'], ['leave', 'Lord’s leave'], ['barred', 'Barred']], none: 'free', hint: 'Marriage far afield, only near, for a fine to the lord, or never across lordships.' },
+  { key: 'pledges', part: 'B', name: 'Usury: land pledges', options: [['allowed', 'Allowed'], ['banned', 'Banned']], none: 'allowed', hint: 'Debts secured on ground.' },
+  { key: 'spoken', part: 'B', name: 'Usury: spoken debts', options: [['allowed', 'Allowed'], ['banned', 'Banned']], none: 'allowed', hint: 'Credit agreed with no witness by.' },
+  { key: 'deferred', part: 'B', name: 'Usury: deferred credit', options: [['allowed', 'Allowed'], ['banned', 'Banned']], none: 'allowed', hint: 'Goods now for goods later.' },
+  { key: 'hoarding', part: 'B', name: 'Forestalling & hoarding', options: [['allowed', 'Allowed'], ['fined', 'Fined'], ['seizable', 'Seizable']], none: 'allowed', hint: 'In dearth, those holding half a year of food are left alone, fined, or made to share with the hungry near them.' },
+  { key: 'sumptuary', part: 'B', name: 'Sumptuary law', options: [['open', 'Open'], ['restricted', 'Lords & clergy']], none: 'open', hint: 'Cloth, salt and ale for all, or only lords and clergy; common days go to grain and timber.' },
+  { key: 'leagues', part: 'B', name: 'Sworn leagues', options: [['free', 'Free'], ['chartered', 'Chartered'], ['forbidden', 'Forbidden']], none: 'free', hint: 'Houses band together freely, only if none is aggrieved, or not at all.' },
+  { key: 'liability', part: 'B', name: 'Liability (frankpledge)', options: [['individual', 'Individual'], ['kin', 'Kin'], ['body', 'Whole body']], none: 'individual', hint: 'Who answers a debt the Crown enforces; shared liability polices itself (a little reach each season).' },
+  { key: 'outlawry', part: 'B', name: 'Outlawry', options: [['crown', 'Crown law'], ['hue', 'Hue & cry'], ['outlawry', 'Outlawry']], none: 'crown', hint: 'An unpaid wrong waits for the Crown; neighbours distrain the wrongdoer; or he is cast out of all dealing.' },
+  { key: 'advowson', part: 'C', name: 'Advowson', options: [['church', 'Church elects'], ['lord', 'Lord presents'], ['crown', 'Crown appoints']], none: 'church', hint: 'Who chooses a new priest, and whom he then owes.' },
+  { key: 'clergy', part: 'C', name: 'Benefit of clergy', options: [['church', 'Church courts'], ['blood', 'Crown tries blood'], ['all', 'All under Crown']], none: 'all', hint: 'Whether matters against the clergy go to the church, only blood to the Crown, or all to the Crown.' },
+  { key: 'mortmain', part: 'C', name: 'Statute of mortmain', options: [['allowed', 'Allowed'], ['licensed', 'Licensed'], ['barred', 'Barred']], none: 'allowed', hint: 'Whether a dying devout house may leave its ground to the church for ever.' },
+  { key: 'tithe', part: 'C', name: 'Tithe & mortuary', options: [['mortuary', 'Tithe & death-due'], ['tithe', 'Tithe only'], ['capped', 'Capped']], none: 'tithe', hint: 'The church takes a tenth and a death-due, a tenth only, or half a tenth.' },
+  { key: 'shrines', part: 'C', name: 'Pilgrimage & folk shrines', options: [['open', 'Open'], ['sanctioned', 'Sanctioned only'], ['suppressed', 'Suppressed']], none: 'open', hint: 'Offerings go to any shrine, only sanctioned ones, or none, and no new shrines rise.' },
+  { key: 'swords', part: 'C', name: 'The two swords', options: [['immunity', 'Immunity'], ['concordat', 'Concordat'], ['supremacy', 'Supremacy']], none: 'immunity', hint: 'How holy matters (sanctuary, mortmain disputes, shrines, stained priests, heresy) are settled.' },
+];
+export const LAWS: LawKey[] = STATUTES.map(x => x.key);
+/** The statute in force: the chosen option in the Chancery once laid down, otherwise the realm's way without one. */
+export function statute(s: State, key: LawKey): string {
+  const pol = s.court?.policy, row = STATUTES.find(x => x.key === key);
+  if (!pol || pol.mode !== 'cockpit' || pol.weak || (pol.lawSetAt[key] ?? -1) < 0) return row?.none ?? '';
+  return pol.laws[key] ?? row?.none ?? '';
+}
+/** The assized labour value of a kind: its customary toil times the Chancery's rate for it. */
+export const rateOf = (s: State, k: number): number => (s.court?.policy.mode === 'cockpit' ? s.court.policy.dials.rates?.[k] ?? 1 : 1);
+/** The realm's measure: what a debt of one is reckoned at when paid. */
+export const measureOf = (s: State): number => { const m = s.court?.policy.mode === 'cockpit' ? s.court.policy.dials.measure : undefined; return m === 'lords' ? 1.1 : m === 'small' ? 0.9 : 1; };
 /** The dials as a new court finds them. */
 export const freshDials = (): Dials => ({ grainShare: P.crownDue, timberShare: P.crownDue, relief: 'off', bailiff: 'regular', boonCap: 3, tithe: 'protected', toll: 0, budget: { spend: 0, relief: 34, reach: 33, legitimacy: 33 } });
 /** Work out the levies from the dials: grain's share on everything sown that feeds; timber's on timber, wherever it is cut. */
@@ -894,6 +930,70 @@ function commissionsWeek(s: State, c: Court): void {
     return true;
   });
 }
+/** Statutes that act each season: hoarding in dearth, wardship, and outlawry. */
+function statutesSeason(s: State, c: Court): void {
+  const hs = s.bodies.filter(b => b.alive && !b.parts.length && b.members.length), food = BY_HARM[0]!, gk = grainKind(), idx = hearthIndex(s);
+  const weeksOf = (b: Body): number => cover(b.store, askAhead(s, b))[food] ?? 0;
+  // Forestalling: in dearth, those holding half a year of food are fined, or made to share with the hungry near them.
+  const hoard = statute(s, 'hoarding');
+  if (hoard !== 'allowed' && gk >= 0 && hs.filter(b => weeksOf(b) < P.short).length >= hs.length * 0.25) {
+    for (const b of hs) {
+      if (weeksOf(b) < 26) continue;
+      const q = b.store[gk]! * 0.2;
+      if (hoard === 'fined') { b.store[gk] = b.store[gk]! - q; c.store[gk] = c.store[gk]! + q; grieve(c, b.id, P.harmPaid); rec(s, 'judge', { a: b.id, way: 'fined for forestalling' }); }
+      else {
+        const hungry = around(idx, s.side, b.home, P.reach).filter(x => x !== b && weeksOf(x) < P.short);
+        if (!hungry.length) continue;
+        b.store[gk] = b.store[gk]! - q; for (const x of hungry) x.store[gk] = x.store[gk]! + q / hungry.length;
+        grieve(c, b.id, P.harmPaid * 1.5); rec(s, 'judge', { a: b.id, way: 'hoard seized in dearth' });
+      }
+    }
+  }
+  // Wardship: a house of children; its profits go to the lord, or to the King toward his tallies.
+  const ward = statute(s, 'wardship');
+  if (ward !== 'kin') for (const b of hs) {
+    if (living(s, b).some(p => (s.t - p.born) / 52 >= P.wedShe)) continue;
+    const L = lordNear(s, b.home), take = ward === 'lord' ? 0.25 : 0.2;
+    if (ward === 'lord' && !L) continue;
+    for (let k = 0; k < NK; k++) if (!Kn[k]!.fixed) { const q = b.store[k]! * take; b.store[k] = b.store[k]! - q; if (ward === 'lord') L!.store[k] = L!.store[k]! + q; else c.store[k] = c.store[k]! + q; }
+    rec(s, 'judge', { a: b.id, b: ward === 'lord' ? L!.id : -1, way: `wardship ${ward}` });
+  }
+  // Outlawry: a wrong left unpaid a season; neighbours distrain the wrongdoer, or he is cast out of all dealing.
+  const out = statute(s, 'outlawry');
+  if (out !== 'crown') for (const bd of s.bonds) {
+    if (bd.about !== 'act' || bd.basis !== 'wrong' || bd.q <= 0.05 || s.t - bd.since < 13) continue;
+    const W = s.bodies[bd.a], V = s.bodies[bd.b];
+    if (!W?.alive || !V?.alive) continue;
+    if (out === 'hue') { const k = bd.kind >= 0 ? bd.kind : gk, pay = Math.min(bd.q, W.store[k] ?? 0); W.store[k] = W.store[k]! - pay; V.store[k] = V.store[k]! + pay; bd.q -= pay; gauge(s, c, 'reach', 0.01, 'the hue and cry'); }
+    else { for (const x of around(idx, s.side, W.home, P.dealReach)) if (x !== W) { setTie(s, x.id, W.id, -0.8); } bd.q = 0; rec(s, 'judge', { a: W.id, way: 'outlawed' }); }
+  }
+}
+/** When a house's head dies: the church's death-due, a widow's portion, and who presents a new priest. */
+function successions(s: State, c: Court): void {
+  const tithe = statute(s, 'tithe'), dower = statute(s, 'dower'), adv = statute(s, 'advowson'), kin = kinOf(s);
+  for (const b of s.bodies) {
+    if (!b.alive || b.parts.length || !b.members.length) continue;
+    const h = head(s, b), key = `hd:${b.id}`, was = c.seen[key];
+    if (!h) continue;
+    c.seen[key] = h.id;
+    if (was === undefined || was === h.id || s.people[was]?.alive) continue;
+    const dead = s.people[was]!;
+    if (tithe === 'mortuary') {
+      const pr = s.bonds.find(x => x.about === 'yield' && x.way === 'tithe' && x.a === b.id), P0 = pr ? s.bodies[pr.b] : undefined;
+      if (P0?.alive) for (let k = 0; k < NK; k++) if (!Kn[k]!.fixed) { const q = b.store[k]! * 0.1; b.store[k] = b.store[k]! - q; P0.store[k] = P0.store[k]! + q; }
+    }
+    if (dower !== 'all' && dead.spouse === h.id) {
+      const heirB = [...(kin.get(b.id) ?? [])].map(id => s.bodies[id]!).find(x => x.alive && !x.parts.length && x.id !== b.id) ?? lordNear(s, b.home);
+      if (heirB && dower === 'third') for (let k = 0; k < NK; k++) if (!Kn[k]!.fixed) { const q = (b.store[k]! * 2) / 3; b.store[k] = b.store[k]! - q; heirB.store[k] = heirB.store[k]! + q; }
+      if (dower === 'reverts') { const L = lordNear(s, b.home) ?? heirB; if (L) for (const bd of s.bonds) if (bd.about === 'land' && bd.a === b.id && bd.basis !== 'vow') { bd.a = L.id; bd.basis = 'word'; } }
+      grieve(c, b.id, dower === 'reverts' ? P.harmPaid * 2 : P.harmPaid);
+    }
+    if (b.rank === 'priest' && adv !== 'church') {
+      if (adv === 'lord') { const L = lordNear(s, b.home); if (L) { warm(s, b.id, L.id, 0.5); c.grief[L.id] = Math.max(0, (c.grief[L.id] ?? 0) - P.harmPaid); } }
+      else { c.grief[b.id] = 0; gauge(s, c, 'legitimacy', 0.05, 'a priest of the Crown’s choosing'); for (const x of s.bodies) if (x.alive && x.rank === 'priest' && x !== b) grieve(c, x.id, P.harmPaid / 2); }
+    }
+  }
+}
 /** Why the Crown cannot hold court at a place now, or '' if it can: a royal progress. */
 export function whyNotSeat(s: State, cell: number): string {
   const c = s.court;
@@ -914,7 +1014,7 @@ const nearSeat = (s: State, c: Court, home: number): boolean => c.seat !== undef
 /** The laws as a new court finds them: none laid down. */
 export const freshLaws = (): Pick<Policy, 'laws' | 'lawSetAt' | 'inscribed' | 'lawHits'> => {
   const per = <T,>(v: T) => Object.fromEntries(LAWS.map(k => [k, v])) as Record<LawKey, T>;
-  return { laws: { forest: 'free', movement: 'customary', credit: 'enforce', swords: 'immunity' }, lawSetAt: per(-1), inscribed: per(false), lawHits: per(0) };
+  return { laws: Object.fromEntries(STATUTES.map(x => [x.key, x.none])) as Laws, lawSetAt: per(-1), inscribed: per(false), lawHits: per(0) };
 };
 export const ORD_WEEKS: Record<OrdKey, number> = { stay: 52, granaries: 13, eyre: 26, penance: 26, tallage: 13 };
 const live = (c: Court): boolean => c.policy.mode !== 'regency';
@@ -974,11 +1074,11 @@ export function inscribeLaw(s: State, key: LawKey): boolean {
 /** Which standing law speaks to a matter, if any. What none speaks to goes to whoever holds sway locally. */
 export function lawOf(s: State, p: Petition): LawKey | null {
   if (p.reason !== 'none') return null;
-  if (p.burdens.length) return 'credit';
+  if (p.burdens.length) return 'liability';
   if (p.side === 'heresy' || p.side === 'mortmain' || p.side === 'sanctuary' || p.side === 'shrine' || p.side === 'unclean') return 'swords';
   if (p.side === 'exceeds' || p.side === 'exit') return 'movement';
   const bd = s.bonds.find(b => b.id === p.bond);
-  if (bd && bd.about === 'act' && (p.side === 'owed' || p.side === 'owes')) return 'credit';
+  if (bd && bd.about === 'act' && (p.side === 'owed' || p.side === 'owes')) return 'liability';
   return null;
 }
 /** What the standing laws would cut on a matter: the first of their preferred answers the matter allows. */
@@ -990,12 +1090,15 @@ export function lawCut(s: State, p: Petition): string | null {
   const first = (...xs: string[]): string | null => xs.find(x => can.includes(x)) ?? null;
   // Whatever no law reaches: the local lord or body, or, where there is none, things are left as they stand.
   const below = (): string | null => remits[0] ?? first('uphold', 'confirm', 'enforce', 'refuse', 'dismiss');
-  if (!key || pol.lawSetAt[key] < 0) return key === 'credit' || key === null ? below() : below();
+  // Benefit of clergy: matters against the clergy go to their own courts, or only blood comes to the Crown.
+  const ag = p.against >= 0 ? s.bodies[p.against] : undefined, cl = statute(s, 'clergy');
+  if (ag?.rank === 'priest' && (cl === 'church' || (cl === 'blood' && p.side !== 'harmed'))) return can.find(x => x === `remit:${ag.id}`) ?? first('dismiss', 'uphold', 'confirm');
+  if (!key || pol.lawSetAt[key] < 0) return below();
   const v = L[key] as string;
-  if (key === 'credit') {
-    if (p.burdens.length) return v === 'mercy' ? can.find(x => x.startsWith('ease:')) ?? null : 'dismiss';
-    // Frankpledge: the tithing, the kin or the body answers for the debtor before force is used.
-    return v === 'enforce' ? first('enforce') : v === 'mercy' ? first('surety', 'pardon', 'stay', 'bar') : first('surety', 'answer', 'enforce');
+  if (key === 'liability') {
+    if (p.burdens.length) return 'dismiss';
+    // Who answers a debt held to: the debtor, kin standing surety, or the body it belongs to.
+    return v === 'kin' ? first('surety', 'enforce') : v === 'body' ? first('answer', 'surety', 'enforce') : first('enforce');
   }
   if (key === 'movement') return p.side === 'exit' ? first(v === 'bound' ? 'tie' : 'release') : first(v === 'bound' ? 'uphold' : 'custom');
   if (p.side === 'heresy') return v === 'immunity' ? remits[0] ?? null : v === 'concordat' ? first('silence') : first('tolerate');
@@ -1036,7 +1139,7 @@ export function localOrder(s: State, cell: number, kind: LocalOrder): boolean {
       const sup = suppliers.find(x => x.store[gk]! >= want * 1.5);
       if (!sup) continue;
       sup.store[gk] = sup.store[gk]! - want; b.store[gk] = b.store[gk]! + want;
-      tally(s, c, want, 'purveyance');
+      tally(s, c, want * rateOf(s, gk), 'purveyance');
       grieve(c, sup.id, P.harmPaid); grieve(c, b.id, -P.harmPaid);
       done = true;
     }
@@ -1257,12 +1360,14 @@ function policyWeek(s: State, c: Court): void {
   worksWeek(s, c);
   powersWeek(s, c);
   commissionsWeek(s, c);
+  successions(s, c);
   // The Crown's dues, as the bailiffs send them up, go to paying what the King owes.
   if ((c.tallies ?? 0) > 0) { const have = storeOf(c), pay = Math.min(c.tallies!, have); if (pay > 0) { for (let k = 0; k < NK; k++) c.store[k] = c.store[k]! * (1 - pay / have); tally(s, c, -pay, 'the Crown’s dues'); } }
   if (s.t % 13 === 0) {
     c.writs = writsMax(c);
     if ((c.tallies ?? 0) > P.tallyLimit) { gauge(s, c, 'legitimacy', -0.25, 'the King’s tallies unpaid'); for (const b of s.bodies) if (b.alive && (b.rank === 'lord' || b.rank === 'priest')) grieve(c, b.id, P.harmPaid); }
-    if (pol.lawSetAt.credit >= 0 && pol.laws.credit === 'frankpledge' && !pol.weak) gauge(s, c, 'reach', 0.05, 'frankpledge: the tithings police themselves');
+    if (statute(s, 'liability') !== 'individual') gauge(s, c, 'reach', 0.05, 'frankpledge: the tithings police themselves');
+    statutesSeason(s, c);
   }
   const idx = hearthIndex(s);
   // Relief from the Crown's store for houses below the floor; the granaries open wider while ordered.
@@ -1571,7 +1676,8 @@ export function audience(s: State): Petition[] {
   // a shrine a holy body of strict creed will not have; a stained holy office the pure will not accept; a creed apart.
   for (const bd of s.bonds) {
     if (bd.about !== 'land' || bd.basis !== 'vow' || s.t - bd.since > 52 || !s.bodies[bd.a]?.alive) continue;
-    const K = s.bodies.find(x => x.alive && !x.parts.length && x.id !== bd.a && grown(s, x).some(m => m.lore[`claim:${bd.cell}`] !== undefined));
+    const bar = statute(s, 'prescription') === 'three' ? 156 : statute(s, 'prescription') === 'ten' ? 520 : Infinity;
+    const K = s.bodies.find(x => x.alive && !x.parts.length && x.id !== bd.a && grown(s, x).some(m => m.lore[`claim:${bd.cell}`] !== undefined && s.t - m.lore[`claim:${bd.cell}`]! <= bar));
     if (K) add(K.id, bd.a, bd, 'mortmain', lack.get(K.id) ?? -1, bd.rec, '', `mm${bd.id}`);
   }
   for (const T of s.bodies) {

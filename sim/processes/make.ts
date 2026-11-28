@@ -2,7 +2,7 @@
 // Last week's choices are carried out against what is there now.
 
 import { AIDERS, Kn, NS, P, Rc, St } from '../tables.ts';
-import { clearingBarred, titheSkim, toCrown } from '../court/court.ts';
+import { clearingBarred, measureOf, statute, titheSkim, toCrown } from '../court/court.ts';
 import { around, dist, head, near, sheltered, hearthIndex, holdsByCell, kinOf, payRent, rec, struggle, tenancies, tie } from '../util.ts';
 import { bear } from './grow.ts';
 import type { Body, Bond, State, Work } from '../types.ts';
@@ -88,8 +88,10 @@ export function make(s: State): void {
       // One with little scruple keeps back half of what it owes the Crown. The bailiff cannot see what is not shown him.
       const hides = bd.way === 'crown' && (head(s, b)?.scruple ?? 1) < 0.4;
       const lv = bd.way === 'crown' ? s.court?.policy.levy : undefined, skim = bd.way === 'tithe' ? titheSkim(s) : 0;
+      // A capped tithe is half a tenth; and the realm's measure weighs on every share paid.
+      const part = (bd.way === 'tithe' && statute(s, 'tithe') === 'capped' ? 0.5 : 1) * measureOf(s);
       for (const [k, q] of r.out) {
-        const owed = Math.min(b.store[k]!, q * m * (lv?.[k] ?? bd.share)), pay = hides ? owed / 2 : owed;
+        const owed = Math.min(b.store[k]!, q * m * (lv?.[k] ?? bd.share) * part), pay = hides ? owed / 2 : owed;
         b.store[k] = b.store[k]! - pay; to.store[k] = to.store[k]! + pay * (1 - skim);
         if (skim > 0) toCrown(s, k, pay * skim, 'the Crown’s part of the tithe');
         if (bd.way === 'crown') { to.owedUp[k] = (to.owedUp[k] ?? 0) + pay; b.paidUp += pay; if (hides) b.hid[k] = (b.hid[k] ?? 0) + owed - pay; }

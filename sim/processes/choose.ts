@@ -7,7 +7,7 @@ import { askAhead, cover, drive, welfare, welfareLater, zeros } from '../value.t
 import { around, bond, dist, grown, head, hearthIndex, holdsByCell, kinOf, muster, near, rec, struggle, sheltered, tenancies, tie, top, warm, type Tenancy } from '../util.ts';
 import { bear } from './grow.ts';
 import { tBar } from './sky.ts';
-import { boundByLaw, chilled, clearingBarred, freeByLaw, tollOn, toCrown, upheld } from '../court/court.ts';
+import { boundByLaw, chilled, clearingBarred, freeByLaw, statute, tollOn, toCrown, upheld } from '../court/court.ts';
 import { weekOf, type Body, type Bond, type Person, type State } from '../types.ts';
 
 interface Opt { r: number; cell: number; mine: number; take: boolean; score: number; rent: number }
@@ -108,6 +108,8 @@ function options(s: State, L: Land, b: Body): Opt[] {
     const cands: Opt[] = [];
     for (const cell of near(s.side, b.home, P.reach)) {
       const c = s.cells[cell]!, far = 1 - P.travel * dist(s.side, b.home, cell);
+      // Goods the sumptuary statute keeps for lords and clergy are not made by common houses.
+      if (!b.rank && r.out.some(([k]) => Kn[k]!.lux) && statute(s, 'sumptuary') === 'restricted') continue;
       // In a forest the Crown has set aside, nothing that holds the soil may be taken.
       if (r.from.some(([st]) => (St[st]!.holds ?? 0) >= 0.5) && clearingBarred(s, cell, b.home)) continue;
       let score = 0;
@@ -246,7 +248,8 @@ function idleRights(s: State, L: Land, id: number): { rb: Bond; cell: number }[]
   const out: { rb: Bond; cell: number }[] = [];
   const idle = (b: Bond): boolean => !L.letOn.has(b.id) && s.t - b.used >= P.idle && s.t - b.since >= P.idle;
   for (const b of L.landOf.get(id) ?? []) if (b.strength >= 0.5 && idle(b)) out.push({ rb: b, cell: b.cell });
-  for (const x of L.letsOf.get(id) ?? []) if (idle(x.lease)) out.push({ rb: x.lease, cell: x.cell });
+  // Ground held on a letting may be let on again, unless subletting is barred.
+  if (statute(s, 'sublet') !== 'barred') for (const x of L.letsOf.get(id) ?? []) if (idle(x.lease)) out.push({ rb: x.lease, cell: x.cell });
   return out;
 }
 
@@ -280,8 +283,10 @@ function arrange(s: State, L: Land, cs: Map<number, Ctx>, A: Ctx, need: number):
   }
   if (!wants.length) return false;
   // What it has to give.
-  const haves: Side[] = ['L', 'D', 'G'];
-  if (surety) haves.push('LS', 'DS');
+  const deferredOk = statute(s, 'deferred') !== 'banned';
+  const haves: Side[] = deferredOk ? ['L', 'D', 'G'] : ['D', 'G'];
+  if (surety && statute(s, 'pledges') !== 'banned') haves.push(...(deferredOk ? ['LS', 'DS'] as Side[] : ['DS'] as Side[]));
+  const spokenBan = statute(s, 'spoken') === 'banned';
   if (myIdle.length) haves.push('U');
 
   if (a.aim && (s.t - a.aim.since > P.resolve || !s.bodies[a.aim.for]!.alive)) { rec(s, 'plan', { a: a.id, b: a.aim.for, kind: a.aim.kind, q2: -1 }); a.aim = null; }
@@ -317,6 +322,8 @@ function arrange(s: State, L: Land, cs: Map<number, Ctx>, A: Ctx, need: number):
         if (have === want && have !== 'G') continue;
         if (have === 'G' && want === 'G') continue;
         if (want === 'U' && have === 'LS') continue;
+        // With spoken debts banned, a promise needs a witness: kin or a fellow of one body.
+        if (spokenBan && have !== 'G' && have !== 'U' && !((L.kin.get(a.id)?.has(B.b.id) ?? false) || (a.of >= 0 && a.of === B.b.of))) continue;
         const way = `${want === 'U' && have === 'L' ? 'Y' : have}>${want}`;
         const known = a.ways[way];
         if (!known && a.stuck < P.stuck) continue;

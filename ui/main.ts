@@ -3,9 +3,9 @@
 
 import { found } from '../sim/found.ts';
 import { advance } from '../sim/step.ts';
-import { commission, powerAt, whyNotCommission, writsMax, levies, ORD_WEEKS, actOn, freshDials, moveSeat, whyNotSeat, powersOf, underPower, whyNotAct, audience, build, clearingBarred, freshLaws, timberKind, whyNotBuild, cuts, hear, inscribeLaw, interventionAt, issueOrdinance, judgeOf, localOrder, localPower, openCourt, planesOf, setDial, setLaw, suretyFor, type Plane, type Ruling, type Width } from '../sim/court/court.ts';
+import { LAWS as LAWS_ALL, STATUTES, commission, powerAt, whyNotCommission, writsMax, levies, ORD_WEEKS, actOn, freshDials, moveSeat, whyNotSeat, powersOf, underPower, whyNotAct, audience, build, clearingBarred, freshLaws, timberKind, whyNotBuild, cuts, hear, inscribeLaw, interventionAt, issueOrdinance, judgeOf, localOrder, localPower, openCourt, planesOf, setDial, setLaw, suretyFor, type Plane, type Ruling, type Width } from '../sim/court/court.ts';
 import { askAhead, cover } from '../sim/value.ts';
-import { KINDS, NEEDS, P, RECIPES, St } from '../sim/tables.ts';
+import { KINDS, NEEDS, P, RECIPES, St, TOIL } from '../sim/tables.ts';
 import { grown, top } from '../sim/util.ts';
 import { Readers, wayWords } from '../readers/readers.ts';
 import { placeName } from '../readers/names.ts';
@@ -459,7 +459,7 @@ function passWeek(): void {
 let mode: Mode = 'cockpit';
 let speed: 0 | 1 | 5 | 20 = 0, acc = 0, lastFrame = 0, lastPaint = 0, dirty = false;
 type Lens = 'want' | 'factions' | 'sacred' | 'jurisdiction' | 'ecology';
-let view: 'map' | 'chronicle' = 'map', deck: 'laws' | 'writs' | 'powers' | 'decrees' | 'chronicle' = 'laws', lens: Lens = 'want';
+let view: 'map' | 'chronicle' = 'map', deck: 'laws' | 'dials' | 'powers' | 'decrees' | 'chronicle' = 'laws', lens: Lens = 'want';
 /** Whether the dock's half-sheet is up, and whether the map key is showing. */
 let dockOpen = false, keyOpen = false;
 /** Where the river runs from each place, worked out once per realm. */
@@ -482,18 +482,8 @@ let feed: { t: number; text: string; major: boolean }[] = [];
 const RATE = { 0: 0, 1: 1 / 1.5, 5: 3, 20: 20 } as const;
 const capOf = (): number => P.hearings;
 
-const LAW_WORDS: Record<LawKey, [string, [string, string][]]> = {
-  forest: ['Assize of the forest', [['free', 'Free'], ['stinted', 'Stinted'], ['kings', 'King’s forest']]],
-  movement: ['Assize of movement', [['free', 'Free'], ['customary', 'Customary'], ['bound', 'Bound']]],
-  credit: ['Assize of debt & surety', [['enforce', 'Enforce'], ['frankpledge', 'Frankpledge'], ['mercy', 'Mercy']]],
-  swords: ['Assize of the two swords', [['immunity', 'Immunity'], ['concordat', 'Concordat'], ['supremacy', 'Supremacy']]],
-};
-const LAW_HINT: Record<LawKey, string> = {
-  forest: 'Free: more timber and fields, and faster floods below. Stinted: no place cleared past its stint. King’s forest: no clearing but on a house’s own ground.',
-  movement: 'Free: tenants leave bad lords at once. Customary: they give a season’s notice. Bound: they may not leave; lords keep their boon-work, and tenants in want hold it against you.',
-  credit: 'Enforce: each debtor answers alone. Frankpledge: the tithing, kin or body answers first, and polices itself (a little reach each season). Mercy: debts put off or pardoned, and burdens lifted from houses in want.',
-  swords: 'The holy: leave it to the church, strike a bargain with it, or rule over it.',
-};
+const LAW_WORDS = Object.fromEntries(STATUTES.map(x => [x.key, [x.name, x.options]])) as Record<LawKey, [string, [string, string][]]>;
+const LAW_HINT = Object.fromEntries(STATUTES.map(x => [x.key, x.hint])) as Record<LawKey, string>;
 const DIALS: { key: keyof Dials; name: string; vals: (number | string)[]; show: (v: any) => string; hint: string }[] = [
   { key: 'grainShare', name: 'Grain levy', vals: [0, 0.05, 0.1, 0.15, 0.2], show: v => `${Math.round(v * 100)}%`, hint: 'Of every harvest from sown ground, to the bailiffs. Feeds the store; weighs on every house.' },
   { key: 'timberShare', name: 'Timber levy', vals: [0, 0.05, 0.1, 0.15, 0.2], show: v => `${Math.round(v * 100)}%`, hint: 'Of all timber cut. It pays for works.' },
@@ -702,18 +692,30 @@ function chronicleView(): string {
 }
 
 function lawsDeck(): string {
-  const pol = s.court!.policy;
-  return (Object.keys(LAW_WORDS) as LawKey[]).map(k => {
-    const [name, opts] = LAW_WORDS[k], set = pol.lawSetAt[k] >= 0, warm = set && s.t - pol.lawSetAt[k] < 52;
+  const pol = s.court!.policy, parts = { A: 'Land, tenure & lordship', B: 'Society, market & order', C: 'Church & Crown' } as const;
+  return STATUTES.map((row, n) => { const k = row.key; const head = n === 0 || STATUTES[n - 1]!.part !== row.part ? `<div class="label">${parts[row.part]}</div>` : '';
+    return head + (() => {
+    const [name, opts] = LAW_WORDS[k], set = (pol.lawSetAt[k] ?? -1) >= 0, warm = set && s.t - pol.lawSetAt[k] < 52;
     return `<div class="law row" title="${esc(LAW_HINT[k])}"><div class="lname"><strong>${name}</strong>${pol.inscribed[k] ? ' <span class="gilt" title="On the roll">◉</span>' : ''}${warm ? ' <span class="dot" title="Laid down within the year: changing it now is caprice"></span>' : ''}<span class="small soft">${!set ? 'not laid down' : k === 'forest' ? `${s.cells.filter((_x, i) => clearingBarred(s, i, -1)).length} places closed to clearing` : `${pol.lawHits[k]} settled`}</span></div>
       <div class="small soft hint">${esc(LAW_HINT[k])}</div>
       <div class="seg">${opts.map(([v, t]) => `<button data-law="${k}:${v}" aria-pressed="${set && pol.laws[k] === v}">${t}</button>`).join('')}</div></div>`;
-  }).join('');
+  })(); }).join('');
 }
-function writsDeck(): string {
+const RATE_STEPS = [0.5, 0.75, 1, 1.35, 2];
+function dialsDeck(): string {
+  const d = s.court!.policy.dials, rates = d.rates ?? KINDS.map(() => 1);
+  const groups: [string, string[]][] = [['Food & drink', ['grain', 'meat', 'haul', 'cured', 'brine', 'ale']], ['Fuel & dress', ['timber', 'fleece', 'cloth']], ['Iron & tools', ['ore', 'blade', 'coulter']]];
+  const row = (id: string): string => { const k = KINDS.findIndex(x => x.id === id); if (k < 0) return ''; const r = rates[k] ?? 1, i = RATE_STEPS.indexOf(r); return `<div class="row"><div><strong>${esc(cap(id === 'haul' ? 'fish' : id === 'brine' ? 'salt' : id))}</strong><div class="small soft">${(TOIL[k]! * r).toFixed(2)} days a unit${r === 1 ? ', customary' : ''}</div></div><div class="step"><button data-rate="${k}:-1" ${i <= 0 ? 'disabled' : ''} aria-label="Lower">−</button><span>${r === 1 ? '1.0× cust.' : r + '×'}</span><button data-rate="${k}:1" ${i >= RATE_STEPS.length - 1 ? 'disabled' : ''} aria-label="Raise">+</button></div></div>`; };
+  const pick = (key: string, cur: string, opts: [string, string][], name: string, hint: string): string => `<div class="law row"><div class="lname"><strong>${name}</strong></div><div class="small soft hint">${hint}</div><div class="seg">${opts.map(([v, t]) => `<button data-dial2="${key}:${v}" aria-pressed="${cur === v}">${t}</button>`).join('')}</div></div>`;
+  return `<div class="label">Royal measure</div>${pick('measure', d.measure ?? 'kings', [['lords', 'Lord’s bushel'], ['kings', 'King’s standard'], ['small', 'Small']], 'Weights & measures', 'What a debt or share of one is reckoned at when paid: more for lords and creditors, or less for tenants and debtors.')}
+    ${pick('boonCap', String(d.boonCap), [['0', '0d'], ['1', '1d'], ['2', '2d'], ['3', '3d'], ['6', 'Unchecked']], 'Lord’s boon-work cap', 'The most days a week a lord may draw from a tenant; below three, tenants are calmer and lords aggrieved.')}
+    <div class="label">Schedule of assized rates</div><p class="small soft">Every good is valued in days of labour, so any two goods exchange at the ratio of their rates. Below customary eases those who owe it and squeezes those who make it; above, the reverse.</p>
+    ${groups.map(([g, ids]) => `<div class="label">${g}</div>${ids.map(row).join('')}`).join('')}`;
+}
+function writsSummary(): string {
   const c = s.court!, wmax = writsMax(c), w = c.writs ?? wmax, renew = 13 - (s.t % 13), tal = talliesNow();
   const pending = (c.commissions ?? []).map(cm => `<div class="row"><div><strong>${esc(WORKS.find(x => x[0] === cm.work)![1])} at <button class="link" data-goto="${cm.cell}">${esc(cellWords(cm.cell))}</button></strong><div class="small soft">commanded of ${esc(house(cm.by))}; lapses in ${Math.max(0, cm.due - s.t)}w if no timber</div></div></div>`).join('');
-  return `<div class="row"><div><strong>${w} of ${wmax} writs this season</strong><div class="small soft">They renew in ${renew}w. Sound legitimacy seals more; a weak Crown seals two.</div></div></div>
+  return `<div class="label">The Chancery</div><div class="row"><div><strong>${w} of ${wmax} writs this season</strong><div class="small soft">They renew in ${renew}w. Sound legitimacy seals more; a weak Crown seals two.</div></div></div>
     <div class="row"><div><strong>Royal tallies: ${Math.round(tal).toLocaleString('en-GB')}</strong><div class="small soft">What the King owes on purveyance and eyres. The Crown’s dues pay it down; past ${P.tallyLimit}, his credit fails and legitimacy suffers each season. A general tallage clears it at a cost.</div></div></div>
     <div class="label">Commissions awaited</div>${pending || '<p class="small soft">None. Tap a place to command a work of its lord.</div>'}
     <div class="label">Writs you may seal on a place</div>
@@ -753,6 +755,7 @@ function powersDeck(): string {
 const icon = (d: string): string => `<svg class="ico" viewBox="0 0 14 14" width="14" height="14" aria-hidden="true">${d}</svg>`;
 const ICON: Record<string, string> = {
   decrees: icon('<path d="M7 1.5v11M3.5 4.5h7"/><circle cx="7" cy="10.5" r="2"/>'),
+  dials: icon('<path d="M2 4h10M2 10h10"/><circle cx="5" cy="4" r="1.6"/><circle cx="9" cy="10" r="1.6"/>'),
   writs: icon('<path d="M3 2.5h6.5L11 4v7.5H3z"/><path d="M5 6h4M5 8.5h2.5"/><circle cx="9.5" cy="10" r="1.4"/>'),
   laws: icon('<rect x="3" y="1.75" width="8" height="10.5" rx="1"/><path d="M5 5h4M5 7.5h4M5 10h2.5"/>'),
   powers: icon('<path d="M2 11.5h10M2.5 11.5 2 5l3 2.5L7 3l2 4.5L12 5l-.5 6.5"/>'),
@@ -762,12 +765,12 @@ function shell(): void {
   const live = mode === 'cockpit';
   document.body.classList.add('cockpit-on');
   if (!live) deck = 'chronicle';
-  const tabs = live ? (['laws', 'writs', 'powers', 'decrees', 'chronicle'] as const) : (['chronicle'] as const);
+  const tabs = live ? (['laws', 'dials', 'powers', 'decrees', 'chronicle'] as const) : (['chronicle'] as const);
   app.innerHTML = `<div class="cockpit full"><main class="view map-host" id="view"></main>
     <div class="hud-top"><div id="strip"></div><div id="lensbar"></div></div>
     <div id="sheet"></div>
     <div id="legend"></div>
-    <footer class="dock"><div class="half" id="deck"></div><nav class="tabs">${tabs.map(d => `<button data-deck="${d}" aria-pressed="${dockOpen && deck === d}">${ICON[d]}<span>${({ laws: 'Assizes', writs: 'Writs', powers: 'Powers', decrees: 'Decrees', chronicle: 'Chronicle' })[d]}</span></button>`).join('')}</nav></footer></div>`;
+    <footer class="dock"><div class="half" id="deck"></div><nav class="tabs">${tabs.map(d => `<button data-deck="${d}" aria-pressed="${dockOpen && deck === d}">${ICON[d]}<span>${({ laws: 'Laws', dials: 'Dials', powers: 'Powers', decrees: 'Decrees', chronicle: 'Chronicle' })[d]}</span></button>`).join('')}</nav></footer></div>`;
   zoom = fitZoom(); panX = 0; panY = 0;
   paint(true);
   centreOn(s.court?.seat ?? Math.floor(s.cells.length / 2));
@@ -792,7 +795,7 @@ function paint(force = false): void {
   document.querySelector('[data-deck="powers"]')?.classList.toggle('alert', defiant);
   if (!gesturing) swap('view', mapView());
   swap('sheet', dockOpen ? '' : sheet());
-  swap('deck', !dockOpen ? '' : deck === 'chronicle' ? chronicleView() : !s.court ? '' : deck === 'laws' ? lawsDeck() : deck === 'writs' ? writsDeck() : deck === 'powers' ? powersDeck() : decreesDeck());
+  swap('deck', !dockOpen ? '' : deck === 'chronicle' ? chronicleView() : !s.court ? '' : deck === 'laws' ? lawsDeck() : deck === 'dials' ? dialsDeck() : deck === 'powers' ? powersDeck() : writsSummary() + '<div class="label">Decrees</div>' + decreesDeck());
 }
 
 /** One week of the living realm: the court's reckoning, the realm lives, and the next week's matters are settled below by the laws. */
@@ -854,11 +857,12 @@ function resume(): void {
     s = j.s; R = new Readers();
     // A realm kept under the old laws keeps its works and its history, but its laws begin again.
     if (s.court && !('forest' in s.court.policy.laws)) Object.assign(s.court.policy, freshLaws());
+    if (s.court) { const f = freshLaws(), pol = s.court.policy; for (const k of LAWS_ALL) { if (!(k in pol.laws)) { pol.laws[k] = f.laws[k]; pol.lawSetAt[k] = -1; pol.inscribed[k] = false; pol.lawHits[k] = 0; } } }
     if (s.court && !('grainShare' in s.court.policy.dials)) { const old = s.court.policy.dials as Partial<Dials>; s.court.policy.dials = { ...freshDials(), ...(old.relief ? { relief: old.relief } : {}), ...(old.bailiff ? { bailiff: old.bailiff } : {}) }; levies(s); }
     if (s.court && s.court.tallies === undefined) { s.court.writs = 3; s.court.tallies = 0; s.court.commissions = []; s.court.policy.ord.tallage = 0; if ((s.court.policy.laws.credit as string) === 'custom') s.court.policy.laws.credit = 'frankpledge'; }
     if (s.court && s.court.seat === undefined) s.court.seat = s.bodies.find(b => b.alive && b.rank === 'bailiff')?.home ?? Math.floor(s.cells.length / 2); R.events = j.events ?? []; mode = j.mode; feed = j.feed ?? []; hist = j.hist ?? []; eras = j.eras ?? []; eraFrom = j.eraFrom ?? 0; eraStats = j.eraStats ?? eraStats;
     watched.clear(); for (const w of j.watched ?? []) watched.add(w);
-    lens = j.lens ?? 'want'; deck = (['laws', 'writs', 'powers', 'decrees', 'chronicle'].includes(j.deck) ? j.deck : 'laws'); dockOpen = false;
+    lens = j.lens ?? 'want'; deck = (['laws', 'dials', 'powers', 'decrees', 'chronicle'].includes(j.deck) ? j.deck : 'laws'); dockOpen = false;
     over = ''; speed = 0; picked = -1; view = 'map'; openGauge = ''; zoom = 1; panX = 0; panY = 0;
     shell();
   } catch { welcome(); }
@@ -948,6 +952,8 @@ function cockpitClick(b: HTMLButtonElement): boolean {
   if (!c) return false;
   if (b.dataset.law) { const [k, v] = b.dataset.law.split(':') as [LawKey, string]; const leg0 = c.legitimacy; setLaw(s, k, v as never); if (c.legitimacy < leg0) doFlash({ legitimacy: 'bad' }); feed.push({ t: s.t, text: `You laid down the law: <strong>${LAW_WORDS[k][0]}: ${LAW_WORDS[k][1].find(x => x[0] === v)![1]}</strong>.`, major: true }); paint(); return true; }
   if (b.dataset.dial) { const [k, d] = b.dataset.dial.split(':') as [keyof Dials, string]; const x = DIALS.find(y => y.key === k)!, i = x.vals.indexOf((c.policy.dials as any)[k]) + Number(d); if (i >= 0 && i < x.vals.length) { setDial(s, k, x.vals[i] as never); doFlash(k === 'tithe' ? { tallies: 'good', legitimacy: 'bad' } : k === 'grainShare' || k === 'timberShare' || k === 'toll' ? { tallies: Number(d) > 0 ? 'good' : 'warn' } : k === 'relief' ? { tallies: 'warn' } : k === 'bailiff' ? (x.vals[i] === 'strict' ? { tallies: 'good', reach: 'bad' } : {}) : {}); } paint(); return true; }
+  if (b.dataset.rate) { const [k, d] = b.dataset.rate.split(':').map(Number) as [number, number], rates = (c.policy.dials.rates ??= KINDS.map(() => 1)), i = RATE_STEPS.indexOf(rates[k] ?? 1) + d; if (i >= 0 && i < RATE_STEPS.length) rates[k] = RATE_STEPS[i]!; paint(); return true; }
+  if (b.dataset.dial2) { const [key, v] = b.dataset.dial2.split(':') as [string, string]; if (key === 'measure') c.policy.dials.measure = v as 'lords' | 'kings' | 'small'; else c.policy.dials.boonCap = Number(v) as 0 | 1 | 2 | 3 | 6; paint(); return true; }
   if (b.dataset.spend) { const bud = c.policy.dials.budget, vals = [0, 5, 10] as const, i = vals.indexOf(bud.spend) + Number(b.dataset.spend); if (i >= 0 && i < 3) { bud.spend = vals[i]!; doFlash({ tallies: 'warn' }); } paint(); return true; }
   if (b.dataset.budget) {
     // Moving one share moves the largest of the others the other way, so the three always come to a hundred.

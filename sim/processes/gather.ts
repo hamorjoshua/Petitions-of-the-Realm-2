@@ -4,6 +4,7 @@
 import { Kn, NK, NN, P } from '../tables.ts';
 import { askAhead, heads, welfare } from '../value.ts';
 import { around, bond, dist, grown, head, inheritTies, kinOf, leaves, living, rec, regard } from '../util.ts';
+import { statute } from '../court/court.ts';
 import type { Body, Person, State } from '../types.ts';
 
 export function body(s: State, home: number): Body {
@@ -89,6 +90,9 @@ function band(s: State): void {
     const group = [u];
     for (const v of around(unitsAt, s.side, u.home, P.dealReach)) if (v !== u && !done.has(v.id) && group.length < 8 && group.every(g => friends(g, v))) group.push(v);
     if (group.length < P.bandOf) continue;
+    // Sworn leagues may be forbidden, or allowed only where none of their houses is aggrieved against the Crown.
+    const lg = statute(s, 'leagues');
+    if (lg === 'forbidden' || (lg === 'chartered' && group.some(g => leaves(s, g).some(id => (s.court?.grief[id] ?? 0) >= P.aggrieved)))) continue;
     const c = body(s, u.home);
     c.parts = group.map(g => g.id);
     c.head = pickHead(s, c);
@@ -157,7 +161,9 @@ export function gather(kin: Map<number, Set<number>>, s: State): void {
     // The last of a house, if devout, leaves its ground to the nearest holy body, for ever. The blood keeps a claim.
     if (!b.members.length) {
       const last = s.log.filter(r => r.k === 'die' && r.b === b.id).map(r => s.people[r.a]!).pop();
-      const holy = last && last.devotion >= P.mortmainDevotion ? s.bodies.filter(x => x.alive && x.authority === 'symbolic' && dist(s.side, x.home, b.home) <= P.far).sort((x, y) => dist(s.side, x.home, b.home) - dist(s.side, y.home, b.home))[0] : undefined;
+      // The statute of mortmain may bar it, or allow it only where the Crown can license it.
+      const mm = statute(s, 'mortmain'), may = mm === 'allowed' || (mm === 'licensed' && (s.court?.reach ?? 0) >= 2);
+      const holy = may && last && last.devotion >= P.mortmainDevotion ? s.bodies.filter(x => x.alive && x.authority === 'symbolic' && dist(s.side, x.home, b.home) <= P.far).sort((x, y) => dist(s.side, x.home, b.home) - dist(s.side, y.home, b.home))[0] : undefined;
       const held = holy ? s.bonds.filter(x => x.about === 'land' && x.a === b.id).sort((x, y) => y.strength - x.strength)[0] : undefined;
       if (holy && held) {
         held.a = holy.id; held.basis = 'vow'; held.since = s.t;
@@ -165,11 +171,21 @@ export function gather(kin: Map<number, Set<number>>, s: State): void {
         rec(s, 'mortmain', { a: b.id, b: holy.id, cell: held.cell });
       }
     }
+    // Creditors first: what a dying house owes is paid out of what it leaves before its kin take the rest.
+    if (statute(s, 'inherit') === 'creditors') for (const bd of s.bonds) {
+      if (bd.about !== 'act' || bd.a !== b.id || bd.q <= 0.05 || bd.kind < 0 || bd.labour) continue;
+      const C = s.bodies[bd.b];
+      if (!C?.alive) continue;
+      const q = Math.min(bd.q, b.store[bd.kind]!); b.store[bd.kind] = b.store[bd.kind]! - q; C.store[bd.kind] = C.store[bd.kind]! + q; bd.q -= q;
+    }
     if (heir) {
       for (const p of living(s, b)) { shift(s, p, heir); rec(s, 'join', { a: p.id, b: heir.id }); }
       handOver(s, b, heir, 1);
       rec(s, 'inherit', { a: heir.id, b: b.id, cell: b.home });
     } else {
+      // Escheat: with no kin, what is left goes to the nearest lord.
+      const lord = statute(s, 'inherit') === 'escheat' ? s.bodies.filter(x => x.alive && x.rank === 'lord' && dist(s.side, x.home, b.home) <= P.far).sort((x, y) => dist(s.side, x.home, b.home) - dist(s.side, y.home, b.home) || x.id - y.id)[0] : undefined;
+      if (lord) { handOver(s, b, lord, 1); rec(s, 'inherit', { a: lord.id, b: b.id, cell: b.home }); }
       let left = 0;
       for (let k = 0; k < NK; k++) left += b.store[k]!;
       rec(s, 'leave', { b: b.id, cell: b.home, q2: left });

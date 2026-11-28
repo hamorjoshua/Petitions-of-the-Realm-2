@@ -178,14 +178,19 @@ export interface Petition { /** For a house in want: everything that weighs on i
 /** A rule: a bond that binds every member of a body, or the whole realm (scope -1). */
 export interface Rule { /** Written on the roll: it cannot be challenged or undone. */ roll?: boolean; id: number; scope: number; shape: string; cut: string; since: number; uses: number }
 /** The cockpit: standing laws, regulators and timed ordinances the regent sets, and how the realm is played. */
-export type LawKey = 'forest' | 'movement' | 'credit' | 'swords';
-export interface Laws { forest: 'free' | 'stinted' | 'kings'; movement: 'free' | 'customary' | 'bound'; credit: 'enforce' | 'frankpledge' | 'mercy'; swords: 'immunity' | 'concordat' | 'supremacy' }
+/** The standing statutes: each a key and its chosen option (see STATUTES in the court for the options and what each does). */
+export type LawKey = 'forest' | 'movement' | 'sublet' | 'enclosure' | 'prescription' | 'wardship' | 'dower' | 'inherit'
+  | 'marriage' | 'pledges' | 'spoken' | 'deferred' | 'hoarding' | 'sumptuary' | 'leagues' | 'liability' | 'outlawry'
+  | 'advowson' | 'clergy' | 'mortmain' | 'tithe' | 'shrines' | 'swords' | 'credit';
+export type Laws = Record<LawKey, string>;
 export interface Dials {
   /** The Crown's levies on what is gathered: grain from sown ground, timber from the woods. */
   grainShare: number; timberShare: number;
   relief: 'off' | 'starving' | 'want'; bailiff: 'light' | 'regular' | 'strict';
-  /** The most days a week a lord may draw in boon-work from a tenant. */
+  /** The most days a week a lord may draw in boon-work from a tenant (6: unchecked). */
   boonCap: 0 | 1 | 2 | 3 | 6;
+  /** The schedule of assized rates: for each kind, a multiple of its customary labour value; and the measure the realm uses. */
+  rates?: number[]; measure?: 'lords' | 'kings' | 'small';
   /** What of the church's tithes the Crown takes: none, a quarter, a half. */
   tithe: 'protected' | 'shared' | 'taxed';
   /** What the Crown takes of goods traded between valleys. */

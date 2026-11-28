@@ -34,6 +34,8 @@ export const NEEDS: NeedRow[] = [
 
 export interface KindRow {
   id: string;
+  /** A good a sumptuary statute may keep from common houses. */
+  lux?: boolean;
   /** Person-weeks of each need one unit meets in a week of use. */
   serves?: Record<string, number>;
   /** Share of a unit lost by a week of use (1: used up; small: worn a little). */
@@ -55,12 +57,12 @@ export const KINDS: KindRow[] = [
   { id: 'cured', serves: { food: 1, flesh: 1 }, use: 1, keep: 0.01, weight: 1 },
   { id: 'timber', serves: { warmth: 1 }, use: 1, keep: 0.002, weight: 2 },
   { id: 'fleece', use: 1, keep: 0.004, weight: 0.5 },
-  { id: 'cloth', serves: { dress: 1 }, use: 0.02, keep: 0.002, weight: 0.5 },
+  { id: 'cloth', lux: true, serves: { dress: 1 }, use: 0.02, keep: 0.002, weight: 0.5 },
   { id: 'ore', use: 1, keep: 0, weight: 3 },
   { id: 'blade', use: 0.012, keep: 0.001, weight: 1, aids: { cut: 1.6 } },
   { id: 'coulter', use: 0.012, keep: 0.001, weight: 4, aids: { till: 1.8 } },
-  { id: 'brine', serves: { savour: 1 }, use: 1, keep: 0.002, weight: 1 },
-  { id: 'ale', serves: { drink: 1 }, use: 1, keep: 0.05, weight: 1.5 },
+  { id: 'brine', lux: true, serves: { savour: 1 }, use: 1, keep: 0.002, weight: 1 },
+  { id: 'ale', lux: true, serves: { drink: 1 }, use: 1, keep: 0.05, weight: 1.5 },
   { id: 'leisure', serves: { repose: 1 }, use: 1, keep: 1, weight: 999, fixed: true },
   { id: 'hall', serves: { roof: 6 }, use: 0.004, keep: 0.002, weight: 999, fixed: true },
 ];
@@ -265,7 +267,7 @@ export const P = {
 
 // --- The tables compiled to indices, so that processes can loop without knowing a name ---
 
-export interface Kind { id: string; serves: number[]; use: number; keep: number; weight: number; fixed: boolean; aids: Record<string, number> }
+export interface Kind { id: string; serves: number[]; use: number; keep: number; weight: number; fixed: boolean; aids: Record<string, number>; lux: boolean }
 export interface Stock extends Omit<StockRow, 'eats' | 'eatsStore'> { eats: [number, number][]; eatsStore: [number, number][]; eater: boolean; sown: boolean; reap: number; needs: number[] }
 export interface Recipe { id: string; from: [number, number][]; inp: [number, number][]; out: [number, number][]; to: [number, number][]; aid: string | null }
 
@@ -282,7 +284,7 @@ export const NN = NEEDS.length, NK = KINDS.length, NS = STOCKS.length;
 export const Kn: Kind[] = KINDS.map(k => {
   const serves = NEEDS.map(() => 0);
   for (const [n, v] of pairs(k.serves, need)) serves[n] = v;
-  return { id: k.id, serves, use: k.use, keep: k.keep, weight: k.weight, fixed: !!k.fixed, aids: k.aids ?? {} };
+  return { id: k.id, serves, use: k.use, keep: k.keep, weight: k.weight, fixed: !!k.fixed, aids: k.aids ?? {}, lux: !!k.lux };
 });
 
 export const Rc: Recipe[] = RECIPES.map(r => ({ id: r.id, from: pairs(r.from, stock), inp: pairs(r.in, kind), out: pairs(r.out, kind), to: pairs(r.to, stock), aid: r.aid ?? null }));

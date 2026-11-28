@@ -3,7 +3,8 @@
 
 import { BY_HARM, Kn, NEEDS, NK, NN, P, TOIL } from '../tables.ts';
 import { askAhead, cover, drive } from '../value.ts';
-import { around, bond, leaves, living, sheltered, setTie, dist, head, holdsByCell, kinOf, might, muster, rec, served as remember, struggle, tie, warm } from '../util.ts';
+import { around, bond, leaves, living, sheltered, setTie, dist, head, holdsByCell, kinOf, might, muster, rec, served as remember, struggle, tie, top, warm } from '../util.ts';
+import { measureOf, rateOf, statute } from '../court/court.ts';
 import type { Body, Bond, Person, State } from '../types.ts';
 
 /** The needs a kind serves, for saying why someone's cover fell. */
@@ -34,7 +35,7 @@ export function bind(s: State): void {
     // A tenant in want is not called to the lord's fields: the lord takes its spare days, not the ones it lives by.
     const tc = cover(T.store, askAhead(s, T));
     if (BY_HARM.some(n => NEEDS[n]!.harm >= 0.5 && tc[n]! < P.short)) continue;
-    const cap = s.court?.policy.mode === 'cockpit' ? s.court.policy.dials.boonCap : P.boonMax;
+    const cap = s.court?.policy.mode === 'cockpit' ? (s.court.policy.dials.boonCap >= 6 ? Infinity : s.court.policy.dials.boonCap) : P.boonMax;
     const d = Math.min(asked, 0.5 * muster(s, T), cap);
     if (d <= 0) continue;
     T.spent += d; L.spent -= d;
@@ -64,6 +65,10 @@ export function bind(s: State): void {
   for (const u of s.uses) {
     const over = holds.get(u.cell) ?? [];
     let h = over.find(x => x.a === u.body);
+    const enc = statute(s, 'enclosure'), U = s.bodies[u.body]!;
+    // Protected commons: use makes no new holding but on a house's own ground. A lord may enclose ground held but left idle.
+    if (!h && enc === 'protect' && u.cell !== U.home) continue;
+    if (!h && enc === 'enclose' && U.rank === 'lord') { const idle = over.find(x => x.basis !== 'vow' && s.t - x.used >= P.idle); if (idle) { idle.a = U.id; idle.basis = 'word'; idle.used = s.t; rec(s, 'take', { a: U.id, b: -1, cell: u.cell, kind2: -4 }); h = idle; } }
     if (!h) {
       let sum = 0;
       for (const x of over) sum += x.strength;
@@ -90,9 +95,11 @@ export function bind(s: State): void {
   s.wrongs = [];
 
   // What is owed and due is paid, or broken, or fought over.
+  // A debt is paid by the realm's measure: the lord's bushel takes more, the small measure less.
   const pay = (bd: Bond, D: Body, C: Body): void => {
-    D.store[bd.kind] = D.store[bd.kind]! - bd.q;
-    C.store[bd.kind] = C.store[bd.kind]! + bd.q;
+    const q = Math.min(D.store[bd.kind]!, bd.q * measureOf(s));
+    D.store[bd.kind] = D.store[bd.kind]! - q;
+    C.store[bd.kind] = C.store[bd.kind]! + q;
     rec(s, 'keep', { a: D.id, b: C.id, kind: bd.kind, q: bd.q, cause: bd.rec });
     remember(s, bd, true);
     warm(s, C.id, D.id, 0.3); warm(s, D.id, C.id, 0.1);
@@ -122,7 +129,7 @@ export function bind(s: State): void {
     let made = false;
     for (let j = 0; j < NK && !made; j++) {
       if (j === bd.kind || Kn[j]!.fixed) continue;
-      const qj = (bd.q * TOIL[bd.kind]!) / TOIL[j]!;
+      const qj = (bd.q * TOIL[bd.kind]! * rateOf(s, bd.kind)) / (TOIL[j]! * rateOf(s, j));
       if (!Kn[j]!.serves.some(x => x > 0) || !canSpare(s, D, j, qj)) continue;
       D.store[j] = D.store[j]! - qj; C.store[j] = C.store[j]! + qj;
       rec(s, 'keep', { a: D.id, b: C.id, kind: j, q: qj, kind2: bd.kind, cause: bd.rec });
@@ -132,7 +139,7 @@ export function bind(s: State): void {
     if (made) continue;
     // Or worked off, if the one who owes is of a mind to, or is the weaker.
     if (bd.broken && (hD.scruple > 0.4 || might(s, kin, C, D.id) > might(s, kin, D, C.id)) && dist(s.side, D.home, C.home) <= P.dealReach) {
-      bd.q = bd.q * TOIL[bd.kind]!; bd.labour = true; bd.broken = false; bd.strength = 1;
+      bd.q = bd.q * TOIL[bd.kind]! * rateOf(s, bd.kind); bd.labour = true; bd.broken = false; bd.strength = 1;
       bd.rec = rec(s, 'promise', { a: D.id, b: C.id, kind: bd.kind, q2: bd.q, kind2: 1, cause: bd.rec }).id;
       continue;
     }
@@ -221,6 +228,10 @@ export function bind(s: State): void {
     let best = -1, bestScore = Infinity;
     for (const w of around(women, s.side, mb.home, P.far)) {
       if (!w.alive || w.sex !== 1 || w.spouse >= 0 || taken.has(w.id)) continue;
+      // Merchet: marriage only near at hand, or never across two lords' lands.
+      const wed = statute(s, 'marriage'), wb0 = s.bodies[w.body]!, lordA = top(s, mb), lordB = top(s, wb0);
+      if (wed === 'local' && dist(s.side, mb.home, wb0.home) > P.reach) continue;
+      if (wed === 'barred' && lordA.id !== lordB.id && (lordA.rank === 'lord' || lordB.rank === 'lord')) continue;
       const age = (s.t - w.born) / 52;
       if (age < P.wedShe || age > P.bearTo + 8) continue;
       if (w.id === m.mother || w.father === m.id) continue;
@@ -234,6 +245,8 @@ export function bind(s: State): void {
     const w = s.people[best]!;
     taken.add(best);
     m.spouse = w.id; w.spouse = m.id;
+    // By the lord's leave: the bride's house pays him a fine, a twentieth of what it holds.
+    if (statute(s, 'marriage') === 'leave') { const wb1 = s.bodies[w.body]!, Lr = top(s, wb1); if (Lr.rank === 'lord' && Lr !== wb1) for (let k = 0; k < wb1.store.length; k++) { const q = wb1.store[k]! * 0.05; wb1.store[k] = wb1.store[k]! - q; Lr.store[k] = Lr.store[k]! + q; } }
     bond(s, { about: 'person', a: m.id, b: w.id, basis: 'word' });
     rec(s, 'wed', { a: m.id, b: w.id, cell: mb.home });
   }
