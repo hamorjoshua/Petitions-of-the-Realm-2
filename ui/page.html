@@ -361,5 +361,44 @@ progress.amb::-webkit-progress-bar, .ord progress::-webkit-progress-bar { backgr
 .row strong { font-size: 13px; font-weight: 600; }
 .list.chron li, .inspector h3, .moderow strong, .masthead h1 { font-family: var(--display); }
 .dock .half p.small { font-size: 12px; line-height: 1.4; margin: 4px 0 8px; }
+
+/* The atlas plate (from the seasonal atlas): a title with one figure, the map in its own field, the scale beneath. */
+.cockpit.full { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px)); box-sizing: border-box; background: var(--panel) !important; }
+.cockpit.full .hud-top { position: relative; grid-row: 1; }
+#plate-title { grid-row: 2; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; padding: 12px 14px 10px; border-bottom: 1px solid var(--rule); }
+#plate-title h1 { font: 400 clamp(26px, 7vw, 52px)/0.95 var(--display); letter-spacing: -0.01em; margin: 0; max-width: 12ch; }
+.plate-stat { text-align: right; display: grid; gap: 3px; }
+.plate-stat b { color: var(--red); font: 400 clamp(28px, 8vw, 56px)/0.9 var(--display); font-variant-numeric: tabular-nums; }
+.plate-stat span { font: 600 10px var(--ui); text-transform: uppercase; letter-spacing: 0.08em; color: var(--soft); }
+.cockpit.full .map-host { position: relative; grid-row: 3; min-height: 0; container-type: size; background: var(--map-water); border-bottom: 1px solid var(--rule); }
+.cockpit.full .map { width: min(100cqw, 100cqh); }
+.cockpit.full #legend { position: static; grid-row: 4; background: var(--panel); pointer-events: auto; }
+.measure-key { box-sizing: border-box; padding: 8px 14px 10px; color: var(--ink); }
+.measure-unit { font: 600 10px var(--ui); text-transform: uppercase; letter-spacing: 0.08em; color: var(--soft); }
+.measure-bands { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; margin: 6px 0 2px; font: 11px/1.4 var(--ui); font-variant-numeric: tabular-nums; color: var(--soft); }
+.measure-bands i { display: block; height: 8px; border: 1px solid var(--rule); }
+.measure-key small { font-size: 11px; color: var(--soft); } .measure-key small i { display: inline-block; width: 10px; height: 8px; background: var(--unsettled); margin-right: 5px; vertical-align: -1px; }
+.measure-key small.interdict i { background: var(--red); }
+/* The seasons tint the map's stock: ground, water, and open unsettled land. */
+.cockpit[data-season="Winter"] { --map-water: #cfdee5; --map-ground: #f3f6f4; --map-open: #c8cfcf; }
+.cockpit[data-season="Spring"] { --map-water: #cddfd6; --map-ground: #f2f4e2; --map-open: #c6d0b0; }
+.cockpit[data-season="Summer"] { --map-water: #d4e3df; --map-ground: #f7f0dc; --map-open: #d8cba1; }
+.cockpit[data-season="Autumn"] { --map-water: #dbd8d1; --map-ground: #f6ecdc; --map-open: #d4bea5; }
+.cockpit.full .map, #legend { --stone: var(--map-ground, #eae3d5); --unsettled: var(--map-open, #d8d0bf); }
+.map .regions rect.water { fill: var(--map-water, var(--water)); stroke: none; }
+.map .coast { stroke: #355465; stroke-width: 1.5px; }
+.map .terrain { pointer-events: none; opacity: 0.22; color: #33474a; }
+.map .t-rank { fill: var(--ink); }
+.map .labels text { stroke: var(--map-ground, var(--stone)); stroke-width: 0.25em; paint-order: stroke; }
+.cockpit.full .dock { left: 0; right: 0; }
+@media (min-width: 860px) and (min-height: 500px) {
+  .cockpit.full { grid-template-columns: minmax(230px, 30%) 1fr; grid-template-rows: auto 1fr auto; column-gap: clamp(20px, 4vw, 60px); }
+  .cockpit.full .hud-top { grid-column: 1 / -1; }
+  #plate-title { grid-column: 1; grid-row: 2; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; border: 0; padding-block: 28px; }
+  .plate-stat { text-align: left; }
+  .cockpit.full .map-host { grid-column: 2; grid-row: 2 / 4; margin-block: 16px; }
+  .cockpit.full #legend { grid-column: 1; grid-row: 3; }
+}
+@media (max-height: 560px) { #plate-title { padding: 4px 14px; } #plate-title h1, .plate-stat b { font-size: 20px; max-width: none; } }
 </style>
 <div id="app"></div>
