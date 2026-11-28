@@ -406,13 +406,26 @@ progress.amb::-webkit-progress-bar, .ord progress::-webkit-progress-bar { backgr
 .map .bevel { stroke: rgba(28,25,21,.22); stroke-width: 1.5px; }
 .map .tile-borders { fill: none; stroke: var(--ink); stroke-width: 1.5px; }
 .map .grief-frame { fill: none; stroke: #ad422b; stroke-width: 1px; }
-.map .tile-choice { fill: none; stroke: #194e68; stroke-width: 2px; }
-.socket { fill: rgba(28,25,21,.12); }
-.lift-shadow { fill: rgba(28,25,21,.18); pointer-events: none; }
-.map .lifted { transform-box: fill-box; transform-origin: center; transform: translateY(-.12px) scale(1.06); }
-.map .lifted .tile { stroke: rgba(28,25,21,.14); stroke-width: .5px; cursor: pointer; }
-.cockpit.full #sheet.anchored { top: var(--card-top); bottom: var(--card-bottom); left: max(12px, calc(var(--card-center) - 13rem)); right: max(12px, calc(100% - var(--card-center) - 13rem)); max-width: 26rem; max-height: none; width: auto; margin: 0 auto; background: var(--panel); border-top: 1px solid var(--rule); }
-.anchored .inspector { border-top: 0; }
+.map .regions, .map .borders, .map svg > .tokens { transition: opacity 180ms; }
+.map.focused .regions, .map.focused .borders, .map.focused svg > .tokens { opacity: .52; }
+@starting-style {
+  .map.focused .regions, .map.focused .borders, .map.focused svg > .tokens { opacity: 1; }
+}
+.socket { fill: rgba(28,25,21,.18); }
+.lift-shadow { fill: rgba(28,25,21,.22); pointer-events: none; }
+.tile-edge { fill: #766c5b; pointer-events: none; }
+.map .lifted { transform-box: view-box; transform: translateY(-.22px) scale(1.16); }
+.map .lifted .tile { stroke: rgba(28,25,21,.35); stroke-width: 1px; cursor: pointer; }
+.cockpit.full #sheet.anchored {
+  top: var(--card-top); bottom: auto; height: auto;
+  left: max(12px, calc(var(--card-center) - 13rem)); right: max(12px, calc(100% - var(--card-center) - 13rem));
+  max-width: 26rem; width: auto; margin: 0 auto; overflow: visible;
+  --card-limit: calc(100dvh - var(--card-top) - var(--dock-height) - 16px);
+  max-height: var(--card-limit); box-sizing: border-box; background: var(--panel);
+  border: 1px solid var(--rule); border-radius: 6px; box-shadow: 0 10px 26px rgba(28,25,21,.14) !important;
+}
+#sheet.anchored::before { content: ""; position: absolute; left: 50%; top: -6px; width: 10px; height: 10px; transform: translateX(-50%) rotate(45deg); background: var(--panel); border: solid var(--rule); border-width: 1px 0 0 1px; }
+#sheet.anchored .inspector { position: relative; border: 0; border-radius: 5px; box-sizing: border-box; max-height: calc(var(--card-limit) - 2px); overflow-y: auto; }
 .clerk-piece{width:1.25rem;height:1.25rem;vertical-align:middle}.clerk-tray i{display:inline-flex}.clerk-tray .posted{border-bottom:2px solid currentColor}.clerk-tray .clerk-piece{width:clamp(10px,2.8vw,16px);height:16px}.clerk-tray small{font-size:10px}.meeple{pointer-events:none}
 </style>
 <div id="app"></div>

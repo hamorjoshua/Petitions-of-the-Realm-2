@@ -674,7 +674,7 @@ function mapView(): string {
   const borders: string[] = [];
   const posted = new Map<number, Clerk>();
   if (c) for (const k of royalClerks(c)) if (k.target.kind === 'cell') posted.set(k.target.cell, k);
-  let liftedTile = '', liftedMark = '';
+  let liftedTile = '', liftedMark = '', socket = '';
   const regions = s.cells.map((cell, i) => {
     const [x, y] = xy(i);
     if (water(i)) return `<rect data-cell="${i}" class="water" x="${x}" y="${y}" width="1" height="1"/>`;
@@ -709,10 +709,11 @@ function mapView(): string {
     const clerk = posted.get(i);
     if (clerk) layers.push(`<g transform="translate(${x+.67} ${y+.11}) scale(.24)">${meeple(clerk)}</g>`);
     if (picked >= 0 && nbrs(picked).includes(i)) layers.push(`<rect ${box} fill="none" stroke="rgba(28,25,21,.52)" stroke-width="1" vector-effect="non-scaling-stroke"/>`);
-    const face = `<rect class="tile" style="fill:${fill}" data-cell="${i}" ${box}><title>${esc(cellWords(i))}</title></rect><g class="engraving">${layers.join('')}<path class="bevel" d="M${x+.11} ${y+.955}h.78"/>${picked === i ? `<rect class="tile-choice" ${box}/>` : ''}</g>`;
+    const face = `<rect class="tile" style="fill:${fill}" data-cell="${i}" ${box}><title>${esc(cellWords(i))}</title></rect><g class="engraving">${layers.join('')}<path class="bevel" d="M${x+.11} ${y+.955}h.78"/></g>`;
     if (picked !== i) return face;
-    liftedTile = face;
-    return `<rect class="socket" data-cell="${i}" ${box}/><rect class="lift-shadow" transform="translate(.03 .09)" ${box}/>`;
+    liftedTile = `<rect class="tile-edge" transform="translate(0 .07)" ${box}/>` + face;
+    socket = `<rect class="socket" data-cell="${i}" ${box}/><rect class="lift-shadow" transform="translate(.05 .22)" ${box}/>`;
+    return '';
   }).join('');
   const marks: string[] = [];
   for (let i = 0; i < s.cells.length; i++) {
@@ -724,10 +725,10 @@ function mapView(): string {
     else marks.push(`<circle class="t-dot" cx="${x}" cy="${y}" r="0.045"/>`);
     if (i === picked) liftedMark = marks.pop()!;
   }
-  return `<div class="map-viewport"><div class="map" style="transform:translate(${panX}px,${panY}px) scale(${zoom})"><svg viewBox="${-PAD} ${-PAD} ${N + 2 * PAD} ${N + 2 * PAD}" preserveAspectRatio="xMidYMid meet">
+  return `<div class="map-viewport"><div class="map${liftedTile ? ' focused' : ''}" style="transform:translate(${panX}px,${panY}px) scale(${zoom})"><svg viewBox="${-PAD} ${-PAD} ${N + 2 * PAD} ${N + 2 * PAD}" preserveAspectRatio="xMidYMid meet">
     <defs>${tilePatterns}</defs>
-    <g class="regions">${regions}</g><path class="tile-borders" d="${borders.join('')}"/>
-    <g class="tokens">${marks.join('')}</g>${liftedTile ? `<g class="lifted">${liftedTile}<g class="tokens">${liftedMark}</g></g>` : ''}</svg></div></div>`;
+    <g class="regions">${regions}</g><path class="tile-borders borders" d="${borders.join('')}"/>
+    ${socket}<g class="tokens">${marks.join('')}</g>${liftedTile ? `<g class="lifted" style="transform-origin:${picked % N + .5}px ${Math.floor(picked / N) + .5}px">${liftedTile}<g class="tokens">${liftedMark}</g></g>` : ''}</svg></div></div>`;
 }
 /** The lens bar, and the key when asked for. */
 function lensBar(): string {
@@ -983,10 +984,10 @@ function frameTile(): void {
   zoom = Math.min(3, Math.max(1.8, 104 / (.91 * base)));
   const unit = base * zoom;
   panX = (s.side / 2 - picked % s.side - .5) * unit;
-  panY = targetY - bounds.top - bounds.height / 2 + (s.side / 2 - Math.floor(picked / s.side) - .5 + .12) * unit;
+  panY = targetY - bounds.top - bounds.height / 2 + (s.side / 2 - Math.floor(picked / s.side) - .5 + .22) * unit;
   const card = document.getElementById('sheet')!;
-  card.style.setProperty('--card-top', (targetY + unit * .91 * 1.06 / 2 + 12) + 'px');
-  card.style.setProperty('--card-bottom', (innerHeight - dock.top + 8) + 'px');
+  card.style.setProperty('--card-top', (targetY + unit * .91 * 1.16 / 2 + 16) + 'px');
+  card.style.setProperty('--dock-height', (innerHeight - dock.top) + 'px');
   card.style.setProperty('--card-center', (bounds.left + bounds.width / 2) + 'px');
   applyZoom();
 }
@@ -1009,9 +1010,9 @@ function selectTile(cell: number): void {
   if (lowering) {
     lowering.style.pointerEvents = 'none';
     map.querySelector('svg')!.append(lowering);
-    lowering.animate([{ transform: 'translateY(-.12px) scale(1.06)' }, { transform: 'none' }], { duration: 200, easing: ease }).onfinish = () => lowering.remove();
+    lowering.animate([{ transform: 'translateY(-.22px) scale(1.16)' }, { transform: 'none' }], { duration: 200, easing: ease }).onfinish = () => lowering.remove();
   } else if (picked >= 0) {
-    map.querySelector('.lifted')?.animate([{ transform: 'none' }, { transform: 'translateY(-.12px) scale(1.06)' }], { duration: 200, easing: ease });
+    map.querySelector('.lifted')?.animate([{ transform: 'none' }, { transform: 'translateY(-.22px) scale(1.16)' }], { duration: 200, easing: ease });
     sheet.animate([{ opacity: 0, translate: '0 6px' }, { opacity: 1, translate: '0 0' }], { duration: 160, easing: ease });
   }
 }
